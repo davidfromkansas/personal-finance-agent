@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { GoogleLogo } from '../components/GoogleLogo'
 
@@ -51,6 +52,17 @@ export function LoggedOutLandingPage() {
             <GoogleLogo />
             {loading ? 'Signing in…' : 'Continue with Google'}
           </button>
+          <p className="text-center text-xs text-gray-500 font-[Roboto,sans-serif]">
+            By continuing, you agree to our{' '}
+            <Link to="/privacy" className="underline hover:text-black transition-colors">
+              Privacy Policy
+            </Link>{' '}
+            and{' '}
+            <Link to="/terms" className="underline hover:text-black transition-colors">
+              Terms of Service
+            </Link>
+            .
+          </p>
         </div>
       </main>
     </div>

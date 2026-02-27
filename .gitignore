@@ -14,6 +14,11 @@ dist
 dist-ssr
 *.local
 
+# Server secrets (do not commit)
+server/.env
+server/firebase-service-account.json
+**/firebase-service-account*.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

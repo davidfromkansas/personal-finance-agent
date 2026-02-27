@@ -54,11 +54,18 @@ export function AuthProvider({ children }) {
     }
   }
 
+  /** Returns the current Firebase ID token for API auth, or null if not logged in. */
+  async function getIdToken() {
+    const u = auth.currentUser
+    if (!u) return null
+    return u.getIdToken()
+  }
+
   function logout() {
     firebaseSignOut(auth)
   }
 
-  const value = { user, signInWithGoogle, logout, ready }
+  const value = { user, signInWithGoogle, logout, getIdToken, ready }
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 

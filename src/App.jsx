@@ -2,6 +2,11 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LoggedOutLandingPage } from './pages/LoggedOutLandingPage'
 import { LoggedInPage } from './pages/LoggedInPage'
+import { TransactionsPage } from './pages/TransactionsPage'
+import { InvestmentsPage } from './pages/InvestmentsPage'
+import { AccountsPage } from './pages/AccountsPage'
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
+import { TermsOfServicePage } from './pages/TermsOfServicePage'
 
 function ProtectedRoute({ children }) {
   const { user, ready } = useAuth()
@@ -50,6 +55,32 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/app/transactions"
+        element={
+          <ProtectedRoute>
+            <TransactionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/app/investments"
+        element={
+          <ProtectedRoute>
+            <InvestmentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/app/accounts"
+        element={
+          <ProtectedRoute>
+            <AccountsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/terms" element={<TermsOfServicePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
