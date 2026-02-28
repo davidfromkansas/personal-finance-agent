@@ -3,7 +3,7 @@ import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid'
 import {
   getPlaidItemsByUserId, upsertPlaidItem, deletePlaidItem,
   getSyncCursor, updateSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds,
-  getRecentTransactions,
+  getRecentTransactions, getSpendingSummary,
 } from '../db.js'
 
 function getPlaidClient() {
@@ -45,6 +45,8 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
       amount: t.amount,
       date: t.date,
       account_name: accountNames[t.account_id] ?? null,
+      payment_channel: t.payment_channel ?? null,
+      personal_finance_category: t.personal_finance_category?.primary ?? null,
     }))
     if (toUpsert.length) await upsertTransactions(userId, itemId, toUpsert)
 
@@ -170,6 +172,68 @@ plaidRouter.get('/transactions', async (req, res, next) => {
   } catch (err) {
     console.error('GET /transactions error:', err)
     res.status(500).json({ error: 'Failed to load transactions' })
+  }
+})
+
+/** GET /api/plaid/spending-summary — aggregated spending for charts */
+plaidRouter.get('/spending-summary', async (req, res, next) => {
+  try {
+    const period = req.query.period
+    if (!period || !['week', 'month', 'year'].includes(period)) {
+      return res.status(400).json({ error: 'period must be week, month, or year' })
+    }
+    const itemIds = req.query.item_ids ? req.query.item_ids.split(',').filter(Boolean) : null
+    const rows = await getSpendingSummary(req.uid, period, itemIds)
+
+    const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+    const totalsMap = Object.fromEntries(rows.map((r) => [r.bucket, parseFloat(r.total) || 0]))
+    const pad = (n) => String(n).padStart(2, '0')
+    const today = new Date()
+
+    let allKeys = []
+    if (period === 'week') {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today)
+        d.setDate(d.getDate() - i)
+        allKeys.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+      }
+    } else if (period === 'month') {
+      for (let i = 3; i >= 0; i--) {
+        const d = new Date(today)
+        d.setDate(d.getDate() - i * 7)
+        const day = d.getDay()
+        d.setDate(d.getDate() - day + 1)
+        allKeys.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+      }
+      allKeys = [...new Set(allKeys)]
+    } else {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+        allKeys.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`)
+      }
+    }
+
+    const buckets = allKeys.map((key) => {
+      let label = key
+      if (period === 'week') {
+        const d = new Date(key + 'T00:00:00')
+        label = DAY_NAMES[d.getDay()] || key
+      } else if (period === 'month') {
+        const d = new Date(key + 'T00:00:00')
+        label = `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`
+      } else {
+        const [y, m] = key.split('-')
+        label = `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y.slice(2)}`
+      }
+      return { label, date: key, total: totalsMap[key] ?? 0 }
+    })
+
+    res.json({ period, buckets })
+  } catch (err) {
+    console.error('GET /spending-summary error:', err)
+    res.status(500).json({ error: 'Failed to load spending summary' })
   }
 })
 

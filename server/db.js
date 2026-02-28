@@ -71,12 +71,13 @@ export async function upsertTransactions(userId, itemId, txns) {
   if (!txns.length) return
   for (const t of txns) {
     await query(
-      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, account_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, account_name, payment_channel, personal_finance_category)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        ON CONFLICT (plaid_transaction_id) DO UPDATE SET
          name = EXCLUDED.name, amount = EXCLUDED.amount, date = EXCLUDED.date,
-         account_name = EXCLUDED.account_name`,
-      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.account_name ?? null]
+         account_name = EXCLUDED.account_name, payment_channel = EXCLUDED.payment_channel,
+         personal_finance_category = EXCLUDED.personal_finance_category`,
+      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null]
     )
   }
 }
@@ -95,5 +96,54 @@ export async function getRecentTransactions(userId, limit = 25) {
      FROM transactions WHERE user_id = $1 ORDER BY date DESC, created_at DESC LIMIT $2`,
     [userId, limit]
   )
+  return rows
+}
+
+const NON_SPENDING_CATEGORIES = [
+  'INCOME',
+  'TRANSFER_IN',
+  'TRANSFER_OUT',
+  'LOAN_PAYMENTS',
+  'BANK_FEES',
+  'RENT_AND_UTILITIES',
+]
+
+export async function getSpendingSummary(userId, period, itemIds) {
+  const hasItemFilter = Array.isArray(itemIds) && itemIds.length > 0
+  const nextParam = hasItemFilter ? 4 : 3
+  const itemClause = hasItemFilter ? 'AND item_id = ANY($3)' : ''
+  const pfcClause = `AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${nextParam}))`
+  const params = hasItemFilter
+    ? [userId, null, itemIds, NON_SPENDING_CATEGORIES]
+    : [userId, null, NON_SPENDING_CATEGORIES]
+
+  let sql
+  if (period === 'week') {
+    params[1] = 7
+    sql = `
+      SELECT date::text AS bucket, SUM(amount) AS total
+      FROM transactions
+      WHERE user_id = $1 AND amount > 0 AND date >= CURRENT_DATE - ($2 || ' days')::interval
+        ${itemClause} ${pfcClause}
+      GROUP BY date ORDER BY date ASC`
+  } else if (period === 'month') {
+    params[1] = 28
+    sql = `
+      SELECT date_trunc('week', date)::date::text AS bucket, SUM(amount) AS total
+      FROM transactions
+      WHERE user_id = $1 AND amount > 0 AND date >= CURRENT_DATE - ($2 || ' days')::interval
+        ${itemClause} ${pfcClause}
+      GROUP BY date_trunc('week', date) ORDER BY bucket ASC`
+  } else {
+    params[1] = 365
+    sql = `
+      SELECT to_char(date, 'YYYY-MM') AS bucket, SUM(amount) AS total
+      FROM transactions
+      WHERE user_id = $1 AND amount > 0 AND date >= CURRENT_DATE - ($2 || ' days')::interval
+        ${itemClause} ${pfcClause}
+      GROUP BY to_char(date, 'YYYY-MM') ORDER BY bucket ASC`
+  }
+
+  const { rows } = await query(sql, params)
   return rows
 }

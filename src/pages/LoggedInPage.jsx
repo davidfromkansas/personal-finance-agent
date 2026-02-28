@@ -4,6 +4,7 @@ import { usePlaidLink } from 'react-plaid-link'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
 import { AppHeader } from '../components/AppHeader'
+import { SpendingCharts } from '../components/SpendingCharts'
 
 function HamburgerIcon() {
   return (
@@ -393,6 +394,7 @@ export function LoggedInPage() {
   const [addError, setAddError] = useState(null)
   const [exchanging, setExchanging] = useState(false)
   const openedRef = useRef(false)
+  const spendingRef = useRef(null)
 
   const fetchConnections = useCallback(async () => {
     try {
@@ -437,6 +439,7 @@ export function LoggedInPage() {
           })
         }
         await Promise.all([fetchConnections(), fetchTransactions()])
+        spendingRef.current?.refresh()
         setLinkToken(null)
         setLinkMode('add')
         openedRef.current = false
@@ -481,6 +484,7 @@ export function LoggedInPage() {
         getToken: getIdToken,
       })
       await Promise.all([fetchConnections(), fetchTransactions()])
+      spendingRef.current?.refresh()
     } catch (err) {
       setAddError(err.message ?? 'Failed to disconnect')
     }
@@ -495,6 +499,7 @@ export function LoggedInPage() {
         getToken: getIdToken,
       })
       await Promise.all([fetchConnections(), fetchTransactions()])
+      spendingRef.current?.refresh()
     } catch (err) {
       if (err.message === 'Login required') {
         setAddError(`${connection.institution_name ?? 'Connection'} requires re-login. Click "Reconnect" to fix.`)
@@ -529,6 +534,9 @@ export function LoggedInPage() {
       <AppHeader />
 
       <main className="px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1140px] mb-6">
+          <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} />
+        </div>
         <div className="mx-auto flex max-w-[1140px] flex-col gap-6 lg:flex-row lg:items-start">
           {/* Left column — Plaid Connections */}
           <div className="w-full max-w-[550px] shrink-0 rounded-[14px] border border-black/10 bg-white">

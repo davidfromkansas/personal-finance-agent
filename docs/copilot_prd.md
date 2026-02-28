@@ -166,6 +166,20 @@ See [PLAID_TRANSACTIONS_PLAN.md](PLAID_TRANSACTIONS_PLAN.md) for full flow, API 
 - **Terms of Service page:** `/terms` — covers acceptance of terms, service description (read-only), financial data disclaimers, not-financial-advice disclaimer, third-party services, data/privacy reference, disconnection/deletion, prohibited use, limitation of liability. Accessible without authentication.
 - **Internal compliance docs:** `docs/INFORMATION_SECURITY_POLICY.md` (security controls, incident response, risk assessment) and `docs/DATA_DELETION_AND_RETENTION_POLICY.md` (retention schedule, CCPA/CPRA rights, state law compliance, breach notification).
 
+### 6.14 Spending graphs
+
+- **Location:** Dashboard (`/app`), rendered above the existing Plaid Connections + Recent Transactions two-column layout.
+- **Charts:** Three bar charts displayed side by side (stacked on mobile):
+  - **Weekly Spending** — last 7 days, one bar per day (x-axis: day name).
+  - **Monthly Spending** — last 4 weeks, one bar per week (x-axis: week start date).
+  - **Yearly Spending** — last 12 months, one bar per month (x-axis: month abbreviation).
+- **Spending definition:** Only actual purchases/payments (positive Plaid `amount` values). The following categories are **excluded** via the `personal_finance_category` field: `INCOME`, `TRANSFER_IN`, `TRANSFER_OUT`, `LOAN_PAYMENTS`, `BANK_FEES`, `RENT_AND_UTILITIES`. This prevents inter-account transfers, payroll, and bank fees from inflating spending totals.
+- **Transaction metadata:** The `transactions` table stores `payment_channel` (in store / online / other) and `personal_finance_category` (Plaid's primary category label) for each transaction, populated during sync.
+- **Backend:** `GET /api/plaid/spending-summary` — accepts `?period=week|month|year` and optional `&item_ids=id1,id2`. Returns `{ period, buckets: [{ label, date, total }] }`. Aggregation done server-side via SQL `SUM(amount) GROUP BY` date bucket with non-spending categories excluded.
+- **Helper text:** Below the tab bar, a line of muted text reads: "Includes purchases and payments across all accounts. Transfers, income, and bank fees are excluded."
+- **Connection filter:** Row of toggle pills above the charts, one per connected institution. All selected by default. Toggling a pill re-fetches all three charts filtered to the selected connections.
+- **Charting library:** Recharts (`BarChart`, `ResponsiveContainer`, `Tooltip`).
+- **Component:** `src/components/SpendingCharts.jsx`. Receives `connections` and `getToken` as props from `LoggedInPage`.
 
 ---
 
@@ -204,5 +218,7 @@ See [DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md) for full deploy steps.
 - **Transactions:** Added 6.7 (Recent Transactions module). Backend transactions/sync with cursor-based Plaid sync, transactions table + migration, GET /api/plaid/transactions. Frontend two-column layout, RecentTransactions component grouped by date, capped at 25, View All placeholder.
 - **Disconnect:** Added 6.6 (disconnect a connection). Backend `POST /api/plaid/disconnect` deletes from DB and calls Plaid `/item/remove`. Frontend trash button shows confirmation, calls disconnect, refetches connections.
 - **Consent & Legal:** Added 6.13 (Privacy Policy page at `/privacy`, Terms of Service page at `/terms`, consent line on landing page). Internal compliance docs: Information Security Policy and Data Deletion & Retention Policy.
+- **Spending Graphs:** Added 6.14 (three bar charts — weekly, monthly, yearly — above dashboard content). Backend `GET /api/plaid/spending-summary` with SQL aggregation. Connection filter pills. Recharts library.
+- **Spending Graph Filtering:** Charts now auto-refresh after adding, disconnecting, or refreshing a connection. Added `payment_channel` and `personal_finance_category` columns to transactions table (migration 003). Spending summary SQL excludes non-spending categories (transfers, income, bank fees, loan payments). Helper text added below chart tabs.
 
 *When you add or change a product requirement or decision, add a short entry here and update the relevant section above.*
