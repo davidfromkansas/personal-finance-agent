@@ -16,6 +16,16 @@ if (!process.env.PLAID_CLIENT_ID || !process.env.PLAID_SECRET) {
   process.exit(1)
 }
 
+console.log('Config:', JSON.stringify({
+  NODE_ENV: process.env.NODE_ENV ?? 'not set',
+  PLAID_ENV: process.env.PLAID_ENV ?? 'sandbox',
+  PLAID_PRODUCTS: process.env.PLAID_PRODUCTS ?? 'transactions (default)',
+  PLAID_REDIRECT_URI: process.env.PLAID_REDIRECT_URI ?? 'not set',
+  CORS_ORIGIN: process.env.CORS_ORIGIN ?? 'http://localhost:5173 (default)',
+  DATABASE_URL: process.env.DATABASE_URL ? '***set***' : 'NOT SET',
+  FIREBASE_AUTH: process.env.FIREBASE_SERVICE_ACCOUNT ? 'JSON env var' : process.env.FIREBASE_SERVICE_ACCOUNT_PATH ?? 'NOT SET',
+}))
+
 const app = express()
 const PORT = process.env.PORT || 3001
 

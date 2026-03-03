@@ -1,0 +1,18 @@
+---
+description: Keep environment variables, .env files, and code defaults in sync
+alwaysApply: true
+---
+
+# Environment Variable Sync
+
+When changing code that reads environment variables (e.g., `process.env.*`, `import.meta.env.*`):
+
+1. Update `server/.env` with the new/changed value
+2. Update `.env.example` so the template matches (use placeholder values, not secrets)
+3. If the code adds hardcoded defaults that override an env var, remove the override and set the value explicitly in `.env` instead — env vars should be the single source of truth
+
+When adding a new env var:
+- Add it to `.env.example` with a comment explaining what it does
+- Log it at server startup if it affects runtime behavior (see `server/index.js`)
+
+Never silently override env var values in code. If the code needs `investments` in the products list, the env var should say `transactions,investments` — not `transactions` with the code secretly appending `investments`.
