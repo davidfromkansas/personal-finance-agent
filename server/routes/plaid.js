@@ -170,7 +170,12 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
       account_name: accountNames[t.account_id] ?? null,
       payment_channel: t.payment_channel ?? null,
       personal_finance_category: t.personal_finance_category?.primary ?? null,
+      pending: t.pending === true,
     }))
+    const pendingCount = toUpsert.filter((t) => t.pending).length
+    if (pendingCount > 0) {
+      console.log(`[plaid sync] item ${itemId}: ${pendingCount} pending transaction(s) in this batch`)
+    }
     if (toUpsert.length) await upsertTransactions(userId, itemId, toUpsert)
 
     const toRemove = (removed ?? []).map((r) => r.transaction_id)

@@ -295,6 +295,17 @@ function TransactionRow({ transaction }) {
             {transaction.account_name}
           </span>
         )}
+        <span
+          className={`ml-2 mt-1 inline-block rounded-[8px] border px-2 py-[3px] text-[12px] font-medium leading-4 ${
+            transaction.pending
+              ? 'border-[#f59e0b] bg-[#fffbeb] text-[#b45309]'
+              : 'border-[#e5e7eb] bg-[#f3f4f6] text-[#6b7280]'
+          }`}
+          style={{ fontFamily: 'Inter,sans-serif' }}
+          title={transaction.pending ? 'Not yet settled' : 'Settled'}
+        >
+          {transaction.pending ? 'Pending' : 'Posted'}
+        </span>
       </div>
       <span className={`shrink-0 text-right font-semibold text-[14px] leading-5 tracking-[-0.15px] ${amtColor}`} style={{ fontFamily: 'Inter,sans-serif' }}>
         {displayAmt}
