@@ -1,10 +1,43 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef, memo } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePlaidLink } from 'react-plaid-link'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
 import { AppHeader } from '../components/AppHeader'
 import { SpendingCharts } from '../components/SpendingCharts'
+import { NetWorthChart } from '../components/NetWorthChart'
+import { InvestmentPortfolio } from '../components/InvestmentPortfolio'
+
+/**
+ * Renders nothing — exists solely to own a fresh usePlaidLink instance.
+ * Unmounting this component cleanly destroys the Plaid Link iframe.
+ * Accepts receivedRedirectUri for completing OAuth flows.
+ */
+const PlaidLinkOpener = memo(function PlaidLinkOpener({ token, receivedRedirectUri, onSuccess, onExit, onReady }) {
+  const config = {
+    token,
+    onSuccess,
+    onExit: (err, metadata) => {
+      if (err) console.error('[PlaidLink] exit error:', err, metadata)
+      onExit?.(err, metadata)
+    },
+    onEvent: (eventName, metadata) => {
+      console.log('[PlaidLink] event:', eventName, metadata)
+    },
+  }
+  if (receivedRedirectUri) config.receivedRedirectUri = receivedRedirectUri
+
+  const { open, ready } = usePlaidLink(config)
+
+  useEffect(() => {
+    if (ready) {
+      onReady?.()
+      open()
+    }
+  }, [ready, open, onReady])
+
+  return null
+})
 
 function HamburgerIcon() {
   return (
@@ -197,6 +230,10 @@ function groupConnectionsByCategory(connections) {
   const groups = Object.fromEntries(CONNECTION_CATEGORIES.map((c) => [c, []]))
   connections.forEach((conn) => {
     const accounts = conn.accounts ?? []
+    if (accounts.length === 0) {
+      groups['Other'].push({ connection: conn, accounts: [] })
+      return
+    }
     CONNECTION_CATEGORIES.forEach((category) => {
       const types = CATEGORY_PLAID_TYPES[category] || ['other']
       accounts
@@ -385,6 +422,7 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
 export function LoggedInPage() {
   const navigate = useNavigate()
   const { getIdToken } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(true)
   const [transactions, setTransactions] = useState([])
@@ -393,8 +431,11 @@ export function LoggedInPage() {
   const [linkMode, setLinkMode] = useState('add')
   const [addError, setAddError] = useState(null)
   const [exchanging, setExchanging] = useState(false)
-  const openedRef = useRef(false)
+  const [linkLoading, setLinkLoading] = useState(false)
+  const [oauthRedirectUri, setOauthRedirectUri] = useState(null)
   const spendingRef = useRef(null)
+  const netWorthRef = useRef(null)
+  const investmentRef = useRef(null)
 
   const fetchConnections = useCallback(async () => {
     try {
@@ -423,11 +464,42 @@ export function LoggedInPage() {
   useEffect(() => {
     fetchConnections()
     fetchTransactions()
+
+    apiFetch('/api/plaid/sync', { method: 'POST', getToken: getIdToken })
+      .then((data) => {
+        if (data.synced > 0) {
+          fetchConnections()
+          fetchTransactions()
+          spendingRef.current?.refresh()
+          netWorthRef.current?.refresh()
+          investmentRef.current?.refresh()
+        }
+      })
+      .catch((err) => console.error('Background sync failed:', err))
   }, [fetchConnections, fetchTransactions])
 
-  const { open: openPlaidLink, ready: plaidReady } = usePlaidLink({
-    token: linkToken,
-    onSuccess: async (public_token, metadata) => {
+  useEffect(() => {
+    const oauthStateId = searchParams.get('oauth_state_id')
+    if (!oauthStateId) return
+
+    const redirectUri = `${window.location.origin}${window.location.pathname}`
+    setOauthRedirectUri(redirectUri)
+    setLinkLoading(true)
+    setSearchParams({}, { replace: true })
+
+    apiFetch('/api/plaid/link-token', { method: 'POST', getToken: getIdToken })
+      .then((data) => {
+        if (data.link_token) setLinkToken(data.link_token)
+        else { setAddError('Could not resume connection'); setLinkLoading(false) }
+      })
+      .catch((err) => {
+        setAddError(err.message ?? 'Could not resume connection')
+        setLinkLoading(false)
+      })
+  }, [])
+
+  const handlePlaidSuccess = useCallback(
+    async (public_token, metadata) => {
       setAddError(null)
       setExchanging(true)
       try {
@@ -440,38 +512,50 @@ export function LoggedInPage() {
         }
         await Promise.all([fetchConnections(), fetchTransactions()])
         spendingRef.current?.refresh()
-        setLinkToken(null)
-        setLinkMode('add')
-        openedRef.current = false
+        netWorthRef.current?.refresh()
+        investmentRef.current?.refresh()
       } catch (err) {
         setAddError(err.message ?? 'Failed to add connection')
       } finally {
+        setLinkToken(null)
+        setLinkMode('add')
         setExchanging(false)
+        setOauthRedirectUri(null)
       }
     },
-    onExit: () => {
-      setLinkToken(null)
-      setLinkMode('add')
-      setAddError(null)
-      openedRef.current = false
-    },
-  })
+    [linkMode, getIdToken, fetchConnections, fetchTransactions],
+  )
 
-  useEffect(() => {
-    if (linkToken && plaidReady && !openedRef.current) {
-      openedRef.current = true
-      openPlaidLink()
+  const handlePlaidExit = useCallback((err, metadata) => {
+    setLinkToken(null)
+    setLinkMode('add')
+    setLinkLoading(false)
+    setOauthRedirectUri(null)
+    if (err) {
+      const msg = err.display_message || err.error_message || err.error_code || 'Plaid Link closed with an error'
+      setAddError(`${msg} (code: ${err.error_code ?? 'unknown'}, type: ${err.error_type ?? 'unknown'})`)
     }
-  }, [linkToken, plaidReady, openPlaidLink])
+  }, [])
+
+  const handlePlaidReady = useCallback(() => {
+    setLinkLoading(false)
+  }, [])
 
   async function handleAddConnection() {
+    setLinkToken(null)
     setAddError(null)
+    setLinkLoading(true)
     try {
       const data = await apiFetch('/api/plaid/link-token', { method: 'POST', getToken: getIdToken })
-      if (data.link_token) setLinkToken(data.link_token)
-      else setAddError('Could not start connection')
+      if (data.link_token) {
+        setLinkToken(data.link_token)
+      } else {
+        setAddError('Could not start connection')
+        setLinkLoading(false)
+      }
     } catch (err) {
       setAddError(err.message ?? 'Could not start connection')
+      setLinkLoading(false)
     }
   }
 
@@ -485,6 +569,8 @@ export function LoggedInPage() {
       })
       await Promise.all([fetchConnections(), fetchTransactions()])
       spendingRef.current?.refresh()
+      netWorthRef.current?.refresh()
+      investmentRef.current?.refresh()
     } catch (err) {
       setAddError(err.message ?? 'Failed to disconnect')
     }
@@ -500,6 +586,8 @@ export function LoggedInPage() {
       })
       await Promise.all([fetchConnections(), fetchTransactions()])
       spendingRef.current?.refresh()
+      netWorthRef.current?.refresh()
+      investmentRef.current?.refresh()
     } catch (err) {
       if (err.message === 'Login required') {
         setAddError(`${connection.institution_name ?? 'Connection'} requires re-login. Click "Reconnect" to fix.`)
@@ -532,14 +620,25 @@ export function LoggedInPage() {
   return (
     <div className="min-h-screen bg-[#f8f8f8]" data-name="Logged-In Dashboard">
       <AppHeader />
+      {linkToken && (
+        <PlaidLinkOpener
+          token={linkToken}
+          receivedRedirectUri={oauthRedirectUri}
+          onSuccess={handlePlaidSuccess}
+          onExit={handlePlaidExit}
+          onReady={handlePlaidReady}
+        />
+      )}
 
       <main className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1140px] mb-6">
           <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} />
         </div>
         <div className="mx-auto flex max-w-[1140px] flex-col gap-6 lg:flex-row lg:items-start">
-          {/* Left column — Plaid Connections */}
-          <div className="w-full max-w-[550px] shrink-0 rounded-[14px] border border-black/10 bg-white">
+          {/* Left column — Net Worth + Plaid Connections */}
+          <div className="flex w-full max-w-[550px] shrink-0 flex-col gap-6">
+          <NetWorthChart ref={netWorthRef} getToken={getIdToken} />
+          <div className="rounded-[14px] border border-black/10 bg-white">
           <div className="flex flex-col gap-1 px-6 pt-6 pb-1.5 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
@@ -552,12 +651,12 @@ export function LoggedInPage() {
             <button
               type="button"
               onClick={handleAddConnection}
-              disabled={exchanging}
-              className="mt-4 flex h-8 shrink-0 items-center justify-center gap-2 rounded-lg bg-[#030213] px-2.5 py-2 text-[14px] font-medium leading-5 tracking-[-0.15px] text-white transition-opacity hover:opacity-90 disabled:opacity-60 sm:mt-0"
+              disabled={exchanging || linkLoading}
+              className="mt-4 flex h-8 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-2.5 py-2 text-[14px] font-medium leading-5 tracking-[-0.15px] text-white transition-all duration-150 hover:bg-[#1a1a2e] hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-0"
               style={{ fontFamily: 'Inter,sans-serif' }}
             >
               <PlusIcon />
-              {exchanging ? 'Connecting…' : 'Add Connection'}
+              {linkLoading ? 'Opening…' : exchanging ? 'Connecting…' : 'Add Connection'}
             </button>
           </div>
           {addError && (
@@ -602,9 +701,11 @@ export function LoggedInPage() {
             )}
           </div>
           </div>
+          </div>
 
-          {/* Right column — Recent Transactions */}
-          <div className="w-full max-w-[550px] shrink-0">
+          {/* Right column — Investment Portfolio + Recent Transactions */}
+          <div className="flex w-full max-w-[550px] shrink-0 flex-col gap-6">
+            <InvestmentPortfolio ref={investmentRef} getToken={getIdToken} />
             <TransactionList
               transactions={transactions}
               loading={txnLoading}

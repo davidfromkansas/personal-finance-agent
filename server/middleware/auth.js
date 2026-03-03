@@ -9,13 +9,21 @@ let initialized = false
 
 export async function ensureFirebaseAdmin() {
   if (initialized) return
+
+  const jsonEnv = process.env.FIREBASE_SERVICE_ACCOUNT
   const credPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH || process.env.GOOGLE_APPLICATION_CREDENTIALS
-  if (!credPath) {
-    throw new Error('Missing FIREBASE_SERVICE_ACCOUNT_PATH or GOOGLE_APPLICATION_CREDENTIALS')
+
+  let serviceAccount
+  if (jsonEnv) {
+    serviceAccount = JSON.parse(jsonEnv)
+  } else if (credPath) {
+    const resolved = path.isAbsolute(credPath) ? credPath : path.resolve(__dirname, '..', credPath)
+    const raw = fs.readFileSync(resolved, 'utf8')
+    serviceAccount = JSON.parse(raw)
+  } else {
+    throw new Error('Missing FIREBASE_SERVICE_ACCOUNT (JSON string) or FIREBASE_SERVICE_ACCOUNT_PATH')
   }
-  const resolved = path.isAbsolute(credPath) ? credPath : path.resolve(__dirname, '..', credPath)
-  const raw = fs.readFileSync(resolved, 'utf8')
-  const serviceAccount = JSON.parse(raw)
+
   admin.initializeApp({ credential: admin.credential.cert(serviceAccount) })
   initialized = true
 }

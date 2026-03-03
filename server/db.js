@@ -24,11 +24,18 @@ export async function query(text, params) {
 
 export async function getPlaidItemsByUserId(userId) {
   const { rows } = await query(
-    `SELECT id, user_id, item_id, access_token, institution_name, last_synced_at, created_at
+    `SELECT id, user_id, item_id, access_token, institution_name, last_synced_at, created_at, accounts_cache
      FROM plaid_items WHERE user_id = $1 ORDER BY created_at ASC`,
     [userId]
   )
   return rows
+}
+
+export async function updateAccountsCache(userId, itemId, accountsJson) {
+  await query(
+    `UPDATE plaid_items SET accounts_cache = $3 WHERE user_id = $1 AND item_id = $2`,
+    [userId, itemId, JSON.stringify(accountsJson)]
+  )
 }
 
 export async function upsertPlaidItem({ userId, itemId, accessToken, institutionName, lastSyncedAt }) {
@@ -82,6 +89,13 @@ export async function upsertTransactions(userId, itemId, txns) {
   }
 }
 
+export async function updateTransactionAccountNames(userId, accountId, accountName) {
+  await query(
+    `UPDATE transactions SET account_name = $3 WHERE user_id = $1 AND account_id = $2 AND (account_name IS DISTINCT FROM $3)`,
+    [userId, accountId, accountName]
+  )
+}
+
 export async function deleteTransactionsByPlaidIds(plaidTransactionIds) {
   if (!plaidTransactionIds.length) return
   await query(
@@ -99,6 +113,25 @@ export async function getRecentTransactions(userId, limit = 25) {
   return rows
 }
 
+export async function getTransactionsForNetWorth(userId, sinceDate) {
+  const { rows } = await query(
+    `SELECT account_id, amount, date::text AS date
+     FROM transactions
+     WHERE user_id = $1 AND date >= $2
+     ORDER BY account_id, date ASC`,
+    [userId, sinceDate]
+  )
+  return rows
+}
+
+export async function getEarliestTransactionDate(userId) {
+  const { rows } = await query(
+    `SELECT MIN(date)::text AS earliest FROM transactions WHERE user_id = $1`,
+    [userId]
+  )
+  return rows[0]?.earliest ?? null
+}
+
 const NON_SPENDING_CATEGORIES = [
   'INCOME',
   'TRANSFER_IN',
@@ -108,41 +141,40 @@ const NON_SPENDING_CATEGORIES = [
   'RENT_AND_UTILITIES',
 ]
 
-export async function getSpendingSummary(userId, period, itemIds) {
-  const hasItemFilter = Array.isArray(itemIds) && itemIds.length > 0
-  const nextParam = hasItemFilter ? 4 : 3
-  const itemClause = hasItemFilter ? 'AND item_id = ANY($3)' : ''
+export async function getSpendingSummaryByAccount(userId, period, accountIds) {
+  const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
+  const nextParam = hasFilter ? 4 : 3
+  const filterClause = hasFilter ? 'AND account_id = ANY($3)' : ''
   const pfcClause = `AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${nextParam}))`
-  const params = hasItemFilter
-    ? [userId, null, itemIds, NON_SPENDING_CATEGORIES]
+  const params = hasFilter
+    ? [userId, null, accountIds, NON_SPENDING_CATEGORIES]
     : [userId, null, NON_SPENDING_CATEGORIES]
 
-  let sql
+  let bucketExpr, groupExpr
   if (period === 'week') {
     params[1] = 7
-    sql = `
-      SELECT date::text AS bucket, SUM(amount) AS total
-      FROM transactions
-      WHERE user_id = $1 AND amount > 0 AND date >= CURRENT_DATE - ($2 || ' days')::interval
-        ${itemClause} ${pfcClause}
-      GROUP BY date ORDER BY date ASC`
+    bucketExpr = 'date::text'
+    groupExpr = 'date'
   } else if (period === 'month') {
     params[1] = 28
-    sql = `
-      SELECT date_trunc('week', date)::date::text AS bucket, SUM(amount) AS total
-      FROM transactions
-      WHERE user_id = $1 AND amount > 0 AND date >= CURRENT_DATE - ($2 || ' days')::interval
-        ${itemClause} ${pfcClause}
-      GROUP BY date_trunc('week', date) ORDER BY bucket ASC`
+    bucketExpr = "date_trunc('week', date)::date::text"
+    groupExpr = "date_trunc('week', date)"
   } else {
     params[1] = 365
-    sql = `
-      SELECT to_char(date, 'YYYY-MM') AS bucket, SUM(amount) AS total
-      FROM transactions
-      WHERE user_id = $1 AND amount > 0 AND date >= CURRENT_DATE - ($2 || ' days')::interval
-        ${itemClause} ${pfcClause}
-      GROUP BY to_char(date, 'YYYY-MM') ORDER BY bucket ASC`
+    bucketExpr = "to_char(date, 'YYYY-MM')"
+    groupExpr = "to_char(date, 'YYYY-MM')"
   }
+
+  const sql = `
+    SELECT ${bucketExpr} AS bucket,
+           COALESCE(account_name, 'Unknown') AS account_name,
+           SUM(amount) AS total
+    FROM transactions
+    WHERE user_id = $1 AND amount > 0
+      AND date >= CURRENT_DATE - ($2 || ' days')::interval
+      ${filterClause} ${pfcClause}
+    GROUP BY ${groupExpr}, account_name
+    ORDER BY bucket ASC, account_name ASC`
 
   const { rows } = await query(sql, params)
   return rows

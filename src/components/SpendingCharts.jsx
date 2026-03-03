@@ -10,7 +10,14 @@ const PERIODS = [
   { key: 'year', label: 'Monthly', subtitle: 'Last 12 months' },
 ]
 
-const BAR_COLOR = '#4f46e5'
+const STACK_COLORS = [
+  '#4f46e5', '#0891b2', '#059669', '#d97706', '#dc2626',
+  '#7c3aed', '#db2777', '#2563eb', '#65a30d', '#ea580c',
+]
+
+function colorForIndex(i) {
+  return STACK_COLORS[i % STACK_COLORS.length]
+}
 
 function formatCurrency(value) {
   if (value == null) return '$0'
@@ -19,16 +26,33 @@ function formatCurrency(value) {
   }).format(value)
 }
 
-function CustomTooltip({ active, payload, label }) {
+function StackedTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
+  const total = payload.reduce((s, p) => s + (p.value || 0), 0)
   return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 shadow-sm">
-      <p className="text-[12px] font-medium text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-sm min-w-[160px]">
+      <p className="text-[12px] font-medium text-[#6a7282] mb-1.5" style={{ fontFamily: 'Inter,sans-serif' }}>
         {label}
       </p>
-      <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
-        {formatCurrency(payload[0]?.value)}
-      </p>
+      {payload.filter((p) => p.value > 0).map((p) => (
+        <div key={p.dataKey} className="flex items-center justify-between gap-4 py-0.5">
+          <div className="flex items-center gap-1.5">
+            <span className="inline-block size-2 rounded-full shrink-0" style={{ backgroundColor: p.fill }} />
+            <span className="text-[12px] text-[#4a5565] truncate max-w-[120px]" style={{ fontFamily: 'Inter,sans-serif' }}>
+              {p.dataKey}
+            </span>
+          </div>
+          <span className="text-[12px] font-medium text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            {formatCurrency(p.value)}
+          </span>
+        </div>
+      ))}
+      {payload.length > 1 && (
+        <div className="flex items-center justify-between gap-4 border-t border-[#e5e7eb] mt-1.5 pt-1.5">
+          <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>Total</span>
+          <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>{formatCurrency(total)}</span>
+        </div>
+      )}
     </div>
   )
 }
@@ -37,174 +61,205 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
   const [activePeriod, setActivePeriod] = useState('week')
   const [data, setData] = useState({ week: null, month: null, year: null })
   const [loading, setLoading] = useState({ week: true, month: true, year: true })
-  const [selectedItemIds, setSelectedItemIds] = useState(null)
+  const [selectedAccountIds, setSelectedAccountIds] = useState(null)
 
-  const uniqueConnections = useMemo(() => {
+  const allAccounts = useMemo(() => {
+    const list = []
     const seen = new Set()
-    return (connections ?? []).filter((c) => {
-      if (seen.has(c.item_id)) return false
-      seen.add(c.item_id)
-      return true
-    })
+    for (const conn of connections ?? []) {
+      for (const acc of conn.accounts ?? []) {
+        if (seen.has(acc.account_id)) continue
+        seen.add(acc.account_id)
+        const spendingTypes = ['credit', 'loan', 'depository']
+        if (!spendingTypes.includes((acc.type || '').toLowerCase())) continue
+        list.push({
+          account_id: acc.account_id,
+          name: acc.name || 'Account',
+          institution: conn.institution_name ?? 'Unknown',
+        })
+      }
+    }
+    return list
   }, [connections])
 
-  const allSelected = selectedItemIds === null
+  const stableColorMap = useMemo(() => {
+    const map = {}
+    allAccounts.forEach((acc, i) => { map[acc.name] = colorForIndex(i) })
+    return map
+  }, [allAccounts])
 
-  const fetchPeriod = useCallback(async (period, itemIds) => {
+  const allSelected = selectedAccountIds === null
+
+  const fetchPeriod = useCallback(async (period, accountIds) => {
     setLoading((prev) => ({ ...prev, [period]: true }))
     try {
       let url = `/api/plaid/spending-summary?period=${period}`
-      if (itemIds) url += `&item_ids=${itemIds.join(',')}`
+      if (accountIds) url += `&account_ids=${accountIds.join(',')}`
       const result = await apiFetch(url, { getToken })
-      setData((prev) => ({ ...prev, [period]: result.buckets ?? [] }))
+      setData((prev) => ({
+        ...prev,
+        [period]: { buckets: result.buckets ?? [], accounts: result.accounts ?? [] },
+      }))
     } catch (err) {
       console.error(`Failed to fetch ${period} spending:`, err)
-      setData((prev) => ({ ...prev, [period]: [] }))
+      setData((prev) => ({ ...prev, [period]: { buckets: [], accounts: [] } }))
     } finally {
       setLoading((prev) => ({ ...prev, [period]: false }))
     }
   }, [getToken])
 
   useEffect(() => {
-    PERIODS.forEach((p) => fetchPeriod(p.key, selectedItemIds))
-  }, [fetchPeriod, selectedItemIds])
+    PERIODS.forEach((p) => fetchPeriod(p.key, selectedAccountIds))
+  }, [fetchPeriod, selectedAccountIds])
 
   useImperativeHandle(ref, () => ({
     refresh() {
-      PERIODS.forEach((p) => fetchPeriod(p.key, selectedItemIds))
+      PERIODS.forEach((p) => fetchPeriod(p.key, selectedAccountIds))
     },
-  }), [fetchPeriod, selectedItemIds])
+  }), [fetchPeriod, selectedAccountIds])
 
-  function toggleConnection(itemId) {
+  function toggleLegendItem(accountId) {
     if (allSelected) {
-      const all = uniqueConnections.map((c) => c.item_id)
-      setSelectedItemIds(all.filter((id) => id !== itemId))
+      setSelectedAccountIds([accountId])
+    } else if (selectedAccountIds.includes(accountId)) {
+      const remaining = selectedAccountIds.filter((id) => id !== accountId)
+      setSelectedAccountIds(remaining.length === 0 ? null : remaining)
     } else {
-      const newIds = selectedItemIds.includes(itemId)
-        ? selectedItemIds.filter((id) => id !== itemId)
-        : [...selectedItemIds, itemId]
-      if (newIds.length === uniqueConnections.length) {
-        setSelectedItemIds(null)
-      } else {
-        setSelectedItemIds(newIds)
-      }
+      const newIds = [...selectedAccountIds, accountId]
+      setSelectedAccountIds(newIds.length === allAccounts.length ? null : newIds)
     }
   }
 
-  function selectAll() {
-    setSelectedItemIds(null)
+  const activeConfig = PERIODS.find((p) => p.key === activePeriod)
+  const activePeriodData = data[activePeriod]
+  const activeLoading = loading[activePeriod]
+  const activeBuckets = activePeriodData?.buckets ?? []
+  const activeAccounts = activePeriodData?.accounts ?? []
+
+  const total = useMemo(() => {
+    return activeBuckets.reduce((s, b) => {
+      let bucketTotal = 0
+      for (const name of activeAccounts) bucketTotal += b[name] || 0
+      return s + bucketTotal
+    }, 0)
+  }, [activeBuckets, activeAccounts])
+
+  const selectedNames = useMemo(() => {
+    if (allSelected) return null
+    const idSet = new Set(selectedAccountIds)
+    return new Set(allAccounts.filter((a) => idSet.has(a.account_id)).map((a) => a.name))
+  }, [allSelected, selectedAccountIds, allAccounts])
+
+  function isAccountActive(name) {
+    return selectedNames === null || selectedNames.has(name)
   }
 
-  const activeConfig = PERIODS.find((p) => p.key === activePeriod)
-  const activeData = data[activePeriod]
-  const activeLoading = loading[activePeriod]
-  const total = useMemo(() => (activeData ?? []).reduce((s, b) => s + b.total, 0), [activeData])
-
   return (
-    <div className="flex flex-col gap-4">
-      {uniqueConnections.length > 1 && (
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={selectAll}
-            className={`rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
-              allSelected
-                ? 'border-[#4f46e5] bg-[#4f46e5] text-white'
-                : 'border-[#d1d5dc] bg-white text-[#4a5565] hover:bg-[#f9fafb]'
-            }`}
-            style={{ fontFamily: 'Inter,sans-serif' }}
-          >
-            All Connections
-          </button>
-          {uniqueConnections.map((c) => {
-            const isActive = allSelected || selectedItemIds?.includes(c.item_id)
+    <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
+      <div className="flex items-center justify-between border-b border-[#e5e7eb]">
+        <div className="flex">
+          {PERIODS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => setActivePeriod(p.key)}
+              className={`relative px-5 py-3 text-[14px] font-medium transition-colors ${
+                activePeriod === p.key
+                  ? 'text-[#4f46e5]'
+                  : 'text-[#6a7282] hover:text-[#101828]'
+              }`}
+              style={{ fontFamily: 'Inter,sans-serif' }}
+            >
+              {p.label}
+              {activePeriod === p.key && (
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#4f46e5] rounded-t" />
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3 pr-6">
+          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            {activeConfig?.subtitle}
+          </span>
+          <span className="text-[18px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            {activeLoading ? '—' : formatCurrency(total)}
+          </span>
+        </div>
+      </div>
+
+      <p className="px-5 pt-4 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        Includes purchases and payments across all accounts. Transfers, income, and bank fees are excluded.
+      </p>
+
+      <div className="px-4 pb-2 pt-4" style={{ height: 260 }}>
+        {activeLoading ? (
+          <div className="flex h-full items-center justify-center">
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading…</span>
+          </div>
+        ) : !activeBuckets.length ? (
+          <div className="flex h-full items-center justify-center">
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>No spending data</span>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={activeBuckets} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+              />
+              <Tooltip content={<StackedTooltip />} cursor={{ fill: '#f9fafb' }} />
+              {activeAccounts.map((name, i) => (
+                <Bar
+                  key={name}
+                  dataKey={name}
+                  stackId="spending"
+                  fill={stableColorMap[name] || colorForIndex(i)}
+                  maxBarSize={64}
+                  radius={i === activeAccounts.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {allAccounts.length > 0 && !activeLoading && (
+        <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-5 pb-4">
+          {allAccounts.map((acc) => {
+            const active = isAccountActive(acc.name)
+            const color = stableColorMap[acc.name]
             return (
               <button
-                key={c.item_id}
+                key={acc.account_id}
                 type="button"
-                onClick={() => toggleConnection(c.item_id)}
-                className={`rounded-full border px-3 py-1 text-[12px] font-medium transition-colors ${
-                  isActive
-                    ? 'border-[#4f46e5] bg-[#eef2ff] text-[#4f46e5]'
-                    : 'border-[#d1d5dc] bg-white text-[#4a5565] hover:bg-[#f9fafb]'
+                onClick={() => toggleLegendItem(acc.account_id)}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-opacity cursor-pointer ${
+                  active ? 'opacity-100' : 'opacity-35'
                 }`}
                 style={{ fontFamily: 'Inter,sans-serif' }}
               >
-                {c.institution_name ?? 'Unknown'}
+                <span
+                  className="inline-block size-2.5 rounded-full shrink-0 transition-all"
+                  style={active
+                    ? { backgroundColor: color }
+                    : { backgroundColor: 'transparent', boxShadow: `inset 0 0 0 1.5px ${color}` }
+                  }
+                />
+                <span className="text-[11px] text-[#6a7282] whitespace-nowrap">{acc.name}</span>
               </button>
             )
           })}
         </div>
       )}
-
-      <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
-        <div className="flex items-center justify-between border-b border-[#e5e7eb]">
-          <div className="flex">
-            {PERIODS.map((p) => (
-              <button
-                key={p.key}
-                type="button"
-                onClick={() => setActivePeriod(p.key)}
-                className={`relative px-5 py-3 text-[14px] font-medium transition-colors ${
-                  activePeriod === p.key
-                    ? 'text-[#4f46e5]'
-                    : 'text-[#6a7282] hover:text-[#101828]'
-                }`}
-                style={{ fontFamily: 'Inter,sans-serif' }}
-              >
-                {p.label}
-                {activePeriod === p.key && (
-                  <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#4f46e5] rounded-t" />
-                )}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-3 pr-6">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
-              {activeConfig?.subtitle}
-            </span>
-            <span className="text-[18px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
-              {activeLoading ? '—' : formatCurrency(total)}
-            </span>
-          </div>
-        </div>
-
-        <p className="px-5 pt-4 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'Inter,sans-serif' }}>
-          Includes purchases and payments across all accounts. Transfers, income, and bank fees are excluded.
-        </p>
-
-        <div className="px-4 pb-5 pt-4" style={{ height: 260 }}>
-          {activeLoading ? (
-            <div className="flex h-full items-center justify-center">
-              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading…</span>
-            </div>
-          ) : !activeData?.length ? (
-            <div className="flex h-full items-center justify-center">
-              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>No spending data</span>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={activeData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                <XAxis
-                  dataKey="label"
-                  tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f9fafb' }} />
-                <Bar dataKey="total" fill={BAR_COLOR} radius={[4, 4, 0, 0]} maxBarSize={64} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
     </div>
   )
 })

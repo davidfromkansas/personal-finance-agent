@@ -181,6 +181,58 @@ See [PLAID_TRANSACTIONS_PLAN.md](PLAID_TRANSACTIONS_PLAN.md) for full flow, API 
 - **Charting library:** Recharts (`BarChart`, `ResponsiveContainer`, `Tooltip`).
 - **Component:** `src/components/SpendingCharts.jsx`. Receives `connections` and `getToken` as props from `LoggedInPage`.
 
+### 6.15 Net Worth graph
+
+- **Placement:** Below the Spending graph, above the connections/transactions columns on the dashboard.
+- **Visualization:** Recharts `AreaChart` with a single filled line for net worth. Gradient fill below the line for visual weight.
+- **Range toggles:** `1W | 1M | 3M | YTD | 1Y | ALL` — styled as pill buttons in the card header.
+- **Header area:**
+  - Current net worth displayed large and bold.
+  - Change amount and percentage vs start of the selected range (green for positive, red for negative).
+  - Assets total and Debts total shown as smaller secondary values.
+- **Data strategy:** Back-calculate historical daily balances from current Plaid account balances + stored transaction history.
+  - **Formula:** `balance_on_day_X = current_balance + SUM(plaid_amounts after day_X)`
+  - **Account classification:** Assets = `depository`, `investment`; Debts = `credit`, `loan`.
+  - **Investment accounts:** Cannot be back-calculated (values change due to market fluctuations, not just transactions). Held at current value for all historical dates.
+  - **Accuracy window:** Only as accurate as the available transaction history. If 90 days of transactions are synced, back-calculation is reliable for ~90 days.
+- **Backend:** `GET /api/plaid/net-worth-history?range=1W|1M|3M|YTD|1Y|ALL` — fetches live balances from Plaid, pulls stored transactions from DB, walks backwards per account per day, aggregates into `{ assets, debts, net_worth }` per date.
+- **Performance — Backend balance cache:** Plaid balance fetches are cached per user in memory with a 5-minute TTL. Subsequent range requests within the TTL reuse cached balances instead of making redundant Plaid API calls. Cache is invalidated immediately on connection add, disconnect, or refresh to ensure fresh data.
+- **Performance — Frontend range pre-fetch:** On mount, the component fires parallel fetches for all 6 range options. Results are stored in a per-range cache in React state. Switching tabs reads from the local cache for instant rendering — no additional network round-trips. On parent-triggered refresh (via `useImperativeHandle`), all ranges are re-fetched in parallel.
+- **Helper text:** "Net worth = assets minus debts across all connected accounts. Investment values reflect current holdings."
+- **Refresh:** Auto-refreshes after adding, disconnecting, or refreshing a connection.
+- **Component:** `src/components/NetWorthChart.jsx`. Receives `getToken` prop. Uses `forwardRef`/`useImperativeHandle` for parent-triggered refresh.
+
+### 6.16 Investment Portfolio dashboard card
+
+- **Placement:** Right column of the dashboard, above Recent Transactions. Sits opposite the Net Worth chart in the left column.
+- **Data sources:**
+  - Holdings/accounts: Existing `GET /api/plaid/investments` endpoint (Plaid `investmentsHoldingsGet`).
+  - Chart history: New `GET /api/plaid/investment-history?range=1W|1M|3M|YTD|1Y|ALL` — filters cached balances to investment-type accounts, back-calculates daily values from stored transactions. Uses the same balance cache as Net Worth (5-min TTL).
+- **Header area:**
+  - Title: "Investment Portfolio".
+  - Total portfolio value displayed large and bold.
+  - Total gain/loss amount and percentage (green for positive, red for negative).
+  - Period change amount and % shown below when chart data is loaded.
+- **Line chart (AreaChart):**
+  - Recharts `AreaChart` with purple gradient fill, showing portfolio value over time.
+  - Range toggles: `1W | 1M | 3M | YTD | 1Y | ALL` — styled as pill buttons, purple when active.
+  - Tooltip shows date and value on hover.
+  - Helper text: "Portfolio value based on current holdings. Historical values are approximate."
+  - Same limitations as Net Worth: investment account values fluctuate with the market, so back-calculated values are approximate.
+- **Performance:** All 6 chart ranges pre-fetched in parallel on mount and cached in React state; tab switching is instant.
+- **Section 1 — Account list:**
+  - Holdings grouped by `account_name` + `institution_name`.
+  - Each row shows: account name, institution, total value for that account.
+  - Sorted by value descending.
+- **Section 2 — Top Movers carousel:**
+  - Up to 10 holdings sorted by **absolute gain/loss %** (biggest swings first, regardless of direction).
+  - Gain % = `(value - cost_basis) / abs(cost_basis) * 100`. Holdings without `cost_basis` are excluded.
+  - Each card shows: ticker badge, gain %, security name, current value, and gain/loss $.
+  - Horizontal scroll via trackpad/mouse + left/right arrow buttons. Arrow buttons disabled at scroll boundaries.
+  - Carousel container hides scrollbar (`scrollbar-width: none`) for clean appearance.
+- **Refresh:** Auto-refreshes after adding, disconnecting, or refreshing a Plaid connection (same pattern as Spending/Net Worth).
+- **Component:** `src/components/InvestmentPortfolio.jsx`. Receives `getToken` prop. Uses `forwardRef`/`useImperativeHandle` for parent-triggered refresh.
+
 ---
 
 ## 7. Not yet built (backlog)
@@ -220,5 +272,9 @@ See [DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md) for full deploy steps.
 - **Consent & Legal:** Added 6.13 (Privacy Policy page at `/privacy`, Terms of Service page at `/terms`, consent line on landing page). Internal compliance docs: Information Security Policy and Data Deletion & Retention Policy.
 - **Spending Graphs:** Added 6.14 (three bar charts — weekly, monthly, yearly — above dashboard content). Backend `GET /api/plaid/spending-summary` with SQL aggregation. Connection filter pills. Recharts library.
 - **Spending Graph Filtering:** Charts now auto-refresh after adding, disconnecting, or refreshing a connection. Added `payment_channel` and `personal_finance_category` columns to transactions table (migration 003). Spending summary SQL excludes non-spending categories (transfers, income, bank fees, loan payments). Helper text added below chart tabs.
+- **Net Worth Graph:** Added 6.15 (historical net worth line chart). Back-calculates daily account balances from current Plaid balances + stored transactions. AreaChart with 1W/1M/3M/YTD/1Y/ALL range toggles. Shows current net worth, change amount/percentage, and assets/debts breakdown. Investment accounts held at current value. Auto-refreshes on add/disconnect/refresh.
+- **Net Worth Performance:** Backend: in-memory balance cache per user with 5-minute TTL avoids redundant Plaid API calls across range switches; cache invalidated on add/disconnect/refresh. Frontend: all 6 ranges pre-fetched in parallel on mount and cached in React state; tab switching is instant with no network requests.
+- **Investment Portfolio Card:** Added 6.16 (dashboard investment portfolio). Right column of dashboard above Recent Transactions. Shows total portfolio value with gain/loss, account list grouped by account+institution, and a horizontal-scroll carousel of top 10 movers by absolute gain %. Uses existing `/api/plaid/investments` endpoint. Auto-refreshes on add/disconnect/refresh.
+- **Investment Portfolio Chart:** Added AreaChart line graph to 6.16. New backend `GET /api/plaid/investment-history` endpoint back-calculates daily investment account values using cached balances + stored transactions. Purple gradient line chart with 1W/1M/3M/YTD/1Y/ALL range toggles. All ranges pre-fetched in parallel on mount for instant tab switching. Period change amount/% shown in header.
 
 *When you add or change a product requirement or decision, add a short entry here and update the relevant section above.*

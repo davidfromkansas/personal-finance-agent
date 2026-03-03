@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import path from 'path'
+import fs from 'fs'
 import { fileURLToPath } from 'url'
 
 import { authMiddleware } from './middleware/auth.js'
@@ -24,6 +25,15 @@ app.use(express.json())
 app.get('/health', (req, res) => res.json({ ok: true }))
 
 app.use('/api/plaid', authMiddleware, plaidRouter)
+
+const distPath = path.join(__dirname, '..', 'dist')
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath))
+  app.get('*', (req, res) => {
+    const indexPath = req.path.startsWith('/app') ? 'index.html' : 'logged-out-landing-page.html'
+    res.sendFile(path.join(distPath, indexPath))
+  })
+}
 
 app.use((err, req, res, next) => {
   console.error(err)
