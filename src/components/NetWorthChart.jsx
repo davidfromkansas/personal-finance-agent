@@ -70,7 +70,7 @@ function CustomTooltip({ active, payload }) {
   )
 }
 
-export const NetWorthChart = forwardRef(function NetWorthChart({ getToken }, ref) {
+export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embedded }, ref) {
   const [activeRange, setActiveRange] = useState('1M')
   const [cache, setCache] = useState({})
   const [loadingRanges, setLoadingRanges] = useState({})
@@ -140,7 +140,7 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken }, ref
   }, [data, activeRange])
 
   return (
-    <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
+    <div className={`bg-white ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-[#e5e7eb]'}`}>
       <div className="flex flex-col gap-3 px-6 pt-5 pb-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-[13px] font-medium text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>

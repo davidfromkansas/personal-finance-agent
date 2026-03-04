@@ -152,7 +152,7 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
 
   let bucketExpr, groupExpr
   if (period === 'week') {
-    params[1] = 7
+    params[1] = 6 // 7 calendar days: today-6 through today
     bucketExpr = 'date::text'
     groupExpr = 'date'
   } else if (period === 'month') {

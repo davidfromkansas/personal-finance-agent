@@ -360,13 +360,21 @@ export function TransactionList({ transactions, loading, title, subtitle, header
 function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect }) {
   const isError = connection.status === 'error'
   const needsReconnect = isError && connection.error_code === 'ITEM_LOGIN_REQUIRED'
-  const { summary, balanceText } = getAccountSummary(accounts ?? connection.accounts)
+  const { balanceText } = getAccountSummary(accounts ?? connection.accounts)
   const displayName = connection.institution_name ?? connection.name ?? 'Unknown'
   return (
     <div className="flex min-h-[80px] items-center justify-between rounded-[10px] border border-black/10 px-[13px] py-0.5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
-          <Building2Icon />
+        <div className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[10px] ${connection.institution_logo ? 'bg-[#f3f4f6]' : 'bg-[#dbeafe] text-[#1e40af]'}`}>
+          {connection.institution_logo ? (
+            <img
+              src={connection.institution_logo}
+              alt=""
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <Building2Icon />
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -385,9 +393,6 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
               {isError ? 'Error' : 'Connected'}
             </span>
           </div>
-          <p className="mt-0.5 text-[12px] leading-4 text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
-            {summary}
-          </p>
           {balanceText && (
             <p className="text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
               Balance: {balanceText}
@@ -443,6 +448,7 @@ export function LoggedInPage() {
   const [addError, setAddError] = useState(null)
   const [exchanging, setExchanging] = useState(false)
   const [linkLoading, setLinkLoading] = useState(false)
+  const [showConnectionTypeModal, setShowConnectionTypeModal] = useState(false)
   const [oauthRedirectUri, setOauthRedirectUri] = useState(null)
   const spendingRef = useRef(null)
   const netWorthRef = useRef(null)
@@ -552,12 +558,22 @@ export function LoggedInPage() {
     setLinkLoading(false)
   }, [])
 
-  async function handleAddConnection() {
+  async function handleAddConnection(linkModeOverride) {
+    if (linkModeOverride === undefined) {
+      setShowConnectionTypeModal(true)
+      return
+    }
+    setShowConnectionTypeModal(false)
     setLinkToken(null)
     setAddError(null)
     setLinkLoading(true)
     try {
-      const data = await apiFetch('/api/plaid/link-token', { method: 'POST', getToken: getIdToken })
+      const body = linkModeOverride === 'investments' ? { link_mode: 'investments' } : undefined
+      const data = await apiFetch('/api/plaid/link-token', {
+        method: 'POST',
+        body,
+        getToken: getIdToken,
+      })
       if (data.link_token) {
         setLinkToken(data.link_token)
       } else {
@@ -641,42 +657,101 @@ export function LoggedInPage() {
         />
       )}
 
+      {showConnectionTypeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowConnectionTypeModal(false)}>
+          <div
+            className="w-full max-w-md rounded-[14px] border border-[#e5e7eb] bg-white p-6 shadow-lg"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-[18px] font-semibold tracking-tight text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+              What do you want to connect?
+            </h3>
+            <p className="mt-1 text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+              Choose the type of accounts to link. Plaid will open next.
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => handleAddConnection('transactions')}
+                disabled={linkLoading}
+                className="flex items-center gap-4 rounded-[10px] border border-[#e5e7eb] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
+                style={{ fontFamily: 'Inter,sans-serif' }}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
+                  <LandmarkIcon />
+                </span>
+                <div>
+                  <p className="font-medium text-[#101828]">Credit Cards, Checking and Savings</p>
+                  <p className="text-[12px] text-[#6a7282]">Link bank and credit card accounts</p>
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddConnection('investments')}
+                disabled={linkLoading}
+                className="flex items-center gap-4 rounded-[10px] border border-[#e5e7eb] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
+                style={{ fontFamily: 'Inter,sans-serif' }}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
+                  <TrendingUpIcon />
+                </span>
+                <div>
+                  <p className="font-medium text-[#101828]">Investments</p>
+                  <p className="text-[12px] text-[#6a7282]">Link brokerage, IRA, and investment accounts</p>
+                </div>
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowConnectionTypeModal(false)}
+              className="mt-4 w-full rounded-lg border border-[#d1d5dc] bg-white py-2 text-[14px] font-medium text-[#4a5565] hover:bg-[#f3f4f6]"
+              style={{ fontFamily: 'Inter,sans-serif' }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       <main className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1140px] mb-6">
           <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} />
         </div>
         <div className="mx-auto flex max-w-[1140px] flex-col gap-6 lg:flex-row lg:items-start">
-          {/* Left column — Net Worth + Plaid Connections */}
-          <div className="flex w-full max-w-[550px] shrink-0 flex-col gap-6">
-          <NetWorthChart ref={netWorthRef} getToken={getIdToken} />
-          <div className="rounded-[14px] border border-black/10 bg-white">
-          <div className="flex flex-col gap-1 px-6 pt-6 pb-1.5 sm:flex-row sm:items-start sm:justify-between">
+          {/* Left column — Net Worth + Plaid Connections (one card: net worth from these accounts) */}
+          <div className="flex w-full max-w-[550px] shrink-0 flex-col">
+          <div className="rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden">
+          <NetWorthChart ref={netWorthRef} getToken={getIdToken} embedded />
+          <div className="border-t border-[#e5e7eb] px-6 pt-4 pb-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
-                Plaid Connections
+              <h2 className="text-[15px] font-medium tracking-[-0.2px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                Connected accounts
               </h2>
-              <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#717182]" style={{ fontFamily: 'Inter,sans-serif' }}>
-                Manage your linked financial institutions
+              <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                Included in net worth above
               </p>
             </div>
             <button
               type="button"
-              onClick={handleAddConnection}
+              onClick={() => handleAddConnection()}
               disabled={exchanging || linkLoading}
-              className="mt-4 flex h-8 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-2.5 py-2 text-[14px] font-medium leading-5 tracking-[-0.15px] text-white transition-all duration-150 hover:bg-[#1a1a2e] hover:shadow-md active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-0"
+              className="shrink-0 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-60"
               style={{ fontFamily: 'Inter,sans-serif' }}
             >
               <PlusIcon />
               {linkLoading ? 'Opening…' : exchanging ? 'Connecting…' : 'Add Connection'}
             </button>
           </div>
+          </div>
+          <div className="px-6 pb-2">
           {addError && (
-            <p className="px-6 pb-4 text-[14px] text-red-600" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <p className="pb-4 text-[14px] text-red-600" style={{ fontFamily: 'Inter,sans-serif' }}>
               {addError}
             </p>
           )}
 
-          <div className="px-6 pb-6">
+          <div className="pb-6">
             {loading ? (
               <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading connections…</p>
             ) : connections.length === 0 ? (
@@ -710,6 +785,7 @@ export function LoggedInPage() {
                 })}
               </div>
             )}
+          </div>
           </div>
           </div>
           </div>

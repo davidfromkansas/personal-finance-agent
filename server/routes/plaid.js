@@ -15,6 +15,13 @@ const itemCache = new Map()
 const inflight = new Map()
 const userItemIndex = new Map()
 
+/* ── Institution logo cache (by institution_id) ───────────────────── */
+const LOGO_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
+const ITEM_TO_INSTITUTION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
+const institutionLogoCache = new Map() // institution_id -> { logo: string, ts: number }
+const itemToInstitutionCache = new Map() // item_id -> { institution_id: string, ts: number }
+const inflightLogos = new Map() // institution_id -> Promise<string | null>
+
 function mapPlaidAccounts(plaidAccounts) {
   return (plaidAccounts ?? []).map((acc) => ({
     account_id: acc.account_id,
@@ -197,8 +204,20 @@ plaidRouter.post('/link-token', async (req, res, next) => {
   try {
     const plaidClient = getPlaidClient()
     const envProducts = (process.env.PLAID_PRODUCTS || 'transactions').split(',').map((p) => p.trim())
-    const requiredSet = new Set([...envProducts, 'investments'])
-    const required = [...requiredSet]
+    // Plaid requires at least one product; we can't require "transactions OR investments" in one token.
+    // link_mode: 'investments' = require investments (for brokerage-only); otherwise require transactions (credit/depository).
+    const linkMode = req.body?.link_mode === 'investments' ? 'investments' : 'transactions'
+    let required
+    let optionalProducts = []
+    if (linkMode === 'investments') {
+      required = ['investments']
+      if (envProducts.includes('transactions')) optionalProducts = ['transactions']
+    } else {
+      required = envProducts.filter((p) => p !== 'investments').length
+        ? envProducts.filter((p) => p !== 'investments')
+        : ['transactions']
+      if (envProducts.includes('investments')) optionalProducts = ['investments']
+    }
 
     const linkParams = {
       user: { client_user_id: req.uid },
@@ -207,8 +226,17 @@ plaidRouter.post('/link-token', async (req, res, next) => {
       country_codes: ['US'],
       language: 'en',
     }
-    if (process.env.PLAID_REDIRECT_URI) linkParams.redirect_uri = process.env.PLAID_REDIRECT_URI
-    console.log('Creating link token with params:', JSON.stringify({ products: linkParams.products, redirect_uri: linkParams.redirect_uri }))
+    if (optionalProducts.length) linkParams.optional_products = optionalProducts
+    let redirectUri = process.env.PLAID_REDIRECT_URI
+    if (redirectUri) {
+      // Plaid requires HTTPS for redirect_uri in production (and many OAuth institutions)
+      if (process.env.PLAID_ENV === 'production' && redirectUri.toLowerCase().startsWith('http://')) {
+        redirectUri = redirectUri.replace(/^http:\/\//i, 'https://')
+        console.warn('[plaid] PLAID_REDIRECT_URI was HTTP; using HTTPS for link token. Set PLAID_REDIRECT_URI to an HTTPS URL in production.')
+      }
+      linkParams.redirect_uri = redirectUri
+    }
+    console.log('Creating link token with params:', JSON.stringify({ products: linkParams.products, optional_products: linkParams.optional_products, link_mode: linkMode, redirect_uri: linkParams.redirect_uri }))
     const response = await plaidClient.linkTokenCreate(linkParams)
     res.json({ link_token: response.data.link_token })
   } catch (err) {
@@ -261,6 +289,49 @@ plaidRouter.get('/connections', async (req, res, next) => {
     const items = await getPlaidItemsByUserId(req.uid)
     const plaidClient = getPlaidClient()
 
+    async function fetchInstitutionLogo(plaidClient, accessToken, itemId) {
+      try {
+        let institutionId = null
+        const itemCached = itemId && itemToInstitutionCache.get(itemId)
+        if (itemCached && Date.now() - itemCached.ts < ITEM_TO_INSTITUTION_TTL_MS) {
+          institutionId = itemCached.institution_id
+        } else {
+          const itemRes = await plaidClient.itemGet({ access_token: accessToken })
+          institutionId = itemRes.data?.item?.institution_id ?? null
+          if (itemId && institutionId) itemToInstitutionCache.set(itemId, { institution_id: institutionId, ts: Date.now() })
+        }
+        if (!institutionId) return null
+
+        const cached = institutionLogoCache.get(institutionId)
+        if (cached && Date.now() - cached.ts < LOGO_CACHE_TTL_MS) return cached.logo
+
+        let pending = inflightLogos.get(institutionId)
+        if (!pending) {
+          pending = (async () => {
+            try {
+              const instRes = await plaidClient.institutionsGetById({
+                institution_id: institutionId,
+                country_codes: ['US'],
+                options: { include_optional_metadata: true },
+              })
+              const logo = instRes.data?.institution?.logo
+              const dataUrl = logo ? `data:image/png;base64,${logo}` : null
+              if (dataUrl) institutionLogoCache.set(institutionId, { logo: dataUrl, ts: Date.now() })
+              return dataUrl
+            } catch {
+              return null
+            } finally {
+              inflightLogos.delete(institutionId)
+            }
+          })()
+          inflightLogos.set(institutionId, pending)
+        }
+        return await pending
+      } catch {
+        return null
+      }
+    }
+
     const connections = await Promise.all(
       items.map(async (row) => {
         let status = 'connected'
@@ -277,10 +348,13 @@ plaidRouter.get('/connections', async (req, res, next) => {
           }
         }
 
+        const institutionLogo = await fetchInstitutionLogo(plaidClient, row.access_token, row.item_id)
+
         return {
           id: row.id,
           item_id: row.item_id,
           institution_name: row.institution_name ?? 'Unknown',
+          institution_logo: institutionLogo ?? undefined,
           status,
           error_code: errorCode,
           last_synced_at: row.last_synced_at,
@@ -464,7 +538,14 @@ plaidRouter.post('/link-token/update', async (req, res, next) => {
       country_codes: ['US'],
       language: 'en',
     }
-    if (process.env.PLAID_REDIRECT_URI) linkParams.redirect_uri = process.env.PLAID_REDIRECT_URI
+    let redirectUriUpdate = process.env.PLAID_REDIRECT_URI
+    if (redirectUriUpdate) {
+      if (process.env.PLAID_ENV === 'production' && redirectUriUpdate.toLowerCase().startsWith('http://')) {
+        redirectUriUpdate = redirectUriUpdate.replace(/^http:\/\//i, 'https://')
+        console.warn('[plaid] PLAID_REDIRECT_URI was HTTP; using HTTPS for update link token.')
+      }
+      linkParams.redirect_uri = redirectUriUpdate
+    }
     const response = await plaidClient.linkTokenCreate(linkParams)
     res.json({ link_token: response.data.link_token })
   } catch (err) {
