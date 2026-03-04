@@ -174,6 +174,7 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
       name: t.name || t.merchant_name || 'Transaction',
       amount: t.amount,
       date: t.date,
+      authorized_date: t.authorized_date ?? null,
       account_name: accountNames[t.account_id] ?? null,
       payment_channel: t.payment_channel ?? null,
       personal_finance_category: t.personal_finance_category?.primary ?? null,
@@ -373,8 +374,11 @@ plaidRouter.get('/connections', async (req, res, next) => {
 /** GET /api/plaid/transactions — recent transactions across all accounts */
 plaidRouter.get('/transactions', async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 25, 100)
-    const rows = await getRecentTransactions(req.uid, limit)
+    const limit = Math.min(parseInt(req.query.limit) || 25, 200)
+    const beforeDate = req.query.before_date || null
+    const afterDate = req.query.after_date || null
+    const opts = (beforeDate && { beforeDate }) || (afterDate && { afterDate }) || {}
+    const rows = await getRecentTransactions(req.uid, limit, opts)
     res.json({ transactions: rows })
   } catch (err) {
     console.error('GET /transactions error:', err)

@@ -78,13 +78,13 @@ export async function upsertTransactions(userId, itemId, txns) {
   if (!txns.length) return
   for (const t of txns) {
     await query(
-      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, account_name, payment_channel, personal_finance_category, pending)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, authorized_date, account_name, payment_channel, personal_finance_category, pending)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        ON CONFLICT (plaid_transaction_id) DO UPDATE SET
-         name = EXCLUDED.name, amount = EXCLUDED.amount, date = EXCLUDED.date,
+         name = EXCLUDED.name, amount = EXCLUDED.amount, date = EXCLUDED.date, authorized_date = EXCLUDED.authorized_date,
          account_name = EXCLUDED.account_name, payment_channel = EXCLUDED.payment_channel,
          personal_finance_category = EXCLUDED.personal_finance_category, pending = EXCLUDED.pending`,
-      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null, t.pending === true]
+      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.authorized_date ?? null, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null, t.pending === true]
     )
   }
 }
@@ -104,10 +104,27 @@ export async function deleteTransactionsByPlaidIds(plaidTransactionIds) {
   )
 }
 
-export async function getRecentTransactions(userId, limit = 25) {
+const reportedDateExpr = 'COALESCE(authorized_date, date)'
+export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate } = {}) {
+  if (afterDate) {
+    const { rows } = await query(
+      `SELECT id, plaid_transaction_id, name, amount, date, authorized_date, account_name, account_id, item_id, pending
+       FROM transactions WHERE user_id = $1 AND ${reportedDateExpr} > $3 ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
+      [userId, limit, afterDate]
+    )
+    return rows
+  }
+  if (beforeDate) {
+    const { rows } = await query(
+      `SELECT id, plaid_transaction_id, name, amount, date, authorized_date, account_name, account_id, item_id, pending
+       FROM transactions WHERE user_id = $1 AND ${reportedDateExpr} < $3 ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
+      [userId, limit, beforeDate]
+    )
+    return rows
+  }
   const { rows } = await query(
-    `SELECT id, plaid_transaction_id, name, amount, date, account_name, account_id, item_id, pending
-     FROM transactions WHERE user_id = $1 ORDER BY date DESC, created_at DESC LIMIT $2`,
+    `SELECT id, plaid_transaction_id, name, amount, date, authorized_date, account_name, account_id, item_id, pending
+     FROM transactions WHERE user_id = $1 ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
     [userId, limit]
   )
   return rows

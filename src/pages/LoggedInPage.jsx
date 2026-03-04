@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, memo } from 'react'
+import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePlaidLink } from 'react-plaid-link'
 import { useAuth } from '../context/AuthContext'
@@ -263,7 +263,8 @@ function groupTransactionsByDate(transactions) {
   const groups = []
   let current = null
   for (const t of transactions) {
-    const key = toDateKey(t.date)
+    const reportedDate = t.authorized_date || t.date
+    const key = toDateKey(reportedDate)
     if (!current || current.date !== key) {
       current = { date: key, label: formatTransactionDate(key), items: [] }
       groups.push(current)
@@ -282,30 +283,32 @@ function TransactionRow({ transaction }) {
   const amtColor = isCredit ? 'text-[#155dfc]' : 'text-[#f54900]'
 
   return (
-    <div className="flex h-[62px] items-center justify-between rounded-[10px] px-2">
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-[14px] leading-5 tracking-[-0.15px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+    <div className="flex min-h-[32px] items-center justify-between gap-2 rounded-[8px] px-1 py-0">
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        <p
+          className="shrink-0 font-normal text-[14px] leading-5 tracking-[-0.15px] text-[#101828]"
+          style={{ fontFamily: 'Inter,sans-serif' }}
+        >
           {transaction.name}
         </p>
         {transaction.account_name && (
           <span
-            className="mt-1 inline-block rounded-[8px] border border-[#d1d5dc] bg-[#f9fafb] px-2 py-[3px] text-[12px] font-medium leading-4 text-[#4a5565]"
+            className="min-w-0 shrink truncate inline-block max-w-full rounded-[6px] border border-[#d1d5dc] bg-[#f9fafb] px-1.5 py-[2px] text-[11px] font-medium leading-4 text-[#4a5565]"
             style={{ fontFamily: 'Inter,sans-serif' }}
+            title={transaction.account_name}
           >
             {transaction.account_name}
           </span>
         )}
-        <span
-          className={`ml-2 mt-1 inline-block rounded-[8px] border px-2 py-[3px] text-[12px] font-medium leading-4 ${
-            transaction.pending
-              ? 'border-[#f59e0b] bg-[#fffbeb] text-[#b45309]'
-              : 'border-[#e5e7eb] bg-[#f3f4f6] text-[#6b7280]'
-          }`}
-          style={{ fontFamily: 'Inter,sans-serif' }}
-          title={transaction.pending ? 'Not yet settled' : 'Settled'}
-        >
-          {transaction.pending ? 'Pending' : 'Posted'}
-        </span>
+        {transaction.pending && (
+          <span
+            className="shrink-0 inline-block rounded-[6px] border border-[#f59e0b] bg-[#fffbeb] px-1.5 py-[2px] text-[11px] font-medium leading-4 text-[#b45309]"
+            style={{ fontFamily: 'Inter,sans-serif' }}
+            title="Not yet settled"
+          >
+            Pending
+          </span>
+        )}
       </div>
       <span className={`shrink-0 text-right font-semibold text-[14px] leading-5 tracking-[-0.15px] ${amtColor}`} style={{ fontFamily: 'Inter,sans-serif' }}>
         {displayAmt}
@@ -314,22 +317,25 @@ function TransactionRow({ transaction }) {
   )
 }
 
-export function TransactionList({ transactions, loading, title, subtitle, headerRight }) {
+export function TransactionList({ transactions, loading, title, subtitle, headerRight, canGoNewer, canGoOlder, onLoadNewer, onLoadOlder }) {
   const groups = groupTransactionsByDate(transactions)
+  const showPagination = [onLoadNewer, onLoadOlder].some(Boolean)
   return (
-    <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
-      <div className="flex items-start justify-between px-6 pt-6 pb-1.5">
+    <div className="flex h-full flex-col rounded-[14px] border border-[#e5e7eb] bg-white">
+      <div className="shrink-0 flex items-start justify-between px-4 pt-4 pb-1">
         <div>
           <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
             {title ?? 'Recent Transactions'}
           </h2>
-          <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#4a5565]" style={{ fontFamily: 'Inter,sans-serif' }}>
-            {subtitle ?? 'Latest activity across all accounts'}
-          </p>
+          {subtitle ? (
+            <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#4a5565]" style={{ fontFamily: 'Inter,sans-serif' }}>
+              {subtitle}
+            </p>
+          ) : null}
         </div>
         {headerRight}
       </div>
-      <div className="px-6 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {loading ? (
           <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading transactions…</p>
         ) : transactions.length === 0 ? (
@@ -337,11 +343,11 @@ export function TransactionList({ transactions, loading, title, subtitle, header
             No transactions yet. Link an account to see activity.
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-0.5">
             {groups.map((group) => (
-              <div key={group.date} className="flex flex-col gap-1">
-                <div className="border-b border-[#d1d5dc] pb-1 pt-2">
-                  <p className="text-[14px] font-bold uppercase leading-5 tracking-[0.2px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+              <div key={group.date} className="flex flex-col gap-0">
+                <div className="border-b border-[#d1d5dc] pb-0 pt-1">
+                  <p className="text-[13px] font-bold uppercase leading-5 tracking-[0.2px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
                     {group.label}
                   </p>
                 </div>
@@ -353,6 +359,36 @@ export function TransactionList({ transactions, loading, title, subtitle, header
           </div>
         )}
       </div>
+      {showPagination && (
+        <div className="shrink-0 flex items-center justify-center gap-2 border-t border-[#e5e7eb] px-4 py-3">
+          <button
+            type="button"
+            onClick={onLoadNewer}
+            disabled={!canGoNewer || loading}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d1d5dc] bg-white text-[#4a5565] transition-colors hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ fontFamily: 'Inter,sans-serif' }}
+            title="More recent"
+            aria-label="More recent transactions"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M15 18l-6-6 6-6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={onLoadOlder}
+            disabled={!canGoOlder || loading}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d1d5dc] bg-white text-[#4a5565] transition-colors hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
+            style={{ fontFamily: 'Inter,sans-serif' }}
+            title="Older"
+            aria-label="Older transactions"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -442,7 +478,9 @@ export function LoggedInPage() {
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(true)
   const [transactions, setTransactions] = useState([])
+  const [txnPageIndex, setTxnPageIndex] = useState(0)
   const [txnLoading, setTxnLoading] = useState(true)
+  const [hasMoreOlderOnServer, setHasMoreOlderOnServer] = useState(false)
   const [linkToken, setLinkToken] = useState(null)
   const [linkMode, setLinkMode] = useState('add')
   const [addError, setAddError] = useState(null)
@@ -468,15 +506,56 @@ export function LoggedInPage() {
 
   const fetchTransactions = useCallback(async () => {
     try {
-      const data = await apiFetch('/api/plaid/transactions?limit=25', { getToken: getIdToken })
-      setTransactions(data.transactions ?? [])
+      setTxnLoading(true)
+      const data = await apiFetch('/api/plaid/transactions?limit=200', { getToken: getIdToken })
+      const list = data.transactions ?? []
+      setTransactions(list)
+      setTxnPageIndex(0)
+      setHasMoreOlderOnServer(list.length === 200)
     } catch (err) {
       console.error('Failed to load transactions:', err)
       setTransactions([])
+      setTxnPageIndex(0)
+      setHasMoreOlderOnServer(false)
     } finally {
       setTxnLoading(false)
     }
   }, [getIdToken])
+
+  const fetchMoreOlderTransactions = useCallback(async (beforeDate) => {
+    try {
+      setTxnLoading(true)
+      const data = await apiFetch(`/api/plaid/transactions?limit=200&before_date=${encodeURIComponent(beforeDate)}`, { getToken: getIdToken })
+      const batch = data.transactions ?? []
+      setTransactions((prev) => [...prev, ...batch])
+      setHasMoreOlderOnServer(batch.length === 200)
+    } catch (err) {
+      console.error('Failed to load older transactions:', err)
+      setHasMoreOlderOnServer(false)
+    } finally {
+      setTxnLoading(false)
+    }
+  }, [getIdToken])
+
+  const displayedTransactions = useMemo(
+    () => transactions.slice(txnPageIndex * 15, (txnPageIndex + 1) * 15),
+    [transactions, txnPageIndex]
+  )
+  const canGoNewerLocal = txnPageIndex > 0
+  const hasNextPageLocal = (txnPageIndex + 1) * 15 < transactions.length
+  const canGoOlderLocal = hasNextPageLocal || hasMoreOlderOnServer
+
+  const loadOlderTransactions = useCallback(() => {
+    if (hasNextPageLocal) {
+      setTxnPageIndex((i) => i + 1)
+    } else if (hasMoreOlderOnServer && transactions.length > 0) {
+      fetchMoreOlderTransactions(transactions[transactions.length - 1].authorized_date || transactions[transactions.length - 1].date)
+    }
+  }, [hasNextPageLocal, hasMoreOlderOnServer, transactions, fetchMoreOlderTransactions])
+
+  const loadNewerTransactions = useCallback(() => {
+    setTxnPageIndex((i) => Math.max(0, i - 1))
+  }, [])
 
   useEffect(() => {
     fetchConnections()
@@ -714,10 +793,33 @@ export function LoggedInPage() {
       )}
 
       <main className="px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[1140px] mb-6">
-          <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} />
+        <div className="mx-auto max-w-[1140px]">
+        <div className="mb-6 flex max-w-[1124px] flex-col gap-6 lg:flex-row lg:items-start">
+          <div className="min-w-0 flex-[2]">
+            <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} />
+          </div>
+          <div className="flex min-w-0 h-[718px] flex-[1] flex-col">
+            <TransactionList
+              transactions={displayedTransactions}
+              loading={txnLoading}
+              canGoNewer={canGoNewerLocal}
+              canGoOlder={canGoOlderLocal}
+              onLoadNewer={loadNewerTransactions}
+              onLoadOlder={loadOlderTransactions}
+              headerRight={
+                <button
+                  type="button"
+                  onClick={() => navigate('/app/transactions')}
+                  className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5"
+                  style={{ fontFamily: 'Inter,sans-serif' }}
+                >
+                  View All
+                </button>
+              }
+            />
+          </div>
         </div>
-        <div className="mx-auto flex max-w-[1140px] flex-col gap-6 lg:flex-row lg:items-start">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
           {/* Left column — Net Worth + Plaid Connections (one card: net worth from these accounts) */}
           <div className="flex w-full max-w-[550px] shrink-0 flex-col">
           <div className="rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden">
@@ -790,24 +892,11 @@ export function LoggedInPage() {
           </div>
           </div>
 
-          {/* Right column — Investment Portfolio + Recent Transactions */}
+          {/* Right column — Investment Portfolio only */}
           <div className="flex w-full max-w-[550px] shrink-0 flex-col gap-6">
             <InvestmentPortfolio ref={investmentRef} getToken={getIdToken} />
-            <TransactionList
-              transactions={transactions}
-              loading={txnLoading}
-              headerRight={
-                <button
-                  type="button"
-                  onClick={() => navigate('/app/transactions')}
-                  className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5"
-                  style={{ fontFamily: 'Inter,sans-serif' }}
-                >
-                  View All
-                </button>
-              }
-            />
           </div>
+        </div>
         </div>
       </main>
     </div>

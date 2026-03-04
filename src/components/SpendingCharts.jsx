@@ -191,7 +191,7 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
         Includes purchases and payments across all accounts. Transfers, income, and bank fees are excluded.
       </p>
 
-      <div className="px-4 pb-2 pt-4" style={{ height: 260 }}>
+      <div className="px-4 pb-2 pt-4" style={{ height: 299 }}>
         {activeLoading ? (
           <div className="flex h-full items-center justify-center">
             <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading…</span>
