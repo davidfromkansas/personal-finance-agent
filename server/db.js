@@ -22,6 +22,15 @@ export async function query(text, params) {
   }
 }
 
+export async function getPlaidItemByItemId(itemId) {
+  const { rows } = await query(
+    `SELECT id, user_id, item_id, access_token, institution_name, last_synced_at, created_at, accounts_cache
+     FROM plaid_items WHERE item_id = $1 LIMIT 1`,
+    [itemId]
+  )
+  return rows[0] ?? null
+}
+
 export async function getPlaidItemsByUserId(userId) {
   const { rows } = await query(
     `SELECT id, user_id, item_id, access_token, institution_name, last_synced_at, created_at, accounts_cache
