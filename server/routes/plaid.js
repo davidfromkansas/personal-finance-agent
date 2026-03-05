@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid'
 import {
   getPlaidItemsByUserId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
-  getSyncCursor, updateSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds,
+  getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   updateTransactionAccountNames,
 } from '../db.js'
@@ -164,22 +164,30 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
   }
 
   while (hasMore) {
-    const request = { access_token: accessToken, ...(cursor ? { cursor } : {}) }
+    const request = {
+      access_token: accessToken,
+      ...(cursor ? { cursor } : {}),
+      options: { personal_finance_category_version: 'v2' },
+    }
     const res = await plaidClient.transactionsSync(request)
     const { added, modified, removed, next_cursor, has_more } = res.data
 
-    const toUpsert = [...added, ...modified].map((t) => ({
-      account_id: t.account_id,
-      transaction_id: t.transaction_id,
-      name: t.name || t.merchant_name || 'Transaction',
-      amount: t.amount,
-      date: t.date,
-      authorized_date: t.authorized_date ?? null,
-      account_name: accountNames[t.account_id] ?? null,
-      payment_channel: t.payment_channel ?? null,
-      personal_finance_category: t.personal_finance_category?.primary ?? null,
-      pending: t.pending === true,
-    }))
+    const toUpsert = [...added, ...modified].map((t) => {
+      const logoUrl = t.logo_url ?? t.logoUrl ?? t.counterparties?.[0]?.logo_url ?? t.counterparties?.[0]?.logoUrl ?? null
+      return {
+        account_id: t.account_id,
+        transaction_id: t.transaction_id,
+        name: t.name || t.merchant_name || 'Transaction',
+        amount: t.amount,
+        date: t.date,
+        authorized_date: t.authorized_date ?? null,
+        account_name: accountNames[t.account_id] ?? null,
+        payment_channel: t.payment_channel ?? null,
+        personal_finance_category: t.personal_finance_category?.primary ?? null,
+        pending: t.pending === true,
+        logo_url: logoUrl,
+      }
+    })
     const pendingCount = toUpsert.filter((t) => t.pending).length
     if (pendingCount > 0) {
       console.log(`[plaid sync] item ${itemId}: ${pendingCount} pending transaction(s) in this batch`)
@@ -386,6 +394,66 @@ plaidRouter.get('/transactions', async (req, res, next) => {
   }
 })
 
+/** GET /api/plaid/recurring — upcoming recurring payment streams (outflows with predicted_next_date) */
+plaidRouter.get('/recurring', async (req, res, next) => {
+  try {
+    const items = await getPlaidItemsByUserId(req.uid)
+    const plaidClient = getPlaidClient()
+    const toAmount = (v) => (v == null ? 0 : typeof v === 'number' ? v : v.amount ?? 0)
+    const payments = []
+    for (const row of items) {
+      try {
+        const res = await plaidClient.transactionsRecurringGet({
+          access_token: row.access_token,
+          options: { personal_finance_category_version: 'v2' },
+        })
+        const outflowStreams = res.data?.outflow_streams ?? []
+        for (const stream of outflowStreams) {
+          if (!stream.predicted_next_date) continue
+          const status = stream.status ?? 'UNKNOWN'
+          if (status === 'TOMBSTONED') continue
+          const pfc = stream.personal_finance_category ?? stream.personalFinanceCategory
+          const primary = typeof pfc === 'string' ? pfc : pfc?.primary ?? null
+          const counterpartyLogo = stream.counterparties?.[0]?.logo_url ?? stream.counterparties?.[0]?.logoUrl
+          const logoUrl = stream.logo_url ?? stream.logoUrl ?? counterpartyLogo ?? null
+          payments.push({
+            stream_id: stream.stream_id,
+            first_transaction_id: stream.transaction_ids?.[0] ?? null,
+            merchant_name: stream.merchant_name ?? stream.description ?? 'Unknown',
+            description: stream.description ?? null,
+            logo_url: logoUrl,
+            frequency: stream.frequency ?? 'UNKNOWN',
+            average_amount: toAmount(stream.average_amount),
+            last_amount: toAmount(stream.last_amount),
+            predicted_next_date: stream.predicted_next_date,
+            first_date: stream.first_date ?? stream.firstDate ?? null,
+            last_date: stream.last_date ?? stream.lastDate ?? null,
+            category: stream.category ?? null,
+            personal_finance_category_primary: primary,
+            status,
+          })
+        }
+      } catch (itemErr) {
+        const code = itemErr.response?.data?.error_code
+        if (code !== 'PRODUCT_NOT_READY' && code !== 'PRODUCT_NOT_SUPPORTED') {
+          console.warn('[plaid] recurring get for item failed:', itemErr.message)
+        }
+      }
+    }
+    payments.sort((a, b) => (a.predicted_next_date || '').localeCompare(b.predicted_next_date || ''))
+    const transactionIds = [...new Set(payments.map((p) => p.first_transaction_id).filter(Boolean))]
+    const logoMap = transactionIds.length ? await getLogoUrlsByPlaidTransactionIds(req.uid, transactionIds) : {}
+    for (const p of payments) {
+      if (p.first_transaction_id && logoMap[p.first_transaction_id]) p.logo_url = logoMap[p.first_transaction_id]
+      delete p.first_transaction_id
+    }
+    res.json({ payments })
+  } catch (err) {
+    console.error('GET /recurring error:', err)
+    res.status(500).json({ error: 'Failed to load recurring payments' })
+  }
+})
+
 /** GET /api/plaid/spending-summary — aggregated spending for charts, broken down by account */
 plaidRouter.get('/spending-summary', async (req, res, next) => {
   try {
@@ -467,6 +535,11 @@ plaidRouter.post('/sync', async (req, res, next) => {
     const items = await getPlaidItemsByUserId(req.uid)
     if (items.length === 0) return res.json({ synced: 0 })
 
+    const fullResync = req.body?.full_resync === true
+    if (fullResync) {
+      for (const row of items) await clearSyncCursor(req.uid, row.item_id)
+    }
+
     const plaidClient = getPlaidClient()
     let synced = 0
     await Promise.allSettled(
@@ -481,7 +554,7 @@ plaidRouter.post('/sync', async (req, res, next) => {
         }
       })
     )
-    console.log(`POST /sync — ${synced}/${items.length} items synced for user ${req.uid}`)
+    console.log(`POST /sync — ${synced}/${items.length} items synced for user ${req.uid}${fullResync ? ' (full resync)' : ''}`)
     res.json({ synced })
   } catch (err) {
     console.error('POST /sync error:', err)

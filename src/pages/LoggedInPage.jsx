@@ -7,6 +7,7 @@ import { AppHeader } from '../components/AppHeader'
 import { SpendingCharts } from '../components/SpendingCharts'
 import { NetWorthChart } from '../components/NetWorthChart'
 import { InvestmentPortfolio } from '../components/InvestmentPortfolio'
+import { UpcomingRecurringPayments } from '../components/UpcomingRecurringPayments'
 
 /**
  * Renders nothing — exists solely to own a fresh usePlaidLink instance.
@@ -274,6 +275,39 @@ function groupTransactionsByDate(transactions) {
   return groups
 }
 
+const TRANSACTION_DATE_HEADER_HEIGHT_PX = 26
+const TRANSACTION_ROW_HEIGHT_PX = 32
+/** Max height for the list area so it fits in the 826px module (header + pagination ~104px). */
+const TRANSACTION_MAX_LIST_HEIGHT_PX = 722
+/** gap-0.5 between date groups in the list */
+const TRANSACTION_GROUP_GAP_PX = 2
+/** Conservative buffer so the last row never clips (browsers/layout can vary). */
+const TRANSACTION_FIT_BUFFER_PX = 20
+
+function getTransactionsThatFit(transactions, startIndex) {
+  if (startIndex >= transactions.length) return []
+  const maxHeight = TRANSACTION_MAX_LIST_HEIGHT_PX - TRANSACTION_FIT_BUFFER_PX
+  let groups = 0
+  let count = 0
+  let lastDate = null
+  for (let i = startIndex; i < transactions.length; i++) {
+    const t = transactions[i]
+    const key = toDateKey(t.authorized_date || t.date)
+    if (lastDate !== key) {
+      groups++
+      lastDate = key
+    }
+    const gapTotal = groups > 1 ? (groups - 1) * TRANSACTION_GROUP_GAP_PX : 0
+    const height =
+      groups * TRANSACTION_DATE_HEADER_HEIGHT_PX +
+      (count + 1) * TRANSACTION_ROW_HEIGHT_PX +
+      gapTotal
+    if (height > maxHeight && count > 0) break
+    count++
+  }
+  return transactions.slice(startIndex, startIndex + count)
+}
+
 function TransactionRow({ transaction }) {
   const amt = Number(transaction.amount)
   const isCredit = amt < 0
@@ -283,7 +317,7 @@ function TransactionRow({ transaction }) {
   const amtColor = isCredit ? 'text-[#155dfc]' : 'text-[#f54900]'
 
   return (
-    <div className="flex min-h-[32px] items-center justify-between gap-2 rounded-[8px] px-1 py-0">
+    <div className="flex h-[32px] shrink-0 items-center justify-between gap-2 rounded-[8px] px-1 py-0">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         <p
           className="shrink-0 font-normal text-[14px] leading-5 tracking-[-0.15px] text-[#101828]"
@@ -320,6 +354,12 @@ function TransactionRow({ transaction }) {
 export function TransactionList({ transactions, loading, title, subtitle, headerRight, canGoNewer, canGoOlder, onLoadNewer, onLoadOlder }) {
   const groups = groupTransactionsByDate(transactions)
   const showPagination = [onLoadNewer, onLoadOlder].some(Boolean)
+  const contentHeightPx =
+    transactions.length > 0
+      ? groups.length * TRANSACTION_DATE_HEADER_HEIGHT_PX +
+        transactions.length * TRANSACTION_ROW_HEIGHT_PX +
+        (groups.length > 1 ? (groups.length - 1) * TRANSACTION_GROUP_GAP_PX : 0)
+      : undefined
   return (
     <div className="flex h-full flex-col rounded-[14px] border border-[#e5e7eb] bg-white">
       <div className="shrink-0 flex items-start justify-between px-4 pt-4 pb-1">
@@ -335,7 +375,10 @@ export function TransactionList({ transactions, loading, title, subtitle, header
         </div>
         {headerRight}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+      <div
+        className="flex-1 overflow-hidden px-4 pb-4"
+        style={{ height: contentHeightPx }}
+      >
         {loading ? (
           <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading transactions…</p>
         ) : transactions.length === 0 ? (
@@ -346,7 +389,7 @@ export function TransactionList({ transactions, loading, title, subtitle, header
           <div className="flex flex-col gap-0.5">
             {groups.map((group) => (
               <div key={group.date} className="flex flex-col gap-0">
-                <div className="border-b border-[#d1d5dc] pb-0 pt-1">
+                <div className="flex h-[26px] shrink-0 items-center border-b border-[#d1d5dc] pb-0 pt-1">
                   <p className="text-[13px] font-bold uppercase leading-5 tracking-[0.2px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
                     {group.label}
                   </p>
@@ -478,7 +521,8 @@ export function LoggedInPage() {
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(true)
   const [transactions, setTransactions] = useState([])
-  const [txnPageIndex, setTxnPageIndex] = useState(0)
+  const [txnStartIndex, setTxnStartIndex] = useState(0)
+  const [txnPageStarts, setTxnPageStarts] = useState([0])
   const [txnLoading, setTxnLoading] = useState(true)
   const [hasMoreOlderOnServer, setHasMoreOlderOnServer] = useState(false)
   const [linkToken, setLinkToken] = useState(null)
@@ -490,6 +534,7 @@ export function LoggedInPage() {
   const [oauthRedirectUri, setOauthRedirectUri] = useState(null)
   const spendingRef = useRef(null)
   const netWorthRef = useRef(null)
+  const [recurringRefreshTrigger, setRecurringRefreshTrigger] = useState(0)
   const investmentRef = useRef(null)
 
   const fetchConnections = useCallback(async () => {
@@ -510,12 +555,14 @@ export function LoggedInPage() {
       const data = await apiFetch('/api/plaid/transactions?limit=200', { getToken: getIdToken })
       const list = data.transactions ?? []
       setTransactions(list)
-      setTxnPageIndex(0)
+      setTxnStartIndex(0)
+      setTxnPageStarts([0])
       setHasMoreOlderOnServer(list.length === 200)
     } catch (err) {
       console.error('Failed to load transactions:', err)
       setTransactions([])
-      setTxnPageIndex(0)
+      setTxnStartIndex(0)
+      setTxnPageStarts([0])
       setHasMoreOlderOnServer(false)
     } finally {
       setTxnLoading(false)
@@ -538,30 +585,42 @@ export function LoggedInPage() {
   }, [getIdToken])
 
   const displayedTransactions = useMemo(
-    () => transactions.slice(txnPageIndex * 15, (txnPageIndex + 1) * 15),
-    [transactions, txnPageIndex]
+    () => getTransactionsThatFit(transactions, txnStartIndex),
+    [transactions, txnStartIndex]
   )
-  const canGoNewerLocal = txnPageIndex > 0
-  const hasNextPageLocal = (txnPageIndex + 1) * 15 < transactions.length
+  const canGoNewerLocal = txnPageStarts.length > 1
+  const hasNextPageLocal = txnStartIndex + displayedTransactions.length < transactions.length
   const canGoOlderLocal = hasNextPageLocal || hasMoreOlderOnServer
 
   const loadOlderTransactions = useCallback(() => {
     if (hasNextPageLocal) {
-      setTxnPageIndex((i) => i + 1)
+      const nextStart = txnStartIndex + displayedTransactions.length
+      setTxnStartIndex(nextStart)
+      setTxnPageStarts((prev) => [...prev, nextStart])
     } else if (hasMoreOlderOnServer && transactions.length > 0) {
       fetchMoreOlderTransactions(transactions[transactions.length - 1].authorized_date || transactions[transactions.length - 1].date)
     }
-  }, [hasNextPageLocal, hasMoreOlderOnServer, transactions, fetchMoreOlderTransactions])
+  }, [hasNextPageLocal, hasMoreOlderOnServer, transactions, txnStartIndex, displayedTransactions.length, fetchMoreOlderTransactions])
 
   const loadNewerTransactions = useCallback(() => {
-    setTxnPageIndex((i) => Math.max(0, i - 1))
-  }, [])
+    if (txnPageStarts.length <= 1) return
+    const newStarts = txnPageStarts.slice(0, -1)
+    setTxnPageStarts(newStarts)
+    setTxnStartIndex(newStarts[newStarts.length - 1])
+  }, [txnPageStarts])
 
   useEffect(() => {
     fetchConnections()
     fetchTransactions()
 
-    apiFetch('/api/plaid/sync', { method: 'POST', getToken: getIdToken })
+    const fullResync = typeof localStorage !== 'undefined' && !localStorage.getItem('plaid_logos_resynced')
+    if (fullResync) localStorage.setItem('plaid_logos_resynced', '1')
+
+    apiFetch('/api/plaid/sync', {
+      method: 'POST',
+      body: fullResync ? { full_resync: true } : undefined,
+      getToken: getIdToken,
+    })
       .then((data) => {
         if (data.synced > 0) {
           fetchConnections()
@@ -569,6 +628,7 @@ export function LoggedInPage() {
           spendingRef.current?.refresh()
           netWorthRef.current?.refresh()
           investmentRef.current?.refresh()
+          setRecurringRefreshTrigger((k) => k + 1)
         }
       })
       .catch((err) => console.error('Background sync failed:', err))
@@ -792,111 +852,130 @@ export function LoggedInPage() {
         </div>
       )}
 
-      <main className="px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[1140px]">
-        <div className="mb-6 flex max-w-[1124px] flex-col gap-6 lg:flex-row lg:items-start">
-          <div className="min-w-0 flex-[2]">
-            <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} />
-          </div>
-          <div className="flex min-w-0 h-[718px] flex-[1] flex-col">
-            <TransactionList
-              transactions={displayedTransactions}
-              loading={txnLoading}
-              canGoNewer={canGoNewerLocal}
-              canGoOlder={canGoOlderLocal}
-              onLoadNewer={loadNewerTransactions}
-              onLoadOlder={loadOlderTransactions}
-              headerRight={
+      <main className="px-4 pt-6 pb-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1280px]">
+          <div className="grid grid-cols-8 gap-x-6 gap-y-4 items-start content-start">
+            {/* Left 5 cols: same total height as transaction column (826px); spending = half, bottom row (3-col + recurring) = half */}
+            <div className="col-span-8 min-w-0 lg:col-span-5 flex flex-col h-[826px] gap-4">
+              {/* Spending: half the height of transaction module */}
+              <div className="min-h-0 shrink-0 h-[404px]">
+                <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} embeddedHeight={404} />
+              </div>
+              {/* Bottom row: 3-col + recurring, each half the height of transaction module (404px), 3:2 width ratio on lg */}
+              <div className="flex flex-col lg:flex-row gap-6 min-h-0 shrink-0 h-[404px]">
+                <div className="min-w-0 w-full lg:flex-[3] rounded-[14px] border border-[#e5e7eb] bg-white p-4 h-[404px] overflow-hidden flex flex-col">
+                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>3-column module</p>
+                </div>
+                <div className="min-w-0 w-full lg:flex-[2] rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden flex flex-col h-[404px]">
+                  <div className="shrink-0 px-4 pt-4 pb-2">
+                    <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                      Upcoming Recurring Payments
+                    </h2>
+                  </div>
+                  <div className="min-h-0 flex-1 flex flex-col">
+                    <UpcomingRecurringPayments getToken={getIdToken} refreshTrigger={recurringRefreshTrigger} />
+                  </div>
+                </div>
+              </div>
+            </div>
+            {/* Transactions: 3 columns, top-aligned with left block */}
+            <div className="col-span-8 flex min-w-0 h-[826px] flex-col lg:col-span-3">
+              <TransactionList
+                transactions={displayedTransactions}
+                loading={txnLoading}
+                canGoNewer={canGoNewerLocal}
+                canGoOlder={canGoOlderLocal}
+                onLoadNewer={loadNewerTransactions}
+                onLoadOlder={loadOlderTransactions}
+                headerRight={
+                  <button
+                    type="button"
+                    onClick={() => navigate('/app/transactions')}
+                    className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5"
+                    style={{ fontFamily: 'Inter,sans-serif' }}
+                  >
+                    View All
+                  </button>
+                }
+              />
+            </div>
+            {/* Net Worth + Connections: 4 columns — sits directly below left block (top-aligned) */}
+            <div className="col-span-8 flex min-w-0 flex-col lg:col-span-4">
+              <div className="rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden">
+              <NetWorthChart ref={netWorthRef} getToken={getIdToken} embedded />
+              <div className="border-t border-[#e5e7eb] px-6 pt-4 pb-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[15px] font-medium tracking-[-0.2px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                    Connected accounts
+                  </h2>
+                  <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                    Included in net worth above
+                  </p>
+                </div>
                 <button
                   type="button"
-                  onClick={() => navigate('/app/transactions')}
-                  className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5"
+                  onClick={() => handleAddConnection()}
+                  disabled={exchanging || linkLoading}
+                  className="shrink-0 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ fontFamily: 'Inter,sans-serif' }}
                 >
-                  View All
+                  <PlusIcon />
+                  {linkLoading ? 'Opening…' : exchanging ? 'Connecting…' : 'Add Connection'}
                 </button>
-              }
-            />
-          </div>
-        </div>
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-          {/* Left column — Net Worth + Plaid Connections (one card: net worth from these accounts) */}
-          <div className="flex w-full max-w-[550px] shrink-0 flex-col">
-          <div className="rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden">
-          <NetWorthChart ref={netWorthRef} getToken={getIdToken} embedded />
-          <div className="border-t border-[#e5e7eb] px-6 pt-4 pb-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-[15px] font-medium tracking-[-0.2px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
-                Connected accounts
-              </h2>
-              <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
-                Included in net worth above
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleAddConnection()}
-              disabled={exchanging || linkLoading}
-              className="shrink-0 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-60"
-              style={{ fontFamily: 'Inter,sans-serif' }}
-            >
-              <PlusIcon />
-              {linkLoading ? 'Opening…' : exchanging ? 'Connecting…' : 'Add Connection'}
-            </button>
-          </div>
-          </div>
-          <div className="px-6 pb-2">
-          {addError && (
-            <p className="pb-4 text-[14px] text-red-600" style={{ fontFamily: 'Inter,sans-serif' }}>
-              {addError}
-            </p>
-          )}
-
-          <div className="pb-6">
-            {loading ? (
-              <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading connections…</p>
-            ) : connections.length === 0 ? (
-              <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
-                No connections yet. Click “Add Connection” to link a bank account.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-6">
-                {Object.entries(groupConnectionsByCategory(connections)).map(([category, items]) => {
-                  if (items.length === 0) return null
-                  return (
-                    <div key={category} className="flex flex-col gap-3">
-                      <SectionHeader category={category} count={items.length} />
-                      <div className="flex flex-col gap-2">
-                        {items.map(({ connection: conn, accounts: accountsForCategory }, index) => {
-                          const singleAccount = accountsForCategory[0]
-                          return (
-                            <ConnectionRow
-                              key={`${conn.id}-${category}-${singleAccount?.account_id ?? index}`}
-                              connection={conn}
-                              accounts={accountsForCategory}
-                              onRefresh={handleRefresh}
-                              onRemove={handleDisconnect}
-                              onReconnect={handleReconnect}
-                            />
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
               </div>
-            )}
-          </div>
-          </div>
-          </div>
-          </div>
+              </div>
+              <div className="px-6 pb-2">
+              {addError && (
+                <p className="pb-4 text-[14px] text-red-600" style={{ fontFamily: 'Inter,sans-serif' }}>
+                  {addError}
+                </p>
+              )}
 
-          {/* Right column — Investment Portfolio only */}
-          <div className="flex w-full max-w-[550px] shrink-0 flex-col gap-6">
-            <InvestmentPortfolio ref={investmentRef} getToken={getIdToken} />
+              <div className="pb-6">
+                {loading ? (
+                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading connections…</p>
+                ) : connections.length === 0 ? (
+                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                    No connections yet. Click “Add Connection” to link a bank account.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-6">
+                    {Object.entries(groupConnectionsByCategory(connections)).map(([category, items]) => {
+                      if (items.length === 0) return null
+                      return (
+                        <div key={category} className="flex flex-col gap-3">
+                          <SectionHeader category={category} count={items.length} />
+                          <div className="flex flex-col gap-2">
+                            {items.map(({ connection: conn, accounts: accountsForCategory }, index) => {
+                              const singleAccount = accountsForCategory[0]
+                              return (
+                                <ConnectionRow
+                                  key={`${conn.id}-${category}-${singleAccount?.account_id ?? index}`}
+                                  connection={conn}
+                                  accounts={accountsForCategory}
+                                  onRefresh={handleRefresh}
+                                  onRemove={handleDisconnect}
+                                  onReconnect={handleReconnect}
+                                />
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+              </div>
+              </div>
+            </div>
+
+            {/* Investment Portfolio: 4 columns */}
+            <div className="col-span-8 min-w-0 lg:col-span-4">
+              <InvestmentPortfolio ref={investmentRef} getToken={getIdToken} />
+            </div>
           </div>
-        </div>
         </div>
       </main>
     </div>

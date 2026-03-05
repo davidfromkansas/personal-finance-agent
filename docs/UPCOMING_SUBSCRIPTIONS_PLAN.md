@@ -1,17 +1,18 @@
-# Plan: Upcoming Subscriptions Due Module
+# Plan: Upcoming Recurring Payments Module
 
 ## Goal
 
-Add a **Subscriptions** module to the dashboard that shows upcoming subscription charges. It will sit **below the spending graph**, **to the left of the transactions module**, and **above the Net Worth chart**, filling the empty space in the middle-left of the dashboard.
+Add an **Upcoming Recurring Payments** module to the dashboard that shows upcoming recurring charges (subscriptions, bills, etc.). It lives in the **2-column slot** in the middle row, **below the spending graph** and **above the Net Worth chart**, next to the 3-column module.
 
 ## Reference UI
 
-- **Header:** Title "Subscriptions", optional menu (three dots) on the right.
-- **Subtitle:** "$X.XX remaining due" with a right arrow (clickable link to a detail view or subscriptions page).
+- **Header:** Title "Upcoming Recurring Payments", optional menu (three dots) on the right.
 - **List:** Each row shows:
-  - **Icon:** Circular merchant/logo (or fallback initial/icon).
-  - **Name:** Subscription name (bold).
+  - **Logo/icon:** First letter of the merchant name in a circle (no external assets). Optionally later, use Plaid’s `logo_url` if the recurring API returns it.
+  - **Name:** Merchant/payee name (bold).
+  - **Category:** Personal finance category as a small tag (e.g. "Subscription", "Streaming") when Plaid provides it.
   - **Frequency:** e.g. "Every month" (smaller, gray, below name).
+  - **Last charged:** Date of the most recent occurrence (e.g. "Last charged Feb 15") when available.
   - **Cost:** Amount (bold, right-aligned).
   - **Due:** e.g. "in 3 days" (smaller, gray, below cost).
 - **Layout:** Card with fixed height and scrollable list; clean separation between rows.
@@ -42,11 +43,10 @@ Add a **Subscriptions** module to the dashboard that shows upcoming subscription
   3. From the response, take **outflow** streams that have `predicted_next_date`.
   4. Optionally filter by `status` (e.g. only `MATURE` and maybe `EARLY_DETECTION`) to avoid noisy or dead streams.
   5. Merge streams from all items, sort by `predicted_next_date` ascending (soonest first).
-  6. Compute **total remaining due** = sum of `last_amount` or `average_amount` for the selected streams (for the subtitle).
 - **Response shape (suggested):**
   ```json
   {
-    "subscriptions": [
+    "payments": [
       {
         "stream_id": "...",
         "merchant_name": "Netflix",
@@ -56,8 +56,7 @@ Add a **Subscriptions** module to the dashboard that shows upcoming subscription
         "predicted_next_date": "2026-03-12",
         "status": "MATURE"
       }
-    ],
-    "total_remaining_due": 59.42
+    ]
   }
   ```
 - **Error handling:** If an item returns e.g. `PRODUCT_NOT_READY` or recurring not enabled, skip that item and continue with others; return whatever streams were returned. Optionally log and surface a generic message if no items support recurring.
@@ -71,59 +70,46 @@ Add a **Subscriptions** module to the dashboard that shows upcoming subscription
 
 ## 3. Frontend
 
-### 3.1 New component: `UpcomingSubscriptions` (or `SubscriptionsModule`)
+### 3.1 New component: `UpcomingRecurringPayments`
 
-- **Location:** e.g. `src/components/UpcomingSubscriptions.jsx` (or under `src/pages/` if you prefer to keep dashboard-specific blocks in the page).
+- **Location:** e.g. `src/components/UpcomingRecurringPayments.jsx` (or under `src/pages/` if you prefer to keep dashboard-specific blocks in the page).
 - **Props:** Optional `getToken` (or use existing auth pattern) for `apiFetch`. Can accept `className` for layout.
 - **Behavior:**
   - On mount, call `GET /api/plaid/recurring`.
-  - **Loading:** Show a simple loading state (e.g. "Loading subscriptions…" or skeleton rows).
-  - **Empty:** If `subscriptions.length === 0`, show a short message (e.g. "No upcoming subscriptions" or "Link accounts to see recurring charges") and optionally hide the "remaining due" line or show "$0 remaining due".
-  - **List:** Map `subscriptions` to rows matching the reference:
-    - **Icon:** Use first letter of `merchant_name` in a circle, or a generic subscription icon, or (if you add it later) Plaid's merchant logo URL if available in the API.
+  - **Loading:** Show a simple loading state (e.g. "Loading recurring payments…" or skeleton rows).
+  - **Empty:** If `payments.length === 0`, show a short message (e.g. "No upcoming payments" or "Link accounts to see recurring charges").
+  - **List:** Map `payments` to rows matching the reference:
+    - **Logo/icon:** First letter of `merchant_name` in a circle (simple, no API dependency). If Plaid adds or exposes `logo_url` on recurring streams later, use that for the image and keep the letter as fallback.
     - **Name:** `merchant_name`.
     - **Frequency:** Map `frequency` to human text (e.g. MONTHLY → "Every month", WEEKLY → "Every week", ANNUALLY → "Every year").
     - **Cost:** Format `last_amount` or `average_amount` as currency (e.g. `$22.99`).
     - **Due:** Compute "in X days" from `predicted_next_date` vs today; for today use "Today", for past (shouldn't happen often) "Overdue" or "X days ago".
-  - **Header:** "Subscriptions"; right side: menu (three dots) if you want actions later (e.g. "Manage" or "Refresh").
-  - **Subtitle:** "$X.XX remaining due" with a right arrow; link to `/app/subscriptions` or a modal (or no-op for now).
+  - **Header:** "Upcoming Recurring Payments"; right side: menu (three dots) if you want actions later (e.g. "Manage" or "Refresh").
 - **Styling:** Reuse the same card style as other dashboard modules (e.g. `rounded-[14px] border border-[#e5e7eb] bg-white`), consistent typography (e.g. Inter), and a fixed height with `overflow-y-auto` on the list so the module has a "natural bottom" like the transactions module.
 
-### 3.2 Layout changes in `LoggedInPage.jsx`
+### 3.2 Layout (current)
 
-- **Current:** One top row (Spending | Transactions) and one bottom row (Net Worth + Connections | Investment Portfolio).
-- **Target:** Left column = vertical stack of three modules; right column = two modules.
-  - **Left column (e.g. `flex-[2]` or same width as current spending column):**
-    1. **Spending** (existing `SpendingCharts`).
-    2. **Subscriptions** (new `UpcomingSubscriptions`).
-    3. **Net Worth + Connections** (existing card).
-  - **Right column (e.g. `flex-[1]`):**
-    1. **Transactions** (existing `TransactionList` in a fixed-height wrapper).
-    2. **Investment Portfolio** (existing).
-- **Implementation approach:**
-  - Use a two-column flex (or grid) for the main content:
-    - Left: `flex flex-col gap-6` containing Spending, Subscriptions, Net Worth.
-    - Right: `flex flex-col gap-6` containing Transactions, Investment Portfolio.
-  - Keep `max-w-[1124px]` (or current max width) so the Subscriptions module aligns with the left column and sits directly below the spending graph and above the net worth card.
-  - Give the Subscriptions card a fixed height (e.g. ~320–400px) and `overflow-y-auto` on the list so it doesn't stretch the column and has a clear bottom edge.
+- The **2-column module** in the middle row (below Spending, next to the 3-column module) already exists in `LoggedInPage.jsx` with the title "Upcoming Recurring Payments" and an empty state.
+- **Implementation:** Replace the placeholder content inside that 2-column card with the `UpcomingRecurringPayments` component (or inline the list when there is no separate component). The component can be rendered as the card body; the card wrapper and title are already in place.
+- Give the list area a fixed height and `overflow-y-auto` so the card doesn’t grow indefinitely and scrolls when there are many items.
 
 ---
 
 ## 4. Optional enhancements (later)
 
-- **Dedicated page:** `/app/subscriptions` with full list, history, and "remaining due" detail.
+- **Dedicated page:** `/app/recurring-payments` with full list and history.
 - **Caching:** Short-lived cache (e.g. 15–30 min) for `GET /api/plaid/recurring` to avoid calling Plaid on every dashboard load.
-- **Merchant logos:** If Plaid provides logo URLs in the recurring response (or via a separate API), use them in the list.
-- **Menu actions:** From the three-dot menu, "Refresh" or "Don't show this subscription" (would require storing user overrides).
+- **Merchant logos:** If Plaid provides `logo_url` in the recurring response (or via Enrich/Transactions), use it for the row image and keep the letter circle as fallback when missing.
+- **Menu actions:** From the three-dot menu, "Refresh" or "Don't show this payment" (would require storing user overrides).
 
 ---
 
 ## 5. Implementation order
 
-1. **Backend:** Add `GET /api/plaid/recurring`; for each user item call Plaid recurring API, merge outflows with `predicted_next_date`, sort, return `subscriptions` + `total_remaining_due`.
-2. **Frontend component:** Create `UpcomingSubscriptions`, fetch from `/api/plaid/recurring`, handle loading/empty, render list with icon, name, frequency, cost, "in X days".
-3. **Layout:** In `LoggedInPage.jsx`, restructure so the left column stacks Spending → Subscriptions → Net Worth, and the right column stacks Transactions → Investment Portfolio; insert `UpcomingSubscriptions` and set a fixed height + scroll for the list.
-4. **Polish:** Subtitle link, menu, frequency labels, and empty-state copy.
+1. **Backend:** Add `GET /api/plaid/recurring`; for each user item call Plaid recurring API, merge outflows with `predicted_next_date`, sort, return `payments`.
+2. **Frontend component:** Create `UpcomingRecurringPayments`, fetch from `/api/plaid/recurring`, handle loading/empty, render list with icon, name, frequency, cost, "in X days".
+3. **Dashboard:** In `LoggedInPage.jsx`, replace the 2-column card body with `UpcomingRecurringPayments` (or its list content); set a fixed height + scroll for the list.
+4. **Polish:** Menu, frequency labels, and empty-state copy.
 
 ---
 
@@ -132,8 +118,8 @@ Add a **Subscriptions** module to the dashboard that shows upcoming subscription
 | Area        | File(s) |
 |-------------|---------|
 | Backend     | `server/routes/plaid.js` (new route `GET /recurring`) |
-| Frontend    | New `src/components/UpcomingSubscriptions.jsx` (or equivalent) |
-| Layout      | `src/pages/LoggedInPage.jsx` (layout restructure + render Subscriptions) |
+| Frontend    | New `src/components/UpcomingRecurringPayments.jsx` (or equivalent) |
+| Layout      | `src/pages/LoggedInPage.jsx` (render component inside existing 2-column card) |
 | Config      | Plaid Dashboard: ensure Recurring Transactions (or Transactions with recurring) is enabled |
 
 No new migrations or DB changes are required for the initial version.

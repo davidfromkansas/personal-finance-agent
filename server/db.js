@@ -74,17 +74,25 @@ export async function updateSyncCursor(userId, itemId, cursor) {
   )
 }
 
+/** Clear sync cursor so next sync re-fetches full history (e.g. to backfill logo_url). */
+export async function clearSyncCursor(userId, itemId) {
+  await query(
+    `UPDATE plaid_items SET sync_cursor = NULL WHERE user_id = $1 AND item_id = $2`,
+    [userId, itemId]
+  )
+}
+
 export async function upsertTransactions(userId, itemId, txns) {
   if (!txns.length) return
   for (const t of txns) {
     await query(
-      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, authorized_date, account_name, payment_channel, personal_finance_category, pending)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, authorized_date, account_name, payment_channel, personal_finance_category, pending, logo_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        ON CONFLICT (plaid_transaction_id) DO UPDATE SET
          name = EXCLUDED.name, amount = EXCLUDED.amount, date = EXCLUDED.date, authorized_date = EXCLUDED.authorized_date,
          account_name = EXCLUDED.account_name, payment_channel = EXCLUDED.payment_channel,
-         personal_finance_category = EXCLUDED.personal_finance_category, pending = EXCLUDED.pending`,
-      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.authorized_date ?? null, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null, t.pending === true]
+         personal_finance_category = EXCLUDED.personal_finance_category, pending = EXCLUDED.pending, logo_url = EXCLUDED.logo_url`,
+      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.authorized_date ?? null, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null, t.pending === true, t.logo_url ?? null]
     )
   }
 }
@@ -102,6 +110,18 @@ export async function deleteTransactionsByPlaidIds(plaidTransactionIds) {
     `DELETE FROM transactions WHERE plaid_transaction_id = ANY($1)`,
     [plaidTransactionIds]
   )
+}
+
+/** Return map of plaid_transaction_id -> logo_url for given ids (for recurring stream logos). */
+export async function getLogoUrlsByPlaidTransactionIds(userId, plaidTransactionIds) {
+  if (!plaidTransactionIds.length) return {}
+  const { rows } = await query(
+    `SELECT plaid_transaction_id, logo_url FROM transactions WHERE user_id = $1 AND plaid_transaction_id = ANY($2) AND logo_url IS NOT NULL`,
+    [userId, plaidTransactionIds]
+  )
+  const map = {}
+  for (const r of rows) map[r.plaid_transaction_id] = r.logo_url
+  return map
 }
 
 const reportedDateExpr = 'COALESCE(authorized_date, date)'

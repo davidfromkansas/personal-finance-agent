@@ -57,7 +57,7 @@ function StackedTooltip({ active, payload, label }) {
   )
 }
 
-export const SpendingCharts = forwardRef(function SpendingCharts({ connections, getToken }, ref) {
+export const SpendingCharts = forwardRef(function SpendingCharts({ connections, getToken, embeddedHeight }, ref) {
   const [activePeriod, setActivePeriod] = useState('week')
   const [data, setData] = useState({ week: null, month: null, year: null })
   const [loading, setLoading] = useState({ week: true, month: true, year: true })
@@ -155,7 +155,10 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
   }
 
   return (
-    <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
+    <div
+      className={`rounded-[14px] border border-[#e5e7eb] bg-white ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
+      style={embeddedHeight ? { height: embeddedHeight } : undefined}
+    >
       <div className="flex items-center justify-between border-b border-[#e5e7eb]">
         <div className="flex">
           {PERIODS.map((p) => (
@@ -191,7 +194,7 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
         Includes purchases and payments across all accounts. Transfers, income, and bank fees are excluded.
       </p>
 
-      <div className="px-4 pb-2 pt-4" style={{ height: 299 }}>
+      <div className={`px-4 pb-2 pt-4 ${embeddedHeight ? 'flex-1 min-h-0' : ''}`} style={embeddedHeight ? {} : { height: 299 }}>
         {activeLoading ? (
           <div className="flex h-full items-center justify-center">
             <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading…</span>
