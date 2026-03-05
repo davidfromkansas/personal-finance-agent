@@ -44,6 +44,7 @@ function PaymentRow({ payment }) {
   const frequency = FREQUENCY_LABELS[payment.frequency] || payment.frequency || 'Recurring'
   const amount = payment.last_amount ?? payment.average_amount ?? 0
   const due = formatDue(payment.predicted_next_date)
+  const subtitle = payment.source === 'liability' ? 'Credit card bill' : frequency
 
   return (
     <div className="flex h-[60px] shrink-0 items-center gap-3 py-2">
@@ -65,7 +66,7 @@ function PaymentRow({ payment }) {
           </p>
         </div>
         <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
-          {frequency}
+          {subtitle}
         </p>
       </div>
       <div className="shrink-0 text-right">
@@ -80,7 +81,7 @@ function PaymentRow({ payment }) {
   )
 }
 
-export function UpcomingRecurringPayments({ getToken, refreshTrigger = 0 }) {
+export function UpcomingPayments({ getToken, refreshTrigger = 0 }) {
   const [payments, setPayments] = useState([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
@@ -95,7 +96,7 @@ export function UpcomingRecurringPayments({ getToken, refreshTrigger = 0 }) {
       })
       .catch((err) => {
         if (!cancelled) {
-          console.error('Failed to load recurring payments:', err)
+          console.error('Failed to load upcoming payments:', err)
           setPayments([])
         }
       })
@@ -114,7 +115,7 @@ export function UpcomingRecurringPayments({ getToken, refreshTrigger = 0 }) {
   if (loading) {
     return (
       <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
-        Loading recurring payments…
+        Loading upcoming payments…
       </p>
     )
   }
@@ -122,7 +123,7 @@ export function UpcomingRecurringPayments({ getToken, refreshTrigger = 0 }) {
   if (payments.length === 0) {
     return (
       <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
-        No upcoming payments. Link accounts to see recurring charges.
+        No upcoming payments. Link accounts to see recurring charges and credit card bills.
       </p>
     )
   }

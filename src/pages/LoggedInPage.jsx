@@ -7,7 +7,8 @@ import { AppHeader } from '../components/AppHeader'
 import { SpendingCharts } from '../components/SpendingCharts'
 import { NetWorthChart } from '../components/NetWorthChart'
 import { InvestmentPortfolio } from '../components/InvestmentPortfolio'
-import { UpcomingRecurringPayments } from '../components/UpcomingRecurringPayments'
+import { UpcomingPayments } from '../components/UpcomingPayments'
+import { CashFlowChart } from '../components/CashFlowChart'
 
 /**
  * Renders nothing — exists solely to own a fresh usePlaidLink instance.
@@ -533,6 +534,7 @@ export function LoggedInPage() {
   const [showConnectionTypeModal, setShowConnectionTypeModal] = useState(false)
   const [oauthRedirectUri, setOauthRedirectUri] = useState(null)
   const spendingRef = useRef(null)
+  const cashFlowRef = useRef(null)
   const netWorthRef = useRef(null)
   const [recurringRefreshTrigger, setRecurringRefreshTrigger] = useState(0)
   const investmentRef = useRef(null)
@@ -626,6 +628,7 @@ export function LoggedInPage() {
           fetchConnections()
           fetchTransactions()
           spendingRef.current?.refresh()
+          cashFlowRef.current?.refresh()
           netWorthRef.current?.refresh()
           investmentRef.current?.refresh()
           setRecurringRefreshTrigger((k) => k + 1)
@@ -668,6 +671,7 @@ export function LoggedInPage() {
         }
         await Promise.all([fetchConnections(), fetchTransactions()])
         spendingRef.current?.refresh()
+        cashFlowRef.current?.refresh()
         netWorthRef.current?.refresh()
         investmentRef.current?.refresh()
       } catch (err) {
@@ -735,6 +739,7 @@ export function LoggedInPage() {
       })
       await Promise.all([fetchConnections(), fetchTransactions()])
       spendingRef.current?.refresh()
+      cashFlowRef.current?.refresh()
       netWorthRef.current?.refresh()
       investmentRef.current?.refresh()
     } catch (err) {
@@ -752,6 +757,7 @@ export function LoggedInPage() {
       })
       await Promise.all([fetchConnections(), fetchTransactions()])
       spendingRef.current?.refresh()
+      cashFlowRef.current?.refresh()
       netWorthRef.current?.refresh()
       investmentRef.current?.refresh()
     } catch (err) {
@@ -863,17 +869,17 @@ export function LoggedInPage() {
               </div>
               {/* Bottom row: 3-col + recurring, each half the height of transaction module (404px), 3:2 width ratio on lg */}
               <div className="flex flex-col lg:flex-row gap-6 min-h-0 shrink-0 h-[404px]">
-                <div className="min-w-0 w-full lg:flex-[3] rounded-[14px] border border-[#e5e7eb] bg-white p-4 h-[404px] overflow-hidden flex flex-col">
-                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>3-column module</p>
+                <div className="min-w-0 w-full lg:flex-[3] h-[404px] overflow-hidden">
+                  <CashFlowChart ref={cashFlowRef} getToken={getIdToken} embeddedHeight={404} />
                 </div>
                 <div className="min-w-0 w-full lg:flex-[2] rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden flex flex-col h-[404px]">
                   <div className="shrink-0 px-4 pt-4 pb-2">
                     <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
-                      Upcoming Recurring Payments
+                      Upcoming Payments
                     </h2>
                   </div>
                   <div className="min-h-0 flex-1 flex flex-col">
-                    <UpcomingRecurringPayments getToken={getIdToken} refreshTrigger={recurringRefreshTrigger} />
+                    <UpcomingPayments getToken={getIdToken} refreshTrigger={recurringRefreshTrigger} />
                   </div>
                 </div>
               </div>

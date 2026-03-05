@@ -216,3 +216,25 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
   const { rows } = await query(sql, params)
   return rows
 }
+
+/** Monthly cash flow: inflows (credits), outflows (debits), net. Plaid: positive = out, negative = in. */
+export async function getMonthlyCashFlow(userId, months = 24) {
+  const n = Math.min(Math.max(months, 1), 36)
+  const { rows } = await query(
+    `SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
+            SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) AS inflows,
+            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS outflows
+     FROM transactions
+     WHERE user_id = $1
+     GROUP BY date_trunc('month', date)
+     ORDER BY month DESC
+     LIMIT $2`,
+    [userId, n]
+  )
+  return rows.map((r) => ({
+    month: r.month,
+    inflows: parseFloat(r.inflows) || 0,
+    outflows: parseFloat(r.outflows) || 0,
+    net: (parseFloat(r.inflows) || 0) - (parseFloat(r.outflows) || 0),
+  }))
+}

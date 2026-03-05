@@ -4,6 +4,7 @@ import {
   getPlaidItemsByUserId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
+  getMonthlyCashFlow,
   updateTransactionAccountNames,
 } from '../db.js'
 
@@ -394,7 +395,7 @@ plaidRouter.get('/transactions', async (req, res, next) => {
   }
 })
 
-/** GET /api/plaid/recurring — upcoming recurring payment streams (outflows with predicted_next_date) */
+/** GET /api/plaid/recurring — upcoming payments: recurring streams + credit card bills (liabilities) */
 plaidRouter.get('/recurring', async (req, res, next) => {
   try {
     const items = await getPlaidItemsByUserId(req.uid)
@@ -431,12 +432,48 @@ plaidRouter.get('/recurring', async (req, res, next) => {
             category: stream.category ?? null,
             personal_finance_category_primary: primary,
             status,
+            source: 'recurring',
           })
         }
       } catch (itemErr) {
         const code = itemErr.response?.data?.error_code
         if (code !== 'PRODUCT_NOT_READY' && code !== 'PRODUCT_NOT_SUPPORTED') {
           console.warn('[plaid] recurring get for item failed:', itemErr.message)
+        }
+      }
+      try {
+        const liabRes = await plaidClient.liabilitiesGet({ access_token: row.access_token })
+        const accounts = liabRes.data?.accounts ?? []
+        const accountByName = Object.fromEntries(accounts.map((a) => [a.account_id, a.official_name || a.name || 'Credit card']))
+        const creditLiabs = liabRes.data?.liabilities?.credit ?? []
+        for (const credit of creditLiabs) {
+          const due = credit.next_payment_due_date ?? credit.nextPaymentDueDate
+          if (!due) continue
+          const accountId = credit.account_id ?? credit.accountId
+          const name = accountByName[accountId] ?? 'Credit card'
+          const minAmount = credit.minimum_payment_amount ?? credit.minimumPaymentAmount ?? 0
+          payments.push({
+            stream_id: `liability-${accountId}`,
+            first_transaction_id: null,
+            merchant_name: name,
+            description: null,
+            logo_url: null,
+            frequency: 'MONTHLY',
+            average_amount: minAmount,
+            last_amount: minAmount,
+            predicted_next_date: due,
+            first_date: null,
+            last_date: null,
+            category: null,
+            personal_finance_category_primary: null,
+            status: 'ACTIVE',
+            source: 'liability',
+          })
+        }
+      } catch (itemErr) {
+        const code = itemErr.response?.data?.error_code
+        if (code !== 'PRODUCT_NOT_READY' && code !== 'PRODUCT_NOT_SUPPORTED' && code !== 'PRODUCT_NOT_ENABLED') {
+          console.warn('[plaid] liabilities get for item failed:', itemErr.message)
         }
       }
     }
@@ -451,6 +488,18 @@ plaidRouter.get('/recurring', async (req, res, next) => {
   } catch (err) {
     console.error('GET /recurring error:', err)
     res.status(500).json({ error: 'Failed to load recurring payments' })
+  }
+})
+
+/** GET /api/plaid/cash-flow — monthly inflows, outflows, and net (last N months) */
+plaidRouter.get('/cash-flow', async (req, res, next) => {
+  try {
+    const months = Math.min(Math.max(parseInt(req.query.months, 10) || 12, 1), 24)
+    const rows = await getMonthlyCashFlow(req.uid, months)
+    res.json({ months: rows })
+  } catch (err) {
+    console.error('GET /cash-flow error:', err)
+    res.status(500).json({ error: 'Failed to load cash flow' })
   }
 })
 
