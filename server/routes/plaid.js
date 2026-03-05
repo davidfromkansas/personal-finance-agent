@@ -1,7 +1,9 @@
 import { Router } from 'express'
+import crypto from 'crypto'
+import * as jose from 'jose'
 import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid'
 import {
-  getPlaidItemsByUserId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
+  getPlaidItemsByUserId, getPlaidItemByItemId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow,
@@ -22,6 +24,74 @@ const ITEM_TO_INSTITUTION_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 const institutionLogoCache = new Map() // institution_id -> { logo: string, ts: number }
 const itemToInstitutionCache = new Map() // item_id -> { institution_id: string, ts: number }
 const inflightLogos = new Map() // institution_id -> Promise<string | null>
+
+/* ── Webhook verification key cache (kid -> JWK) ───────────────────── */
+const webhookKeyCache = new Map()
+
+/**
+ * Verify Plaid webhook using Plaid-Verification JWT and raw body hash.
+ * @param {Buffer} rawBody - Raw request body (for SHA-256 and parsing)
+ * @param {string} verificationHeader - Value of Plaid-Verification header
+ * @returns {{ valid: boolean }} valid true iff signature and body hash pass
+ */
+async function verifyPlaidWebhook(rawBody, verificationHeader) {
+  if (!verificationHeader || typeof verificationHeader !== 'string') return { valid: false }
+  const signedJwt = verificationHeader.trim()
+  let header
+  try {
+    header = jose.decodeProtectedHeader(signedJwt)
+  } catch (_) {
+    return { valid: false }
+  }
+  if (header.alg !== 'ES256') return { valid: false }
+  const keyId = header.kid
+  if (!keyId) return { valid: false }
+
+  let jwk = webhookKeyCache.get(keyId)
+  if (!jwk) {
+    try {
+      const plaidClient = getPlaidClient()
+      const res = await plaidClient.webhookVerificationKeyGet({ key_id: keyId })
+      jwk = res.data.key
+      if (jwk) webhookKeyCache.set(keyId, jwk)
+    } catch (err) {
+      console.warn('[plaid webhook] Failed to fetch verification key:', err.response?.data ?? err.message)
+      return { valid: false }
+    }
+  }
+  if (!jwk) return { valid: false }
+
+  let keyLike
+  try {
+    keyLike = await jose.importJWK(jwk, 'ES256')
+  } catch (err) {
+    console.warn('[plaid webhook] Failed to import JWK:', err.message)
+    return { valid: false }
+  }
+
+  let payload
+  try {
+    const { payload: p } = await jose.jwtVerify(signedJwt, keyLike, { maxTokenAge: '5 min' })
+    payload = p
+  } catch (err) {
+    return { valid: false }
+  }
+
+  const claimedHash = payload.request_body_sha256
+  if (!claimedHash || typeof claimedHash !== 'string') return { valid: false }
+  const computedHash = crypto.createHash('sha256').update(rawBody).digest('hex')
+  if (claimedHash.length !== computedHash.length) return { valid: false }
+  try {
+    const claimedBuf = Buffer.from(claimedHash, 'hex')
+    const computedBuf = Buffer.from(computedHash, 'hex')
+    if (claimedBuf.length !== computedBuf.length || !crypto.timingSafeEqual(claimedBuf, computedBuf)) {
+      return { valid: false }
+    }
+  } catch (_) {
+    return { valid: false }
+  }
+  return { valid: true }
+}
 
 function mapPlaidAccounts(plaidAccounts) {
   return (plaidAccounts ?? []).map((acc) => ({
@@ -66,7 +136,7 @@ async function _callPlaid(plaidClient, userId, row, useBalanceGet) {
   }
 }
 
-async function fetchItemAccounts(plaidClient, userId, row, useBalanceGet = false) {
+async function fetchItemAccounts(plaidClient, userId, row, useBalanceGet = true) {
   trackUserItem(userId, row.item_id)
 
   const cached = itemCache.get(row.item_id)
@@ -237,6 +307,8 @@ plaidRouter.post('/link-token', async (req, res, next) => {
       language: 'en',
     }
     if (optionalProducts.length) linkParams.optional_products = optionalProducts
+    const webhookUrl = process.env.PLAID_WEBHOOK_URL
+    if (webhookUrl) linkParams.webhook = webhookUrl
     let redirectUri = process.env.PLAID_REDIRECT_URI
     if (redirectUri) {
       // Plaid requires HTTPS for redirect_uri in production (and many OAuth institutions)
@@ -611,7 +683,7 @@ plaidRouter.post('/sync', async (req, res, next) => {
   }
 })
 
-/** POST /api/plaid/refresh — re-sync transactions + real-time balance for a connection */
+/** POST /api/plaid/refresh — request Plaid to refresh transactions, then re-sync + real-time balance */
 plaidRouter.post('/refresh', async (req, res, next) => {
   const { item_id } = req.body
   if (!item_id) {
@@ -624,6 +696,14 @@ plaidRouter.post('/refresh', async (req, res, next) => {
       return res.status(404).json({ error: 'Connection not found' })
     }
     const plaidClient = getPlaidClient()
+    try {
+      await plaidClient.transactionsRefresh({ access_token: item.access_token })
+    } catch (refreshErr) {
+      const code = refreshErr.response?.data?.error_code
+      if (code !== 'PRODUCT_NOT_READY' && code !== 'PRODUCT_NOT_SUPPORTED') {
+        console.warn('[plaid] transactions/refresh failed (continuing with sync):', refreshErr.response?.data ?? refreshErr.message)
+      }
+    }
     await syncTransactionsForItem(plaidClient, req.uid, item.item_id, item.access_token)
 
     itemCache.delete(item_id)
@@ -664,6 +744,8 @@ plaidRouter.post('/link-token/update', async (req, res, next) => {
       country_codes: ['US'],
       language: 'en',
     }
+    const webhookUrlUpdate = process.env.PLAID_WEBHOOK_URL
+    if (webhookUrlUpdate) linkParams.webhook = webhookUrlUpdate
     let redirectUriUpdate = process.env.PLAID_REDIRECT_URI
     if (redirectUriUpdate) {
       if (process.env.PLAID_ENV === 'production' && redirectUriUpdate.toLowerCase().startsWith('http://')) {
@@ -1026,3 +1108,40 @@ plaidRouter.get('/accounts', async (req, res, next) => {
     res.status(500).json({ error: 'Failed to load accounts' })
   }
 })
+
+/** Plaid webhook handler — mount without auth at POST /api/plaid/webhook with express.raw() so req.body is Buffer.
+ *  Verifies Plaid-Verification JWT (signature + body hash); only then syncs on SYNC_UPDATES_AVAILABLE. */
+export async function plaidWebhookHandler(req, res) {
+  const rawBody = req.body
+  if (!Buffer.isBuffer(rawBody)) {
+    res.status(200).json({ ok: true })
+    return
+  }
+  const verificationHeader = req.headers['plaid-verification'] ?? req.headers['Plaid-Verification']
+  const { valid } = await verifyPlaidWebhook(rawBody, verificationHeader)
+  res.status(200).json({ ok: true })
+  if (!valid) return
+
+  let body
+  try {
+    body = JSON.parse(rawBody.toString('utf8'))
+  } catch (_) {
+    return
+  }
+  const { webhook_type, webhook_code, item_id } = body
+  if (webhook_type !== 'TRANSACTIONS' || webhook_code !== 'SYNC_UPDATES_AVAILABLE' || !item_id) {
+    return
+  }
+  const item = await getPlaidItemByItemId(item_id)
+  if (!item) return
+  const plaidClient = getPlaidClient()
+  syncTransactionsForItem(plaidClient, item.user_id, item.item_id, item.access_token)
+    .then(() => {
+      itemCache.delete(item_id)
+      inflight.delete(item_id)
+      console.log(`[plaid webhook] Synced item ${item_id} for user ${item.user_id}`)
+    })
+    .catch((err) => {
+      console.error(`[plaid webhook] Sync failed for item ${item_id}:`, err.response?.data ?? err.message)
+    })
+}

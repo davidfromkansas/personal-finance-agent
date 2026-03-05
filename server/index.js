@@ -6,7 +6,7 @@ import fs from 'fs'
 import { fileURLToPath } from 'url'
 
 import { authMiddleware } from './middleware/auth.js'
-import { plaidRouter } from './routes/plaid.js'
+import { plaidRouter, plaidWebhookHandler } from './routes/plaid.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.join(__dirname, '.env') })
@@ -30,6 +30,10 @@ const app = express()
 const PORT = process.env.PORT || 3001
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }))
+
+// Webhook must receive raw body for Plaid signature verification. Register before express.json().
+app.post('/api/plaid/webhook', express.raw({ type: 'application/json' }), plaidWebhookHandler)
+
 app.use(express.json())
 
 app.get('/health', (req, res) => res.json({ ok: true }))
