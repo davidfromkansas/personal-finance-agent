@@ -2,6 +2,8 @@
 
 A personal finance dashboard that connects to your banks and investment accounts via Plaid. You can see spending, net worth, and portfolio in one place. Stack: React, Express, Firebase Auth, Postgres.
 
+**[Release notes](docs/release_notes.md)** — user-facing changes by ship date.
+
 ---
 
 ## Why this stack?
@@ -53,3 +55,15 @@ DB is Postgres with hand-written SQL in `server/db.js`; no ORM.
 ## Challenges
 
 **Plaid rate limits** — Early on, the connections list, accounts, net worth, etc. were each firing their own Plaid calls and we hit rate limits. I added in-memory caching with a short TTL, request deduplication (one in-flight call per item), and a persisted `accounts_cache` in the DB as fallback. We also use cursor-based transaction sync so we only pull deltas, and we reuse one `accountsGet` per item for both balances and transaction enrichment instead of multiple endpoints. That got us under the limit.
+
+---
+
+## Learnings
+
+**Credit card payments and spending** — Paying your credit card is moving money, not new spending. Plaid usually categorizes the checking-side payment as `TRANSFER_OUT` and the card-side credit as `TRANSFER_IN`; sometimes the payment is `LOAN_PAYMENTS`. Our spending logic excludes those categories (`NON_SPENDING_CATEGORIES` in `server/db.js`), so credit card payments do not inflate spending. If a payment ever showed up in spending, we’d add that category to the exclude list.
+
+---
+
+## More Notes:
+* required me learning more about the Plaid API, I had to do research to know what functionality it had like recurring transactions + its limitations. 
+** I also ran into a data freshness issue where we were pulling from endpoints that didnt have as current data as other endpoints. I also wasn't using webhooks in the beginning that I didn't realize Plaid supported, which basically tells us when to update the dashboard proactively so users dont need to keep autorefreshing unecessarily
