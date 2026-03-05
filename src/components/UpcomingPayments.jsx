@@ -50,7 +50,7 @@ function PaymentRow({ payment }) {
     <div className="flex h-[60px] shrink-0 items-center gap-3 py-2">
       <div
         className="flex h-9 w-9 min-h-9 min-w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#e5e7eb] text-[13px] font-semibold text-[#374151]"
-        style={{ fontFamily: 'Inter,sans-serif' }}
+        style={{ fontFamily: 'JetBrains Mono,monospace' }}
         aria-hidden
       >
         {logoUrl ? (
@@ -61,19 +61,19 @@ function PaymentRow({ payment }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
-          <p className="truncate text-[14px] font-medium text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <p className="truncate text-[14px] font-medium text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {name}
           </p>
         </div>
-        <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           {subtitle}
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           {formatAmount(amount)}
         </p>
-        <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           {due}
         </p>
       </div>
@@ -114,7 +114,7 @@ export function UpcomingPayments({ getToken, refreshTrigger = 0 }) {
 
   if (loading) {
     return (
-      <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         Loading upcoming payments…
       </p>
     )
@@ -122,7 +122,7 @@ export function UpcomingPayments({ getToken, refreshTrigger = 0 }) {
 
   if (payments.length === 0) {
     return (
-      <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         No upcoming payments. Link accounts to see recurring charges and credit card bills.
       </p>
     )
@@ -147,7 +147,7 @@ export function UpcomingPayments({ getToken, refreshTrigger = 0 }) {
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={!canGoNewer || loading}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d1d5dc] bg-white text-[#4a5565] transition-colors hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
             title="More recent"
             aria-label="More recent"
           >
@@ -160,7 +160,7 @@ export function UpcomingPayments({ getToken, refreshTrigger = 0 }) {
             onClick={() => setPage((p) => p + 1)}
             disabled={!canGoOlder || loading}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d1d5dc] bg-white text-[#4a5565] transition-colors hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
             title="More"
             aria-label="More"
           >

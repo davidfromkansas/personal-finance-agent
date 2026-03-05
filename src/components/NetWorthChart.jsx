@@ -56,13 +56,13 @@ function CustomTooltip({ active, payload }) {
   })
   return (
     <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 shadow-sm">
-      <p className="text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {dateLabel}
       </p>
-      <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {formatCurrency(d.net_worth)}
       </p>
-      <div className="mt-1 flex gap-3 text-[11px]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <div className="mt-1 flex gap-3 text-[11px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         <span className="text-[#16a34a]">Assets {formatCurrency(d.assets)}</span>
         <span className="text-[#dc2626]">Debts {formatCurrency(d.debts)}</span>
       </div>
@@ -141,26 +141,26 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
 
   return (
     <div className={`bg-white ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-[#e5e7eb]'}`}>
-      <div className="flex flex-col gap-3 px-6 pt-5 pb-2 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[#e5e7eb] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[13px] font-medium text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Net Worth
-          </p>
+          </h2>
           <div className="flex items-baseline gap-3">
-            <span className="text-[28px] font-bold tracking-tight text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[28px] font-bold tracking-tight text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {loading ? '—' : formatCurrency(current?.net_worth)}
             </span>
             {!loading && change && (
               <span
                 className={`text-[14px] font-semibold ${isPositiveChange ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
-                style={{ fontFamily: 'Inter,sans-serif' }}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {isPositiveChange ? '+' : ''}{formatCurrency(change.diff)} ({isPositiveChange ? '+' : ''}{change.pct.toFixed(1)}%)
               </span>
             )}
           </div>
           {!loading && current && (
-            <div className="mt-1 flex gap-4 text-[12px]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <div className="mt-1 flex gap-4 text-[12px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               <span className="text-[#16a34a]">Assets: {formatCurrency(current.assets)}</span>
               <span className="text-[#dc2626]">Debts: {formatCurrency(current.debts)}</span>
             </div>
@@ -178,7 +178,7 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
                   ? 'bg-[#4f46e5] text-white'
                   : 'bg-[#f3f4f6] text-[#6a7282] hover:bg-[#e5e7eb] hover:text-[#101828]'
               }`}
-              style={{ fontFamily: 'Inter,sans-serif' }}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
               {r.label}
             </button>
@@ -186,18 +186,18 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
         </div>
       </div>
 
-      <p className="px-6 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="px-6 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         Net worth = assets minus debts across all connected accounts. Investment values reflect current holdings.
       </p>
 
       <div className="px-4 pb-5 pt-4" style={{ height: 260 }}>
         {loading ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading...</span>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
           </div>
         ) : !chartData.length ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               Connect accounts to see your net worth
             </span>
           </div>
@@ -213,7 +213,7 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => formatDateLabel(v, activeRange)}
@@ -221,7 +221,7 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
                 minTickGap={40}
               />
               <YAxis
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => formatCompact(v)}

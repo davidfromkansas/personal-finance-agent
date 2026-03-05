@@ -59,10 +59,10 @@ function ChartTooltip({ active, payload }) {
   })
   return (
     <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 shadow-sm">
-      <p className="text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {dateLabel}
       </p>
-      <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {formatCurrency(d.value)}
       </p>
     </div>
@@ -96,29 +96,29 @@ function MoverCard({ holding }) {
         {holding.ticker && (
           <span
             className="rounded-[5px] bg-[#e0e7ff] px-1.5 py-0.5 text-[11px] font-bold text-[#3730a3]"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
           >
             {holding.ticker}
           </span>
         )}
         <span
           className={`text-[11px] font-semibold ${isPositive ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
-          style={{ fontFamily: 'Inter,sans-serif' }}
+          style={{ fontFamily: 'JetBrains Mono,monospace' }}
         >
           {gainPct != null ? formatPct(gainPct) : '—'}
         </span>
       </div>
-      <p className="truncate text-[12px] font-medium leading-4 text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="truncate text-[12px] font-medium leading-4 text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {holding.security_name}
       </p>
       <div className="flex items-baseline justify-between">
-        <span className="text-[13px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <span className="text-[13px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           {formatCurrency(holding.value)}
         </span>
         {gain != null && (
           <span
             className={`text-[11px] font-medium ${isPositive ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
           >
             {isPositive ? '+' : ''}{formatCurrency(gain)}
           </span>
@@ -319,31 +319,31 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
   return (
     <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
       {/* Header + range toggles */}
-      <div className="flex flex-col gap-3 px-6 pt-5 pb-2 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[#e5e7eb] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-[13px] font-medium text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Investment Portfolio
             {selectedAccountKey && (
               <span className="ml-1.5 text-[#7c3aed]">
                 · {accounts.find((a) => a.key === selectedAccountKey)?.account ?? 'Account'}
               </span>
             )}
-          </p>
+          </h2>
           <div className="flex items-baseline gap-3">
-            <span className="text-[28px] font-bold tracking-tight text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[28px] font-bold tracking-tight text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {holdingsLoading && chartLoading ? '—' : formatCurrency(displayValue)}
             </span>
             {!holdingsLoading && totalValue > 0 && (
               <span
                 className={`text-[14px] font-semibold ${isPositiveTotal ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
-                style={{ fontFamily: 'Inter,sans-serif' }}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {isPositiveTotal ? '+' : ''}{formatCurrency(totalGain)} ({formatPct(totalGainPct)})
               </span>
             )}
           </div>
           {!holdingsLoading && !chartLoading && chartChange && (
-            <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {chartChange.diff >= 0 ? '+' : ''}{formatCurrency(chartChange.diff)} ({formatPct(chartChange.pct)}) over period
             </p>
           )}
@@ -359,7 +359,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
                   ? 'bg-[#7c3aed] text-white'
                   : 'bg-[#f3f4f6] text-[#6a7282] hover:bg-[#e5e7eb] hover:text-[#101828]'
               }`}
-              style={{ fontFamily: 'Inter,sans-serif' }}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
               {r.label}
             </button>
@@ -367,7 +367,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
         </div>
       </div>
 
-      <p className="px-6 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="px-6 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         Portfolio value based on current holdings. Historical values are approximate.
       </p>
 
@@ -375,11 +375,11 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
       <div className="px-4 pb-3 pt-3" style={{ height: 200 }}>
         {chartLoading ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading...</span>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
           </div>
         ) : !chartData.length ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               No investment history available
             </span>
           </div>
@@ -395,7 +395,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => formatDateLabel(v, activeRange)}
@@ -403,7 +403,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
                 minTickGap={40}
               />
               <YAxis
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => formatCompact(v)}
@@ -425,11 +425,11 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
 
       {holdingsLoading ? (
         <div className="flex h-20 items-center justify-center">
-          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading...</span>
+          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
         </div>
       ) : !hasInvestmentData ? (
         <div className="flex h-20 items-center justify-center px-6">
-          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Link an investment account to see your portfolio
           </span>
         </div>
@@ -437,7 +437,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
         <>
           {/* Account list */}
           <div className="border-t border-[#e5e7eb] px-6 pt-3 pb-3">
-            <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               Accounts
             </p>
             <div className="flex flex-col gap-1">
@@ -455,14 +455,14 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
                     }`}
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                      <p className="truncate text-[13px] font-medium text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                         {acc.account}
                       </p>
-                      <p className="truncate text-[11px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                      <p className="truncate text-[11px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                         {acc.institution}
                       </p>
                     </div>
-                    <span className="shrink-0 text-[13px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                    <span className="shrink-0 text-[13px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                       {formatCurrency(acc.value)}
                     </span>
                   </button>
@@ -475,7 +475,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
           {topMovers.length > 0 && (
             <div className="border-t border-[#e5e7eb] px-6 pt-3 pb-5">
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   Top Movers
                 </p>
                 <div className="flex gap-1">

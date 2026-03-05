@@ -31,20 +31,20 @@ function CashFlowTooltip({ active, payload, label }) {
   const net = inflow - outflow
   return (
     <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-sm min-w-[160px]">
-      <p className="text-[12px] font-medium text-[#6a7282] mb-1.5" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[12px] font-medium text-[#6a7282] mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {label}
       </p>
       <div className="flex items-center justify-between gap-4 py-0.5">
-        <span className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'Inter,sans-serif' }}>Inflows</span>
-        <span className="text-[12px] font-medium" style={{ fontFamily: 'Inter,sans-serif', color: BAR_POSITIVE_COLOR }}>{formatCurrency(inflow)}</span>
+        <span className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Inflows</span>
+        <span className="text-[12px] font-medium" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_POSITIVE_COLOR }}>{formatCurrency(inflow)}</span>
       </div>
       <div className="flex items-center justify-between gap-4 py-0.5">
-        <span className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'Inter,sans-serif' }}>Outflows</span>
-        <span className="text-[12px] font-medium" style={{ fontFamily: 'Inter,sans-serif', color: BAR_NEGATIVE_COLOR }}>{formatCurrency(outflow)}</span>
+        <span className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Outflows</span>
+        <span className="text-[12px] font-medium" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_NEGATIVE_COLOR }}>{formatCurrency(outflow)}</span>
       </div>
       <div className="flex items-center justify-between gap-4 border-t border-[#e5e7eb] mt-1.5 pt-1.5">
-        <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>Net</span>
-        <span className="text-[12px] font-semibold" style={{ fontFamily: 'Inter,sans-serif', color: net >= 0 ? BAR_POSITIVE_COLOR : BAR_NEGATIVE_COLOR }}>
+        <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Net</span>
+        <span className="text-[12px] font-semibold" style={{ fontFamily: 'JetBrains Mono,monospace', color: net >= 0 ? BAR_POSITIVE_COLOR : BAR_NEGATIVE_COLOR }}>
           {formatCurrency(net)}
         </span>
       </div>
@@ -125,37 +125,37 @@ export const CashFlowChart = forwardRef(function CashFlowChart({ getToken, embed
       className="rounded-[14px] border border-[#e5e7eb] bg-white flex flex-col overflow-hidden"
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
-      <div className="shrink-0 flex items-center justify-between border-b border-[#e5e7eb] px-4 py-3">
-        <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <div className="shrink-0 flex items-center justify-between border-b border-[#e5e7eb] px-5 py-3">
+        <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           Cash flow
         </h2>
         <div className="flex items-center gap-4">
           {latestMonth && (
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {latestMonth.label}
             </span>
           )}
-          <span className="text-[18px] font-semibold" style={{ fontFamily: 'Inter,sans-serif', color: netLatest >= 0 ? BAR_POSITIVE_COLOR : BAR_NEGATIVE_COLOR }}>
+          <span className="text-[18px] font-semibold" style={{ fontFamily: 'JetBrains Mono,monospace', color: netLatest >= 0 ? BAR_POSITIVE_COLOR : BAR_NEGATIVE_COLOR }}>
             {loading ? '—' : formatCurrency(netLatest)}
           </span>
         </div>
       </div>
 
-      <p className="shrink-0 px-4 pt-2 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'Inter,sans-serif' }}>
-        Monthly income (inflows) vs spending (outflows). Net = money in minus money out.
+      <p className="shrink-0 px-4 pt-2 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+        Monthly income vs spending. Net = money in minus money out.
       </p>
 
       <div className="flex-1 min-h-0 px-4 pb-2 pt-4">
         {loading ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading…</span>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading…</span>
           </div>
         ) : !data?.length ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               No cash flow data yet.
             </span>
-            <span className="text-[12px] text-[#9ca3af] max-w-[260px]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[12px] text-[#9ca3af] max-w-[260px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               Link accounts above, or if you already have connections, refresh one to sync transaction history—cash flow uses the same data as Recent Transactions.
             </span>
           </div>
@@ -166,14 +166,14 @@ export const CashFlowChart = forwardRef(function CashFlowChart({ getToken, embed
               <ReferenceLine y={0} stroke="#9ca3af" strokeWidth={1} />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
                 ticks={yDomain.ticks}
                 domain={yDomain.domain}
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={formatYAxisTick}
@@ -181,7 +181,7 @@ export const CashFlowChart = forwardRef(function CashFlowChart({ getToken, embed
               <Tooltip content={<CashFlowTooltip />} cursor={{ fill: 'rgba(243,244,246,0.8)', stroke: '#e5e7eb' }} />
               <Legend
                 wrapperStyle={{ paddingTop: 8 }}
-                formatter={(value) => <span className="text-[11px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>{value}</span>}
+                formatter={(value) => <span className="text-[11px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{value}</span>}
               />
               <Bar
                 dataKey="inflows"

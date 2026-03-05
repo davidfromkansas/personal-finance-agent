@@ -31,26 +31,26 @@ function StackedTooltip({ active, payload, label }) {
   const total = payload.reduce((s, p) => s + (p.value || 0), 0)
   return (
     <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-sm min-w-[160px]">
-      <p className="text-[12px] font-medium text-[#6a7282] mb-1.5" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="text-[12px] font-medium text-[#6a7282] mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {label}
       </p>
       {payload.filter((p) => p.value > 0).map((p) => (
         <div key={p.dataKey} className="flex items-center justify-between gap-4 py-0.5">
           <div className="flex items-center gap-1.5">
             <span className="inline-block size-2 rounded-full shrink-0" style={{ backgroundColor: p.fill }} />
-            <span className="text-[12px] text-[#4a5565] truncate max-w-[120px]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[12px] text-[#4a5565] truncate max-w-[120px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {p.dataKey}
             </span>
           </div>
-          <span className="text-[12px] font-medium text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <span className="text-[12px] font-medium text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {formatCurrency(p.value)}
           </span>
         </div>
       ))}
       {payload.length > 1 && (
         <div className="flex items-center justify-between gap-4 border-t border-[#e5e7eb] mt-1.5 pt-1.5">
-          <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>Total</span>
-          <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>{formatCurrency(total)}</span>
+          <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Total</span>
+          <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{formatCurrency(total)}</span>
         </div>
       )}
     </div>
@@ -159,19 +159,23 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
       className={`rounded-[14px] border border-[#e5e7eb] bg-white ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
-      <div className="flex items-center justify-between border-b border-[#e5e7eb]">
-        <div className="flex">
-          {PERIODS.map((p) => (
+      <div className="flex items-center justify-between border-b border-[#e5e7eb] px-5 py-3">
+        <div className="flex items-center gap-8">
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Spending
+          </h2>
+          <div className="flex border-l border-[#e5e7eb] pl-6">
+            {PERIODS.map((p) => (
             <button
               key={p.key}
               type="button"
               onClick={() => setActivePeriod(p.key)}
-              className={`relative px-5 py-3 text-[14px] font-medium transition-colors ${
+              className={`relative px-3 py-1.5 text-[13px] font-medium transition-colors ${
                 activePeriod === p.key
                   ? 'text-[#4f46e5]'
                   : 'text-[#6a7282] hover:text-[#101828]'
               }`}
-              style={{ fontFamily: 'Inter,sans-serif' }}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
               {p.label}
               {activePeriod === p.key && (
@@ -179,29 +183,30 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
               )}
             </button>
           ))}
+          </div>
         </div>
-        <div className="flex items-center gap-3 pr-6">
-          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <div className="flex items-center gap-3">
+          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {activeConfig?.subtitle}
           </span>
-          <span className="text-[18px] font-semibold text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <span className="text-[18px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {activeLoading ? '—' : formatCurrency(total)}
           </span>
         </div>
       </div>
 
-      <p className="px-5 pt-4 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <p className="px-5 pt-4 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         Includes purchases and payments across all accounts. Transfers, income, and bank fees are excluded.
       </p>
 
       <div className={`px-4 pb-2 pt-4 ${embeddedHeight ? 'flex-1 min-h-0' : ''}`} style={embeddedHeight ? {} : { height: 299 }}>
         {activeLoading ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading…</span>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading…</span>
           </div>
         ) : !activeBuckets.length ? (
           <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>No spending data</span>
+            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No spending data</span>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -209,12 +214,12 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
               />
               <YAxis
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'Inter,sans-serif' }}
+                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
@@ -248,7 +253,7 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
                 className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-opacity cursor-pointer ${
                   active ? 'opacity-100' : 'opacity-35'
                 }`}
-                style={{ fontFamily: 'Inter,sans-serif' }}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 <span
                   className="inline-block size-2.5 rounded-full shrink-0 transition-all"

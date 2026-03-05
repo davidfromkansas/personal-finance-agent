@@ -73,7 +73,7 @@ export function AppHeader() {
                     ? 'border-[#1e1e1e] bg-[#1e1e1e] text-white'
                     : 'border-[#d9d9d9] bg-white text-[#1e1e1e] hover:bg-black/5'
                 } ${!path ? 'opacity-50 cursor-default' : ''}`}
-                style={{ fontFamily: 'Inter,sans-serif' }}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {Icon && <Icon />}
                 {label}
@@ -85,7 +85,7 @@ export function AppHeader() {
             type="button"
             onClick={handleLogout}
             className="rounded-lg bg-[#FF3B30] px-3 py-2.5 text-[16px] font-normal leading-none text-white transition-opacity hover:opacity-90"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
           >
             Logout
           </button>

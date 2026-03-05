@@ -157,11 +157,11 @@ function SectionHeader({ category, count }) {
     <div className="flex h-8 items-center justify-between border-b border-black/10">
       <div className="flex items-center gap-2">
         <span className={`flex size-4 shrink-0 items-center justify-center ${color}`}><Icon /></span>
-        <span className="font-semibold text-[14px] leading-5 tracking-[-0.15px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <span className="font-semibold text-[14px] leading-5 tracking-[-0.15px] text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           {category}
         </span>
       </div>
-      <span className="rounded-[8px] border border-black/10 px-2 py-0.5 text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+      <span className="rounded-[8px] border border-black/10 px-2 py-0.5 text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {count}
       </span>
     </div>
@@ -321,15 +321,15 @@ function TransactionRow({ transaction }) {
     <div className="flex h-[32px] shrink-0 items-center justify-between gap-2 rounded-[8px] px-1 py-0">
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         <p
-          className="shrink-0 font-normal text-[14px] leading-5 tracking-[-0.15px] text-[#101828]"
-          style={{ fontFamily: 'Inter,sans-serif' }}
+          className="shrink-0 font-medium text-[14px] leading-5 tracking-[-0.1px] text-[#101828]"
+          style={{ fontFamily: 'JetBrains Mono,monospace' }}
         >
           {transaction.name}
         </p>
         {transaction.account_name && (
           <span
             className="min-w-0 shrink truncate inline-block max-w-full rounded-[6px] border border-[#d1d5dc] bg-[#f9fafb] px-1.5 py-[2px] text-[11px] font-medium leading-4 text-[#4a5565]"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
             title={transaction.account_name}
           >
             {transaction.account_name}
@@ -338,14 +338,14 @@ function TransactionRow({ transaction }) {
         {transaction.pending && (
           <span
             className="shrink-0 inline-block rounded-[6px] border border-[#f59e0b] bg-[#fffbeb] px-1.5 py-[2px] text-[11px] font-medium leading-4 text-[#b45309]"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
             title="Not yet settled"
           >
             Pending
           </span>
         )}
       </div>
-      <span className={`shrink-0 text-right font-semibold text-[14px] leading-5 tracking-[-0.15px] ${amtColor}`} style={{ fontFamily: 'Inter,sans-serif' }}>
+      <span className={`shrink-0 text-right font-bold text-[14px] leading-5 tracking-[-0.05px] ${amtColor}`} style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {displayAmt}
       </span>
     </div>
@@ -363,13 +363,13 @@ export function TransactionList({ transactions, loading, title, subtitle, header
       : undefined
   return (
     <div className="flex h-full flex-col rounded-[14px] border border-[#e5e7eb] bg-white">
-      <div className="shrink-0 flex items-start justify-between px-4 pt-4 pb-1">
+      <div className="shrink-0 flex items-center justify-between border-b border-[#e5e7eb] px-5 py-3">
         <div>
-          <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {title ?? 'Recent Transactions'}
           </h2>
           {subtitle ? (
-            <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#4a5565]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {subtitle}
             </p>
           ) : null}
@@ -381,9 +381,9 @@ export function TransactionList({ transactions, loading, title, subtitle, header
         style={{ height: contentHeightPx }}
       >
         {loading ? (
-          <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading transactions…</p>
+          <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading transactions…</p>
         ) : transactions.length === 0 ? (
-          <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             No transactions yet. Link an account to see activity.
           </p>
         ) : (
@@ -391,7 +391,7 @@ export function TransactionList({ transactions, loading, title, subtitle, header
             {groups.map((group) => (
               <div key={group.date} className="flex flex-col gap-0">
                 <div className="flex h-[26px] shrink-0 items-center border-b border-[#d1d5dc] pb-0 pt-1">
-                  <p className="text-[13px] font-bold uppercase leading-5 tracking-[0.2px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                  <p className="text-[12px] font-extrabold uppercase leading-5 tracking-[0.3px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                     {group.label}
                   </p>
                 </div>
@@ -410,7 +410,7 @@ export function TransactionList({ transactions, loading, title, subtitle, header
             onClick={onLoadNewer}
             disabled={!canGoNewer || loading}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d1d5dc] bg-white text-[#4a5565] transition-colors hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
             title="More recent"
             aria-label="More recent transactions"
           >
@@ -423,7 +423,7 @@ export function TransactionList({ transactions, loading, title, subtitle, header
             onClick={onLoadOlder}
             disabled={!canGoOlder || loading}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d1d5dc] bg-white text-[#4a5565] transition-colors hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
-            style={{ fontFamily: 'Inter,sans-serif' }}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
             title="Older"
             aria-label="Older transactions"
           >
@@ -458,7 +458,7 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="font-semibold text-[14px] leading-5 tracking-[-0.15px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <h4 className="font-semibold text-[14px] leading-5 tracking-[-0.15px] text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {displayName}
             </h4>
             <span
@@ -467,18 +467,18 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
                   ? 'border-[#ffc9c9] bg-[#fef2f2] text-[#c10007]'
                   : 'border-[#b9f8cf] bg-[#f0fdf4] text-[#008236]'
               }`}
-              style={{ fontFamily: 'Inter,sans-serif' }}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
               {isError && <AlertCircleIcon />}
               {isError ? 'Error' : 'Connected'}
             </span>
           </div>
           {balanceText && (
-            <p className="text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <p className="text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               Balance: {balanceText}
             </p>
           )}
-          <p className="text-[12px] leading-4 text-[#99a1af]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <p className="text-[12px] leading-4 text-[#99a1af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Last synced {formatLastSynced(connection.last_synced_at ?? connection.lastSynced)}
           </p>
           {needsReconnect && (
@@ -486,7 +486,7 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
               type="button"
               onClick={() => onReconnect?.(connection)}
               className="mt-1 rounded-md bg-[#FF3B30] px-2.5 py-1 text-[12px] font-medium text-white transition-opacity hover:opacity-90"
-              style={{ fontFamily: 'Inter,sans-serif' }}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
               Reconnect
             </button>
@@ -808,10 +808,10 @@ export function LoggedInPage() {
             className="w-full max-w-md rounded-[14px] border border-[#e5e7eb] bg-white p-6 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-[18px] font-semibold tracking-tight text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <h3 className="text-[18px] font-semibold tracking-tight text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               What do you want to connect?
             </h3>
-            <p className="mt-1 text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <p className="mt-1 text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               Choose the type of accounts to link. Plaid will open next.
             </p>
             <div className="mt-6 flex flex-col gap-3">
@@ -820,7 +820,7 @@ export function LoggedInPage() {
                 onClick={() => handleAddConnection('transactions')}
                 disabled={linkLoading}
                 className="flex items-center gap-4 rounded-[10px] border border-[#e5e7eb] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
-                style={{ fontFamily: 'Inter,sans-serif' }}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
                   <LandmarkIcon />
@@ -835,7 +835,7 @@ export function LoggedInPage() {
                 onClick={() => handleAddConnection('investments')}
                 disabled={linkLoading}
                 className="flex items-center gap-4 rounded-[10px] border border-[#e5e7eb] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
-                style={{ fontFamily: 'Inter,sans-serif' }}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
                   <TrendingUpIcon />
@@ -850,7 +850,7 @@ export function LoggedInPage() {
               type="button"
               onClick={() => setShowConnectionTypeModal(false)}
               className="mt-4 w-full rounded-lg border border-[#d1d5dc] bg-white py-2 text-[14px] font-medium text-[#4a5565] hover:bg-[#f3f4f6]"
-              style={{ fontFamily: 'Inter,sans-serif' }}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
               Cancel
             </button>
@@ -873,8 +873,8 @@ export function LoggedInPage() {
                   <CashFlowChart ref={cashFlowRef} getToken={getIdToken} embeddedHeight={404} />
                 </div>
                 <div className="min-w-0 w-full lg:flex-[2] rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden flex flex-col h-[404px]">
-                  <div className="shrink-0 px-4 pt-4 pb-2">
-                    <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                  <div className="shrink-0 border-b border-[#e5e7eb] px-5 py-3">
+                    <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                       Upcoming Payments
                     </h2>
                   </div>
@@ -898,7 +898,7 @@ export function LoggedInPage() {
                     type="button"
                     onClick={() => navigate('/app/transactions')}
                     className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5"
-                    style={{ fontFamily: 'Inter,sans-serif' }}
+                    style={{ fontFamily: 'JetBrains Mono,monospace' }}
                   >
                     View All
                   </button>
@@ -912,10 +912,10 @@ export function LoggedInPage() {
               <div className="border-t border-[#e5e7eb] px-6 pt-4 pb-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-[15px] font-medium tracking-[-0.2px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                  <h2 className="text-[15px] font-medium tracking-[-0.2px] text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                     Connected accounts
                   </h2>
-                  <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                  <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                     Included in net worth above
                   </p>
                 </div>
@@ -924,7 +924,7 @@ export function LoggedInPage() {
                   onClick={() => handleAddConnection()}
                   disabled={exchanging || linkLoading}
                   className="shrink-0 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-60"
-                  style={{ fontFamily: 'Inter,sans-serif' }}
+                  style={{ fontFamily: 'JetBrains Mono,monospace' }}
                 >
                   <PlusIcon />
                   {linkLoading ? 'Opening…' : exchanging ? 'Connecting…' : 'Add Connection'}
@@ -933,16 +933,16 @@ export function LoggedInPage() {
               </div>
               <div className="px-6 pb-2">
               {addError && (
-                <p className="pb-4 text-[14px] text-red-600" style={{ fontFamily: 'Inter,sans-serif' }}>
+                <p className="pb-4 text-[14px] text-red-600" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   {addError}
                 </p>
               )}
 
               <div className="pb-6">
                 {loading ? (
-                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading connections…</p>
+                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading connections…</p>
                 ) : connections.length === 0 ? (
-                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                     No connections yet. Click “Add Connection” to link a bank account.
                   </p>
                 ) : (

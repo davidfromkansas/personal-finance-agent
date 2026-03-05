@@ -33,25 +33,25 @@ function AccountRow({ account }) {
     <div className="flex items-center justify-between rounded-[10px] border border-black/10 px-[13px] py-3">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="font-semibold text-[14px] leading-5 tracking-[-0.15px] text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <p className="font-semibold text-[14px] leading-5 tracking-[-0.15px] text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {account.name}
           </p>
           {account.subtype && (
-            <span className="text-[12px] leading-4 text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+            <span className="text-[12px] leading-4 text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {account.subtype}
             </span>
           )}
         </div>
-        <p className="mt-0.5 text-[12px] leading-4 text-[#99a1af]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <p className="mt-0.5 text-[12px] leading-4 text-[#99a1af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           {account.institution_name}
         </p>
       </div>
       <div className="shrink-0 text-right">
-        <p className="font-semibold text-[14px] leading-5 text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+        <p className="font-semibold text-[14px] leading-5 text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           {formatCurrency(account.current)}
         </p>
         {account.available != null && account.available !== account.current && (
-          <p className="text-[12px] leading-4 text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+          <p className="text-[12px] leading-4 text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {formatCurrency(account.available)} available
           </p>
         )}
@@ -96,17 +96,17 @@ export function AccountsPage() {
           <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
             <div className="flex items-start justify-between px-6 pt-6 pb-1.5">
               <div>
-                <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   Accounts
                 </h2>
-                <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#4a5565]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   All linked accounts and balances
                 </p>
               </div>
               {!loading && accounts.length > 0 && (
                 <div className="shrink-0 text-right">
-                  <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Net Worth</p>
-                  <p className="font-semibold text-[16px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                  <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Net Worth</p>
+                  <p className="font-semibold text-[16px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                     {formatCurrency(totalCurrent)}
                   </p>
                 </div>
@@ -114,9 +114,9 @@ export function AccountsPage() {
             </div>
             <div className="px-6 pb-6">
               {loading ? (
-                <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>Loading accounts…</p>
+                <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading accounts…</p>
               ) : accounts.length === 0 ? (
-                <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   No accounts found. Link an account from the Dashboard to get started.
                 </p>
               ) : (
@@ -125,10 +125,10 @@ export function AccountsPage() {
                     <div key={label} className="flex flex-col gap-2">
                       <div className="border-b border-[#d1d5dc] pb-1 pt-2">
                         <div className="flex items-center justify-between">
-                          <p className="text-[14px] font-bold uppercase leading-5 tracking-[0.2px] text-[#101828]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                          <p className="text-[14px] font-bold uppercase leading-5 tracking-[0.2px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                             {label}
                           </p>
-                          <span className="rounded-[8px] border border-black/10 px-2 py-0.5 text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'Inter,sans-serif' }}>
+                          <span className="rounded-[8px] border border-black/10 px-2 py-0.5 text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                             {items.length}
                           </span>
                         </div>
