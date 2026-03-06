@@ -1,3 +1,8 @@
+/**
+ * Firebase Admin auth: verify ID token and extract uid.
+ * authMiddleware: Express middleware that requires Authorization: Bearer <id_token>, sets req.uid.
+ * Supports FIREBASE_SERVICE_ACCOUNT (JSON string) or FIREBASE_SERVICE_ACCOUNT_PATH for credentials.
+ */
 import admin from 'firebase-admin'
 import path from 'path'
 import fs from 'fs'

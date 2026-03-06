@@ -2,6 +2,11 @@ import pg from 'pg'
 
 const { Pool } = pg
 
+/**
+ * Postgres access layer. All functions take userId (from req.uid); no ORM.
+ * Used by server/routes/plaid.js for plaid_items, transactions, and aggregations.
+ * Run migrations with: node server/run-migration.js
+ */
 let pool = null
 
 function getPool() {
@@ -178,6 +183,7 @@ export async function getEarliestTransactionDate(userId) {
   return rows[0]?.earliest ?? null
 }
 
+/** Categories we exclude from "spending" (e.g. credit card payments = TRANSFER_OUT/LOAN_PAYMENTS). */
 const NON_SPENDING_CATEGORIES = [
   'INCOME',
   'TRANSFER_IN',

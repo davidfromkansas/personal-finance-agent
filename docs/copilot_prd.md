@@ -55,8 +55,10 @@ See [DATA_ISOLATION.md](DATA_ISOLATION.md) for the full rationale and checklist.
 - **Backend API (implemented):**
   - `POST /api/plaid/link-token` — create link token (auth required).
   - `POST /api/plaid/exchange-token` — body `{ public_token }`; exchange and upsert into `plaid_items`.
-  - `GET /api/plaid/connections` — list items for user; for each item call Plaid **accounts/balance/get** and return connections with `accounts` (name, type, subtype, current/available balance). Status `connected` or `error` per item.
-- **Database:** Table `plaid_items` (`user_id`, `item_id`, `access_token`, `institution_name`, `last_synced_at`). Balances are not stored; fetched live when loading connections. No `transactions` table yet.
+  - `GET /api/plaid/connections` — list items for user; for each item call Plaid **accounts/balance/get** (real-time balances) and return connections with `accounts` (name, type, subtype, current/available balance). Status `connected` or `error` per item.
+  - **Webhooks (optional):** When `PLAID_WEBHOOK_URL` is set in env, Plaid can send `SYNC_UPDATES_AVAILABLE` to that URL. We verify the request using Plaid’s JWT (Plaid-Verification header) and SHA-256 of the raw body; only then do we run an incremental transaction sync for the affected item. This keeps data fresher without the user having to tap Refresh.
+  - **Refresh:** When the user taps Refresh we call Plaid `transactions/refresh` then run our incremental sync and invalidate balance caches.
+- **Database:** Table `plaid_items` (`user_id`, `item_id`, `access_token`, `institution_name`, `last_synced_at`, `sync_cursor`, `accounts_cache`). Table `transactions` stores synced transactions. Balances are fetched live via `accountsBalanceGet` (cached in memory 5 min and in `accounts_cache` on failure).
 
 See [PLAID_TRANSACTIONS_PLAN.md](PLAID_TRANSACTIONS_PLAN.md) for full flow, API design, and future transactions/disconnect/refresh.
 
@@ -255,7 +257,7 @@ See [PLAID_TRANSACTIONS_PLAN.md](PLAID_TRANSACTIONS_PLAN.md) for full flow, API 
 ## 9. Deployment & env
 
 - **Frontend env:** `VITE_FIREBASE_*` (from Firebase Console), `VITE_API_URL` (backend URL).
-- **Backend env:** `PORT`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT_PATH` (or `GOOGLE_APPLICATION_CREDENTIALS`). Optional `CORS_ORIGIN`.
+- **Backend env:** `PORT`, `PLAID_CLIENT_ID`, `PLAID_SECRET`, `DATABASE_URL`, `FIREBASE_SERVICE_ACCOUNT_PATH` (or `FIREBASE_SERVICE_ACCOUNT` JSON string for Railway). Optional: `CORS_ORIGIN`, `PLAID_WEBHOOK_URL` (Plaid sends SYNC_UPDATES_AVAILABLE here; we verify signature and sync).
 - **Secrets:** Never commit `.env` or `firebase-service-account.json`; see `.gitignore`. Add production domain to Firebase Authorized domains before production deploy.
 
 See [DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md) for full deploy steps.
@@ -276,5 +278,6 @@ See [DEPLOY_CHECKLIST.md](DEPLOY_CHECKLIST.md) for full deploy steps.
 - **Net Worth Performance:** Backend: in-memory balance cache per user with 5-minute TTL avoids redundant Plaid API calls across range switches; cache invalidated on add/disconnect/refresh. Frontend: all 6 ranges pre-fetched in parallel on mount and cached in React state; tab switching is instant with no network requests.
 - **Investment Portfolio Card:** Added 6.16 (dashboard investment portfolio). Right column of dashboard above Recent Transactions. Shows total portfolio value with gain/loss, account list grouped by account+institution, and a horizontal-scroll carousel of top 10 movers by absolute gain %. Uses existing `/api/plaid/investments` endpoint. Auto-refreshes on add/disconnect/refresh.
 - **Investment Portfolio Chart:** Added AreaChart line graph to 6.16. New backend `GET /api/plaid/investment-history` endpoint back-calculates daily investment account values using cached balances + stored transactions. Purple gradient line chart with 1W/1M/3M/YTD/1Y/ALL range toggles. All ranges pre-fetched in parallel on mount for instant tab switching. Period change amount/% shown in header.
+- **Webhooks & data freshness:** Optional `PLAID_WEBHOOK_URL`; webhook handler verifies Plaid JWT + body SHA-256, syncs on SYNC_UPDATES_AVAILABLE. Balances use `accountsBalanceGet`; Refresh button calls Plaid `transactions/refresh` then sync. Documented in PRD §5 and §9. Credit card payments excluded from spending (NON_SPENDING_CATEGORIES in server/db.js).
 
 *When you add or change a product requirement or decision, add a short entry here and update the relevant section above.*

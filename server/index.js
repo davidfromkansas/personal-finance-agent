@@ -1,3 +1,10 @@
+/**
+ * Backend entry point. Express app serving:
+ * - /api/plaid/webhook (raw body; no auth — verified by Plaid JWT + body hash)
+ * - /api/plaid/* (auth required; Firebase ID token → req.uid)
+ * - Static SPA from dist/ (index.html for /app, logged-out-landing-page.html for /)
+ * Loads server/.env; CORS and auth middleware applied to API routes.
+ */
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
@@ -31,7 +38,7 @@ const PORT = process.env.PORT || 3001
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }))
 
-// Webhook must receive raw body for Plaid signature verification. Register before express.json().
+// Webhook must receive raw body for Plaid signature verification. Register before express.json() so body stays a Buffer.
 app.post('/api/plaid/webhook', express.raw({ type: 'application/json' }), plaidWebhookHandler)
 
 app.use(express.json())

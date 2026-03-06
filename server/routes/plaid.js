@@ -1,3 +1,9 @@
+/**
+ * Plaid API routes and webhook handler. All routes except webhook use authMiddleware (req.uid).
+ * - Balance/accounts: in-memory cache (5 min TTL) + request deduplication; accountsBalanceGet with accountsGet fallback.
+ * - Webhook: POST /api/plaid/webhook verified via Plaid JWT + body SHA-256; on SYNC_UPDATES_AVAILABLE runs incremental sync.
+ * - Refresh: calls Plaid transactions/refresh then sync; invalidates balance cache for that user.
+ */
 import { Router } from 'express'
 import crypto from 'crypto'
 import * as jose from 'jose'

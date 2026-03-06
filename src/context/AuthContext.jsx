@@ -1,3 +1,7 @@
+/**
+ * Firebase auth context: user, ready, getIdToken, signInWithGoogle, signOut.
+ * Used by App.jsx (ProtectedRoute, LoggedOutOnly) and by apiFetch(getToken: getIdToken).
+ */
 import { createContext, useContext, useState, useEffect } from 'react'
 import { onAuthStateChanged, signInWithPopup as firebaseSignInWithPopup, signOut as firebaseSignOut } from 'firebase/auth'
 import { auth, googleAuthProvider } from '../lib/firebase'

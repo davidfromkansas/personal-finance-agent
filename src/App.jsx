@@ -1,3 +1,7 @@
+/**
+ * Root component: AuthProvider, Router, and route definitions.
+ * Protected routes use Firebase auth; unauthenticated users redirect to /. See docs/ONBOARDING.md.
+ */
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { LoggedOutLandingPage } from './pages/LoggedOutLandingPage'
@@ -8,6 +12,7 @@ import { AccountsPage } from './pages/AccountsPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import { TermsOfServicePage } from './pages/TermsOfServicePage'
 
+/** Redirects to / if not logged in; used for /app and sub-routes. */
 function ProtectedRoute({ children }) {
   const { user, ready } = useAuth()
   if (!ready) {
@@ -23,6 +28,7 @@ function ProtectedRoute({ children }) {
   return children
 }
 
+/** Redirects to /app if already logged in; used for landing page. */
 function LoggedOutOnly({ children }) {
   const { user, ready } = useAuth()
   if (!ready) {
@@ -36,6 +42,7 @@ function LoggedOutOnly({ children }) {
   return children
 }
 
+/** Route table: / (landing), /app/* (dashboard, transactions, investments, accounts), /privacy, /terms. */
 function AppRoutes() {
   return (
     <Routes>
