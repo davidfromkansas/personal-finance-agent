@@ -30,5 +30,7 @@ Project documentation: plans, checklists, guides, and decisions.
 | [LAYOUT_8COLUMN_PLAN.md](LAYOUT_8COLUMN_PLAN.md) | Layout / 8-column plan |
 | [MILESTONE_1_IMPLEMENTATION.md](MILESTONE_1_IMPLEMENTATION.md) | Milestone 1 implementation notes |
 | [UPCOMING_SUBSCRIPTIONS_PLAN.md](UPCOMING_SUBSCRIPTIONS_PLAN.md) | Upcoming subscriptions / payments plan |
+| [INVESTMENT_AGENT_PLAN.md](INVESTMENT_AGENT_PLAN.md) | Investment portfolio agent: data model, snapshot tables, milestones |
+| [NET_WORTH_AGENT_PLAN.md](NET_WORTH_AGENT_PLAN.md) | Net worth agent: future data tables for full financial picture |
 
 **Convention:** Add new docs when something is non-obvious, when setting up a new system, or when it would be easy to forget later.

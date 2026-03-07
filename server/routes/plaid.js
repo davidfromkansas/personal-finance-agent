@@ -7,13 +7,15 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import * as jose from 'jose'
-import { Configuration, PlaidApi, PlaidEnvironments } from 'plaid'
+import { getPlaidClient } from '../lib/plaidClient.js'
+import { snapshotInvestments } from '../jobs/snapshotInvestments.js'
 import {
   getPlaidItemsByUserId, getPlaidItemByItemId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow,
   updateTransactionAccountNames,
+  getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot,
 } from '../db.js'
 
 /* ── Unified per-item account cache with request deduplication ────── */
@@ -201,26 +203,6 @@ function invalidateBalanceCache(userId) {
 
 /* ── Plaid client ────────────────────────────────────────────────── */
 
-function getPlaidClient() {
-  const clientId = process.env.PLAID_CLIENT_ID ?? ''
-  const secret = process.env.PLAID_SECRET ?? ''
-  const env = (process.env.PLAID_ENV || 'sandbox').toLowerCase()
-  const basePath = env === 'production'
-    ? PlaidEnvironments.production
-    : env === 'development'
-      ? PlaidEnvironments.development
-      : PlaidEnvironments.sandbox
-  const configuration = new Configuration({
-    basePath,
-    baseOptions: {
-      headers: {
-        'PLAID-CLIENT-ID': clientId,
-        'PLAID-SECRET': secret,
-      },
-    },
-  })
-  return new PlaidApi(configuration)
-}
 
 /* ── Transaction sync helper ─────────────────────────────────────── */
 
@@ -358,6 +340,10 @@ plaidRouter.post('/exchange-token', async (req, res, next) => {
     } catch (syncErr) {
       console.error('Initial transaction sync failed (non-blocking):', syncErr.response?.data ?? syncErr.message)
     }
+
+    // Snapshot new item in the background
+    snapshotInvestments(req.uid)
+      .catch((err) => console.error('[exchange-token] Snapshot failed:', err.message))
 
     invalidateBalanceCache(req.uid)
     res.json({ success: true })
@@ -1081,6 +1067,65 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
   } catch (err) {
     console.error('GET /net-worth-history error:', err)
     res.status(500).json({ error: 'Failed to load net worth history' })
+  }
+})
+
+/** GET /api/plaid/portfolio-history — real portfolio value from snapshots, not back-calculation */
+plaidRouter.get('/portfolio-history', async (req, res) => {
+  try {
+    const VALID_RANGES = ['1W', '1M', '3M', 'YTD', '1Y', 'ALL']
+    const range = (req.query.range || '').toUpperCase()
+    if (!VALID_RANGES.includes(range)) {
+      return res.status(400).json({ error: 'range must be one of: 1W, 1M, 3M, YTD, 1Y, ALL' })
+    }
+
+    const today = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    const todayStr = toDateStr(today)
+
+    // Only call Plaid once per day — skip if a live snapshot already exists for today.
+    // Pass today as a string to avoid DB timezone mismatches.
+    const alreadySnapshotted = await hasTodaySnapshot(req.uid, todayStr)
+    if (!alreadySnapshotted) {
+      await snapshotInvestments(req.uid)
+    }
+
+
+    let sinceDate
+    if (range === '1W') {
+      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)
+    } else if (range === '1M') {
+      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStr(d)
+    } else if (range === '3M') {
+      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStr(d)
+    } else if (range === 'YTD') {
+      sinceDate = `${today.getFullYear()}-01-01`
+    } else if (range === '1Y') {
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStr(d)
+    } else {
+      sinceDate = '2000-01-01' // ALL: return everything we have
+    }
+
+    const accountIdsParam = req.query.account_ids
+    let history
+    if (accountIdsParam) {
+      const accountIds = accountIdsParam.split(',').map((s) => s.trim()).filter(Boolean)
+      history = await getPortfolioAccountHistory(req.uid, sinceDate, accountIds)
+    } else {
+      history = await getPortfolioHistory(req.uid, sinceDate)
+    }
+
+    const latestValue = await getLatestPortfolioValue(req.uid)
+
+    res.json({
+      range,
+      current: latestValue != null ? { value: latestValue } : null,
+      history,
+    })
+  } catch (err) {
+    console.error('GET /portfolio-history error:', err)
+    res.status(500).json({ error: 'Failed to load portfolio history' })
   }
 })
 

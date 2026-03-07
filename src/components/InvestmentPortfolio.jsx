@@ -168,7 +168,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
     const cacheKey = `${range}:${accountIds || 'all'}`
     setChartLoadingRanges((prev) => ({ ...prev, [cacheKey]: true }))
     try {
-      let url = `/api/plaid/investment-history?range=${range}`
+      let url = `/api/plaid/portfolio-history?range=${range}`
       if (accountIds) url += `&account_ids=${accountIds}`
       const result = await apiFetch(url, { getToken })
       setChartCache((prev) => ({

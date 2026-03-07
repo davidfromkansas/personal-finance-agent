@@ -4,6 +4,18 @@ User-facing changes, most recent first.
 
 ---
 
+# Investment portfolio value — Shipped: March 7, 2026
+
+## Current portfolio value
+
+The Investments page now shows your live total investment portfolio value, updated each time you load the page. This pulls your current holdings directly from your linked brokerage accounts via Plaid and sums up the broker-reported value across all accounts.
+
+## Historical chart: coming later
+
+The chart currently shows your portfolio value from today forward. We're not showing historical data yet. Plaid doesn't provide a historical portfolio value API — to show the past we'd have to reconstruct your daily portfolio balance ourselves by combining your transaction history with 3rd party price data, which is too unreliable to show with confidence. As your data accumulates day by day, the chart will fill in naturally over time.
+
+---
+
 # Font and data security updates — Shipped: March 5, 2026
 
 ## JetBrains Mono font across the app

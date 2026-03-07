@@ -253,3 +253,162 @@ export async function getMonthlyCashFlow(userId, months = 24) {
     net: (parseFloat(r.inflows) || 0) - (parseFloat(r.outflows) || 0),
   }))
 }
+
+// ── Investment snapshot writes ─────────────────────────────────────────────
+
+/** Upsert today's total portfolio value. Live writes overwrite; backfill never overwrites live. */
+export async function upsertPortfolioSnapshot(userId, date, totalValue, source) {
+  await query(
+    `INSERT INTO portfolio_snapshots (user_id, date, total_value, source)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id, date) DO UPDATE
+       SET total_value = EXCLUDED.total_value,
+           source = EXCLUDED.source
+     WHERE portfolio_snapshots.source = 'backfill' OR EXCLUDED.source = 'live'`,
+    [userId, date, totalValue, source]
+  )
+}
+
+/** Upsert today's per-account value for one investment account. */
+export async function upsertPortfolioAccountSnapshot(userId, date, itemId, accountId, accountName, institution, value, source) {
+  await query(
+    `INSERT INTO portfolio_account_snapshots (user_id, date, item_id, account_id, account_name, institution, value, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (user_id, date, account_id) DO UPDATE
+       SET value = EXCLUDED.value,
+           account_name = EXCLUDED.account_name,
+           institution = EXCLUDED.institution,
+           source = EXCLUDED.source
+     WHERE portfolio_account_snapshots.source = 'backfill' OR EXCLUDED.source = 'live'`,
+    [userId, date, itemId, accountId, accountName, institution, value, source]
+  )
+}
+
+/** Upsert today's per-security holding for one account. */
+export async function upsertHoldingSnapshot(userId, date, itemId, accountId, accountName, institution, securityId, ticker, securityName, securityType, quantity, price, value, costBasis, currency, source) {
+  await query(
+    `INSERT INTO holdings_snapshots
+       (user_id, date, item_id, account_id, account_name, institution, security_id, ticker, security_name, security_type, quantity, price, value, cost_basis, currency, source)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     ON CONFLICT (user_id, date, account_id, security_id) DO UPDATE
+       SET quantity = EXCLUDED.quantity,
+           price = EXCLUDED.price,
+           value = EXCLUDED.value,
+           cost_basis = EXCLUDED.cost_basis,
+           source = EXCLUDED.source`,
+    [userId, date, itemId, accountId, accountName, institution, securityId, ticker, securityName, securityType, quantity, price, value, costBasis, currency, source]
+  )
+}
+
+/** Upsert security metadata. Called whenever a new security is seen. */
+export async function upsertSecurity(securityId, ticker, name, type, currency) {
+  await query(
+    `INSERT INTO securities (security_id, ticker, name, type, currency, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
+     ON CONFLICT (security_id) DO UPDATE
+       SET ticker = EXCLUDED.ticker,
+           name = EXCLUDED.name,
+           type = EXCLUDED.type,
+           currency = EXCLUDED.currency,
+           updated_at = NOW()`,
+    [securityId, ticker, name, type, currency ?? 'USD']
+  )
+}
+
+/** Insert investment transactions; skip duplicates (idempotent). */
+export async function upsertInvestmentTransactions(txns) {
+  for (const t of txns) {
+    await query(
+      `INSERT INTO investment_transactions
+         (user_id, item_id, account_id, institution, account_name, plaid_investment_txn_id, date, type, subtype, security_id, ticker, security_name, security_type, quantity, price, amount, fees, currency)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+       ON CONFLICT (plaid_investment_txn_id) DO NOTHING`,
+      [t.user_id, t.item_id, t.account_id, t.institution, t.account_name, t.plaid_investment_txn_id, t.date, t.type, t.subtype, t.security_id, t.ticker, t.security_name, t.security_type, t.quantity, t.price, t.amount, t.fees, t.currency ?? 'USD']
+    )
+  }
+}
+
+// ── Investment snapshot reads ──────────────────────────────────────────────
+
+/** Read portfolio_snapshots for the chart. Returns only dates that exist — no fill. */
+export async function getPortfolioHistory(userId, sinceDate) {
+  const { rows } = await query(
+    `SELECT date::text AS date, total_value AS value, source
+     FROM portfolio_snapshots
+     WHERE user_id = $1 AND date >= $2
+     ORDER BY date ASC`,
+    [userId, sinceDate]
+  )
+  return rows.map((r) => ({ date: r.date, value: parseFloat(r.value), source: r.source }))
+}
+
+/** Read portfolio_account_snapshots filtered by account IDs. Sums per day. */
+export async function getPortfolioAccountHistory(userId, sinceDate, accountIds) {
+  const { rows } = await query(
+    `SELECT date::text AS date, SUM(value) AS value
+     FROM portfolio_account_snapshots
+     WHERE user_id = $1 AND date >= $2 AND account_id = ANY($3)
+     GROUP BY date
+     ORDER BY date ASC`,
+    [userId, sinceDate, accountIds]
+  )
+  return rows.map((r) => ({ date: r.date, value: parseFloat(r.value) }))
+}
+
+/** Latest portfolio snapshot value for a user (used as current value). */
+export async function getLatestPortfolioValue(userId) {
+  const { rows } = await query(
+    `SELECT total_value FROM portfolio_snapshots
+     WHERE user_id = $1
+     ORDER BY date DESC LIMIT 1`,
+    [userId]
+  )
+  return rows[0] ? parseFloat(rows[0].total_value) : null
+}
+
+/** Returns true if the user has any portfolio snapshots before today (backfill already done or live data accumulated).
+ *  today must be passed as a 'YYYY-MM-DD' string from Node.js to avoid DB timezone mismatches. */
+export async function hasHistoricalPortfolioData(userId, today) {
+  const { rows } = await query(
+    `SELECT 1 FROM portfolio_snapshots
+     WHERE user_id = $1 AND date < $2
+     LIMIT 1`,
+    [userId, today]
+  )
+  return rows.length > 0
+}
+
+/** Returns true if a live portfolio snapshot already exists for today. Used to skip redundant Plaid calls.
+ *  today must be passed as a 'YYYY-MM-DD' string from Node.js to avoid DB timezone mismatches. */
+export async function hasTodaySnapshot(userId, today) {
+  const { rows } = await query(
+    `SELECT 1 FROM portfolio_snapshots
+     WHERE user_id = $1 AND date = $2 AND source = 'live'
+     LIMIT 1`,
+    [userId, today]
+  )
+  return rows.length > 0
+}
+
+/** Get the most recent holdings snapshot for each security (starting point for quantity reconstruction). */
+export async function getLatestHoldingsSnapshot(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (account_id, security_id)
+       account_id, security_id, ticker, security_name, security_type, quantity, price, value, institution, item_id, currency
+     FROM holdings_snapshots
+     WHERE user_id = $1
+     ORDER BY account_id, security_id, date DESC`,
+    [userId]
+  )
+  return rows
+}
+
+/** Write a backfill snapshot row. ON CONFLICT DO NOTHING — never overwrites live data. */
+export async function insertBackfillPortfolioSnapshot(userId, date, totalValue) {
+  await query(
+    `INSERT INTO portfolio_snapshots (user_id, date, total_value, source)
+     VALUES ($1, $2, $3, 'backfill')
+     ON CONFLICT (user_id, date) DO NOTHING`,
+    [userId, date, totalValue]
+  )
+}
