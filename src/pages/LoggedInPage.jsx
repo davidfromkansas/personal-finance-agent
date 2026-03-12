@@ -897,7 +897,7 @@ export function LoggedInPage() {
                   <button
                     type="button"
                     onClick={() => navigate('/app/transactions')}
-                    className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5"
+                    className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5 cursor-pointer"
                     style={{ fontFamily: 'JetBrains Mono,monospace' }}
                   >
                     View All

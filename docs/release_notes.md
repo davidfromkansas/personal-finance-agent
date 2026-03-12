@@ -4,6 +4,24 @@ User-facing changes, most recent first.
 
 ---
 
+# AI spending assistant (beta) — Shipped: March 12, 2026
+
+## Ask questions about your money
+
+There's now a lightbulb button in the top-left corner of the app. Click it to open the Crumbs AI assistant — a chat interface where you can ask plain-English questions about your spending and transactions.
+
+Examples of what you can ask:
+- "What were my biggest purchases last month?"
+- "How much did I spend on food in February?"
+- "Did I spend more in January or February?"
+- "Show me all my Amazon transactions this year."
+
+The assistant has access to your real transaction data and answers based on what's actually in your accounts. It understands time periods like "this month," "last week," and custom date ranges. Refunds are automatically netted against charges — so if you returned something, the numbers reflect that.
+
+**This is an early beta.** The assistant is limited to spending and transaction questions for now. Balance lookups, investments, and net worth are coming in a later update.
+
+---
+
 # Investment portfolio value — Shipped: March 7, 2026
 
 ## Current portfolio value
