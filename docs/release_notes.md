@@ -18,6 +18,16 @@ Previously, adding a new account would wait for the full transaction sync to com
 
 Opening the Transactions page now starts with the last 30 days of transactions rather than an arbitrary batch of 50. This gives you a meaningful default view that aligns with how most people check their spending.
 
+## Sort and filter transactions
+
+The Transactions page now has a full filter and sort panel:
+
+- **Filter by account** — show transactions from one or more of your linked accounts.
+- **Filter by category** — narrow down to specific spending categories (e.g., Food & Drink, Travel, Shopping).
+- **Filter by date range** — pick a preset (Last 7 days, Last 30 days, Last 3 months, This year) or set a custom start and end date.
+- **Active filter pills** — any active filters appear as dismissible pills below the header so you always know what's being applied and can remove individual filters in one click.
+- **Sort order** — toggle between newest-first and oldest-first using the sort button.
+
 ## Smarter filters
 
 - **Date range filter now works correctly.** Setting a start date and end date filters to exactly that window — a bug was causing the end date to be ignored in some cases.
