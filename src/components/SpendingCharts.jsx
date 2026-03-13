@@ -280,15 +280,15 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
       onClose={() => setDrillBucket(null)}
     />
     <div
-      className={`rounded-[14px] border border-[#e5e7eb] bg-white ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
+      className={`rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
-      <div className="flex items-center justify-between border-b border-[#e5e7eb] px-5 py-3">
+      <div className="flex items-center justify-between rounded-t-[14px] bg-[#b91c1c] px-5 py-3">
         <div className="flex items-center gap-8">
-          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Spending
           </h2>
-          <div className="flex border-l border-[#e5e7eb] pl-6">
+          <div className="flex border-l border-white/20 pl-6">
             {PERIODS.map((p) => (
             <button
               key={p.key}
@@ -296,24 +296,24 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
               onClick={() => setActivePeriod(p.key)}
               className={`relative px-3 py-1.5 text-[13px] font-medium transition-colors ${
                 activePeriod === p.key
-                  ? 'text-[#4f46e5]'
-                  : 'text-[#6a7282] hover:text-[#101828]'
+                  ? 'text-white'
+                  : 'text-white/50 hover:text-white'
               }`}
               style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
               {p.label}
               {activePeriod === p.key && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#4f46e5] rounded-t" />
+                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-white rounded-t" />
               )}
             </button>
           ))}
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          <span className="text-[13px] text-white/60" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {activeConfig?.subtitle}
           </span>
-          <span className="text-[18px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          <span className="text-[18px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {activeLoading ? '—' : formatCurrency(total)}
           </span>
         </div>

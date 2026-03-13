@@ -145,19 +145,20 @@ export async function getLogoUrlsByPlaidTransactionIds(userId, plaidTransactionI
 const reportedDateExpr = 'COALESCE(authorized_date, date)'
 const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number FROM transactions`
 
-export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds } = {}) {
+export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, sort = 'recent', offset = 0 } = {}) {
+  // params shared by both queries — $1 = userId, $2+ = filter values only (no limit/offset)
   const conditions = ['user_id = $1']
-  const params = [userId, limit]
-  let p = 3
+  const params = [userId]
+  let p = 2
 
   if (fromDate && toDate) {
     conditions.push(`${reportedDateExpr} >= $${p++} AND ${reportedDateExpr} <= $${p++}`)
     params.push(fromDate, toDate)
   } else if (afterDate) {
-    conditions.push(`${reportedDateExpr} > $${p++}`)
+    conditions.push(`${reportedDateExpr} >= $${p++}`)
     params.push(afterDate)
   } else if (beforeDate) {
-    conditions.push(`${reportedDateExpr} < $${p++}`)
+    conditions.push(`${reportedDateExpr} <= $${p++}`)
     params.push(beforeDate)
   }
 
@@ -166,12 +167,45 @@ export async function getRecentTransactions(userId, limit = 25, { beforeDate, af
     params.push(accountIds)
   }
 
+  if (categories?.length) {
+    conditions.push(`personal_finance_category = ANY($${p++})`)
+    params.push(categories)
+  }
+
+  const orderBy = sort === 'oldest'      ? `${reportedDateExpr} ASC, created_at ASC`
+               : sort === 'amount_desc'  ? `amount DESC, ${reportedDateExpr} DESC`
+               : sort === 'amount_asc'   ? `amount ASC, ${reportedDateExpr} DESC`
+               :                          `${reportedDateExpr} DESC, created_at DESC`
+
   const where = conditions.join(' AND ')
+  // Inline limit/offset as integers (safe — values come from parseInt server-side)
+  const [{ rows }, { rows: countRows }] = await Promise.all([
+    query(`${TX_SELECT} WHERE ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`, params),
+    query(`SELECT COUNT(*)::int AS total FROM transactions WHERE ${where}`, params),
+  ])
+  return { transactions: rows, total: countRows[0].total }
+}
+
+export async function getTransactionAccounts(userId) {
   const { rows } = await query(
-    `${TX_SELECT} WHERE ${where} ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
-    params
+    `SELECT DISTINCT account_id, account_name
+     FROM transactions
+     WHERE user_id = $1 AND account_name IS NOT NULL
+     ORDER BY account_name`,
+    [userId]
   )
   return rows
+}
+
+export async function getTransactionCategories(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT personal_finance_category
+     FROM transactions
+     WHERE user_id = $1 AND personal_finance_category IS NOT NULL
+     ORDER BY personal_finance_category`,
+    [userId]
+  )
+  return rows.map(r => r.personal_finance_category)
 }
 
 export async function getTransactionsForNetWorth(userId, sinceDate) {

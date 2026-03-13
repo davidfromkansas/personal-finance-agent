@@ -627,14 +627,14 @@ export function TransactionList({ transactions, loading, title, subtitle, header
   return (
     <>
     <TransactionDetailPanel transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} />
-    <div className="flex h-full flex-col rounded-[14px] border border-[#e5e7eb] bg-white">
-      <div className="shrink-0 flex items-center justify-between border-b border-[#e5e7eb] px-5 py-3">
+    <div className="flex h-full flex-col rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
+      <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#18181b] px-5 py-3">
         <div>
-          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {title ?? 'Recent Transactions'}
           </h2>
           {subtitle ? (
-            <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            <p className="mt-1 text-[16px] leading-6 tracking-[-0.31px] text-white/70" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {subtitle}
             </p>
           ) : null}
@@ -934,12 +934,34 @@ export function LoggedInPage() {
             body: { public_token, institution_name: metadata?.institution?.name ?? null },
             getToken: getIdToken,
           })
+          // Show the new connection immediately, but don't refresh charts yet —
+          // the initial sync runs in the background and may take several seconds.
+          // Poll until no connections report syncing: true, then refresh everything.
+          await fetchConnections()
+          const pollInterval = setInterval(async () => {
+            try {
+              const data = await apiFetch('/api/plaid/connections', { getToken: getIdToken })
+              const conns = data.connections ?? []
+              setConnections(conns)
+              if (!conns.some((c) => c.syncing)) {
+                clearInterval(pollInterval)
+                await fetchTransactions()
+                spendingRef.current?.refresh()
+                cashFlowRef.current?.refresh()
+                netWorthRef.current?.refresh()
+                investmentRef.current?.refresh()
+              }
+            } catch {
+              clearInterval(pollInterval)
+            }
+          }, 3000)
+        } else {
+          await Promise.all([fetchConnections(), fetchTransactions()])
+          spendingRef.current?.refresh()
+          cashFlowRef.current?.refresh()
+          netWorthRef.current?.refresh()
+          investmentRef.current?.refresh()
         }
-        await Promise.all([fetchConnections(), fetchTransactions()])
-        spendingRef.current?.refresh()
-        cashFlowRef.current?.refresh()
-        netWorthRef.current?.refresh()
-        investmentRef.current?.refresh()
       } catch (err) {
         setAddError(err.message ?? 'Failed to add connection')
       } finally {
@@ -1138,9 +1160,9 @@ export function LoggedInPage() {
                 <div className="min-w-0 w-full lg:flex-[3] h-[404px] overflow-hidden">
                   <CashFlowChart ref={cashFlowRef} getToken={getIdToken} embeddedHeight={404} />
                 </div>
-                <div className="min-w-0 w-full lg:flex-[2] rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden flex flex-col h-[404px]">
-                  <div className="shrink-0 border-b border-[#e5e7eb] px-5 py-3">
-                    <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                <div className="min-w-0 w-full lg:flex-[2] rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col h-[404px]">
+                  <div className="shrink-0 rounded-t-[14px] bg-[#b45309] px-5 py-3">
+                    <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                       Upcoming Payments
                     </h2>
                   </div>
@@ -1163,7 +1185,7 @@ export function LoggedInPage() {
                   <button
                     type="button"
                     onClick={() => navigate('/app/transactions')}
-                    className="shrink-0 rounded-lg border border-black/10 px-3 py-1.5 text-[13px] font-medium text-[#101828] transition-colors hover:bg-black/5 cursor-pointer"
+                    className="shrink-0 rounded-lg border border-white/20 px-3 py-1.5 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/10 cursor-pointer"
                     style={{ fontFamily: 'JetBrains Mono,monospace' }}
                   >
                     View All
@@ -1173,7 +1195,7 @@ export function LoggedInPage() {
             </div>
             {/* Net Worth + Connections: 4 columns — sits directly below left block (top-aligned) */}
             <div className="col-span-8 flex min-w-0 flex-col lg:col-span-4">
-              <div className="rounded-[14px] border border-[#e5e7eb] bg-white overflow-hidden">
+              <div className="rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden">
               <NetWorthChart ref={netWorthRef} getToken={getIdToken} embedded />
               <div className="border-t border-[#e5e7eb] px-6 pt-4 pb-3">
               <div className="flex flex-wrap items-center justify-between gap-3">

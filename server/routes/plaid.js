@@ -12,7 +12,7 @@ import { snapshotInvestments } from '../jobs/snapshotInvestments.js'
 import {
   getPlaidItemsByUserId, getPlaidItemByItemId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
-  getRecentTransactions, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
+  getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow,
   updateTransactionAccountNames,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot,
@@ -25,6 +25,9 @@ const FAIL_TTL_MS = 60 * 1000
 const itemCache = new Map()
 const inflight = new Map()
 const userItemIndex = new Map()
+
+/* ── Background sync tracking ─────────────────────────────────────── */
+const syncingItems = new Set() // item_ids currently being synced in the background
 
 /* ── Institution logo cache (by institution_id) ───────────────────── */
 const LOGO_CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
@@ -209,6 +212,8 @@ function invalidateBalanceCache(userId) {
 async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken) {
   let cursor = await getSyncCursor(userId, itemId)
   let hasMore = true
+  let page = 0
+  let totalAdded = 0
 
   let accountNames = {}
   try {
@@ -223,6 +228,7 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
   }
 
   while (hasMore) {
+    page++
     const request = {
       access_token: accessToken,
       ...(cursor ? { cursor } : {}),
@@ -230,6 +236,7 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
     }
     const res = await plaidClient.transactionsSync(request)
     const { added, modified, removed, next_cursor, has_more } = res.data
+    console.log(`[sync] item ${itemId} page ${page}: +${added.length} added, ~${modified.length} modified, -${removed.length} removed, has_more=${has_more}`)
 
     const toUpsert = [...added, ...modified].map((t) => {
       const logoUrl = t.logo_url ?? t.logoUrl ?? t.counterparties?.[0]?.logo_url ?? t.counterparties?.[0]?.logoUrl ?? null
@@ -265,6 +272,7 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
       console.log(`[plaid sync] item ${itemId}: ${pendingCount} pending transaction(s) in this batch`)
     }
     if (toUpsert.length) await upsertTransactions(userId, itemId, toUpsert)
+    totalAdded += added.length
 
     const toRemove = (removed ?? []).map((r) => r.transaction_id)
     if (toRemove.length) await deleteTransactionsByPlaidIds(toRemove)
@@ -272,6 +280,7 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
     cursor = next_cursor
     hasMore = has_more
   }
+  console.log(`[sync] item ${itemId} done: ${page} page(s), ${totalAdded} transactions fetched`)
 
   await updateSyncCursor(userId, itemId, cursor)
 }
@@ -306,6 +315,7 @@ plaidRouter.post('/link-token', async (req, res, next) => {
       products: required,
       country_codes: ['US'],
       language: 'en',
+      transactions: { days_requested: 730 },
     }
     if (optionalProducts.length) linkParams.optional_products = optionalProducts
     const webhookUrl = process.env.PLAID_WEBHOOK_URL
@@ -348,11 +358,16 @@ plaidRouter.post('/exchange-token', async (req, res, next) => {
       lastSyncedAt: new Date(),
     })
 
-    try {
-      await syncTransactionsForItem(plaidClient, req.uid, item_id, access_token)
-    } catch (syncErr) {
-      console.error('Initial transaction sync failed (non-blocking):', syncErr.response?.data ?? syncErr.message)
-    }
+    // Run initial sync in the background — don't block the HTTP response.
+    // With days_requested: 730, syncing 2 years of history can take many seconds
+    // and would time out the HTTP connection. Plaid also fires SYNC_UPDATES_AVAILABLE
+    // webhooks as data becomes available, which will trigger incremental syncs.
+    syncingItems.add(item_id)
+    console.log(`[sync] Starting background initial sync for item ${item_id}`)
+    syncTransactionsForItem(plaidClient, req.uid, item_id, access_token)
+      .then(() => console.log(`[sync] Initial sync complete for item ${item_id}`))
+      .catch((err) => console.error(`[sync] Initial sync failed for item ${item_id}:`, err.response?.data ?? err.message))
+      .finally(() => syncingItems.delete(item_id))
 
     // Snapshot new item in the background
     snapshotInvestments(req.uid)
@@ -445,6 +460,7 @@ plaidRouter.get('/connections', async (req, res, next) => {
           status,
           error_code: errorCode,
           last_synced_at: row.last_synced_at,
+          syncing: syncingItems.has(row.item_id),
           accounts,
         }
       })
@@ -457,22 +473,54 @@ plaidRouter.get('/connections', async (req, res, next) => {
   }
 })
 
+/** GET /api/plaid/transactions/categories — distinct personal_finance_category values for the user */
+plaidRouter.get('/transactions/accounts', async (req, res) => {
+  try {
+    const accounts = await getTransactionAccounts(req.uid)
+    res.json({ accounts })
+  } catch (err) {
+    console.error('GET /transactions/accounts error:', err)
+    res.status(500).json({ error: 'Failed to load accounts' })
+  }
+})
+
+plaidRouter.get('/transactions/categories', async (req, res) => {
+  try {
+    const categories = await getTransactionCategories(req.uid)
+    res.json({ categories })
+  } catch (err) {
+    console.error('GET /transactions/categories error:', err)
+    res.status(500).json({ error: 'Failed to load categories' })
+  }
+})
+
 /** GET /api/plaid/transactions — recent transactions across all accounts */
 plaidRouter.get('/transactions', async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 25, 500)
+    const limit = Math.min(parseInt(req.query.limit) || 50, 500)
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0)
+    const sort = ['recent', 'oldest', 'amount_desc', 'amount_asc'].includes(req.query.sort)
+      ? req.query.sort : 'recent'
     const fromDate = req.query.from_date || null
     const toDate = req.query.to_date || null
     const beforeDate = req.query.before_date || null
     const afterDate = req.query.after_date || null
-    const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
-    const opts = {}
+
+    // account_ids and categories support both repeated params (?account_ids=a&account_ids=b)
+    // and comma-separated (?account_ids=a,b) for backwards compatibility
+    const rawAccountIds = [].concat(req.query.account_ids ?? []).flatMap(v => v.split(',')).filter(Boolean)
+    const rawCategories = [].concat(req.query.categories ?? []).flatMap(v => v.split(',')).filter(Boolean)
+
+    const opts = { sort, offset }
     if (fromDate && toDate) { opts.fromDate = fromDate; opts.toDate = toDate }
+    else if (afterDate && beforeDate) { opts.fromDate = afterDate; opts.toDate = beforeDate }
     else if (afterDate) opts.afterDate = afterDate
     else if (beforeDate) opts.beforeDate = beforeDate
-    if (accountIds) opts.accountIds = accountIds
-    const rows = await getRecentTransactions(req.uid, limit, opts)
-    res.json({ transactions: rows })
+    if (rawAccountIds.length) opts.accountIds = rawAccountIds
+    if (rawCategories.length) opts.categories = rawCategories
+
+    const { transactions, total } = await getRecentTransactions(req.uid, limit, opts)
+    res.json({ transactions, total, has_more: offset + transactions.length < total })
   } catch (err) {
     console.error('GET /transactions error:', err)
     res.status(500).json({ error: 'Failed to load transactions' })

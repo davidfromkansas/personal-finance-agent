@@ -122,20 +122,20 @@ export const CashFlowChart = forwardRef(function CashFlowChart({ getToken, embed
 
   return (
     <div
-      className="rounded-[14px] border border-[#e5e7eb] bg-white flex flex-col overflow-hidden"
+      className="rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex flex-col overflow-hidden"
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
-      <div className="shrink-0 flex items-center justify-between border-b border-[#e5e7eb] px-5 py-3">
-        <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+      <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#1d4ed8] px-5 py-3">
+        <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           Cash flow
         </h2>
         <div className="flex items-center gap-4">
           {latestMonth && (
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            <span className="text-[13px] text-white/60" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {latestMonth.label}
             </span>
           )}
-          <span className="text-[18px] font-semibold" style={{ fontFamily: 'JetBrains Mono,monospace', color: netLatest >= 0 ? BAR_POSITIVE_COLOR : BAR_NEGATIVE_COLOR }}>
+          <span className="text-[18px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {loading ? '—' : formatCurrency(netLatest)}
           </span>
         </div>

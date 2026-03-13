@@ -317,25 +317,25 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
   }
 
   return (
-    <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
+    <div className="rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
       {/* Header + range toggles */}
-      <div className="flex flex-col gap-3 border-b border-[#e5e7eb] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#7c3aed] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Investment Portfolio
             {selectedAccountKey && (
-              <span className="ml-1.5 text-[#7c3aed]">
+              <span className="ml-1.5 text-white/70">
                 · {accounts.find((a) => a.key === selectedAccountKey)?.account ?? 'Account'}
               </span>
             )}
           </h2>
           <div className="flex items-baseline gap-3">
-            <span className="text-[28px] font-bold tracking-tight text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            <span className="text-[28px] font-bold tracking-tight text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {holdingsLoading && chartLoading ? '—' : formatCurrency(displayValue)}
             </span>
             {!holdingsLoading && totalValue > 0 && (
               <span
-                className={`text-[14px] font-semibold ${isPositiveTotal ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
+                className={`text-[14px] font-semibold ${isPositiveTotal ? 'text-[#6ee7b7]' : 'text-[#fca5a5]'}`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {isPositiveTotal ? '+' : ''}{formatCurrency(totalGain)} ({formatPct(totalGainPct)})
@@ -343,7 +343,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
             )}
           </div>
           {!holdingsLoading && !chartLoading && chartChange && (
-            <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            <p className="mt-0.5 text-[12px] text-white/60" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {chartChange.diff >= 0 ? '+' : ''}{formatCurrency(chartChange.diff)} ({formatPct(chartChange.pct)}) over period
             </p>
           )}
@@ -356,8 +356,8 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
               onClick={() => setActiveRange(r.key)}
               className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
                 activeRange === r.key
-                  ? 'bg-[#7c3aed] text-white'
-                  : 'bg-[#f3f4f6] text-[#6a7282] hover:bg-[#e5e7eb] hover:text-[#101828]'
+                  ? 'bg-white text-[#7c3aed]'
+                  : 'bg-white/15 text-white/70 hover:bg-white/25 hover:text-white'
               }`}
               style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >

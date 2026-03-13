@@ -32,5 +32,7 @@ Project documentation: plans, checklists, guides, and decisions.
 | [UPCOMING_SUBSCRIPTIONS_PLAN.md](UPCOMING_SUBSCRIPTIONS_PLAN.md) | Upcoming subscriptions / payments plan |
 | [INVESTMENT_AGENT_PLAN.md](INVESTMENT_AGENT_PLAN.md) | Investment portfolio agent: data model, snapshot tables, milestones |
 | [NET_WORTH_AGENT_PLAN.md](NET_WORTH_AGENT_PLAN.md) | Net worth agent: future data tables for full financial picture |
+| [AKOYA_INTEGRATION_PLAN.md](AKOYA_INTEGRATION_PLAN.md) | Akoya (FDX) integration: OAuth flow, data normalization, milestones |
+| [TRANSACTIONS_PAGE_PLAN.md](TRANSACTIONS_PAGE_PLAN.md) | Transactions page: full-page layout, sort, filter (account/date/category), server-side with caching |
 
 **Convention:** Add new docs when something is non-obvious, when setting up a new system, or when it would be easy to forget later.

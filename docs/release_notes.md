@@ -4,6 +4,29 @@ User-facing changes, most recent first.
 
 ---
 
+# Transactions page overhaul and faster account connections — Shipped: March 13, 2026
+
+## More transaction history on new connections
+
+When you link a new bank account, Crumbs now requests up to 24 months of transaction history from Plaid (previously it used the default, which varies by institution). The extra history fills in automatically in the background — you don't have to do anything.
+
+## Connecting an account no longer blocks the dashboard
+
+Previously, adding a new account would wait for the full transaction sync to complete before letting you continue. Now the sync happens in the background while the dashboard stays responsive. The connections list shows when a sync is in progress; charts and transactions refresh automatically once it finishes.
+
+## Transactions page defaults to the last 30 days
+
+Opening the Transactions page now starts with the last 30 days of transactions rather than an arbitrary batch of 50. This gives you a meaningful default view that aligns with how most people check their spending.
+
+## Smarter filters
+
+- **Date range filter now works correctly.** Setting a start date and end date filters to exactly that window — a bug was causing the end date to be ignored in some cases.
+- **Filter panel loads instantly.** Account and category options in the filter panel now come from your local transaction data instead of a live Plaid balance call, so the list appears immediately rather than after a network round-trip.
+- **Empty state is clearer.** If filters produce no results, you see a "No transactions match your filters" message with a one-click button to clear them. If you genuinely have no transactions, you see a different message.
+- **Sort button has a clearer icon.** The sort toggle button now uses a proper two-way sort icon.
+
+---
+
 # Transaction details, logos, and spending drill-down — Shipped: March 12, 2026
 
 ## Transaction detail panel

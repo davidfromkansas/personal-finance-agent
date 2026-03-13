@@ -141,18 +141,18 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
 
   return (
     <div className={`bg-white ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-[#e5e7eb]'}`}>
-      <div className="flex flex-col gap-3 border-b border-[#e5e7eb] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#0e7490] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Net Worth
           </h2>
           <div className="flex items-baseline gap-3">
-            <span className="text-[28px] font-bold tracking-tight text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            <span className="text-[28px] font-bold tracking-tight text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {loading ? '—' : formatCurrency(current?.net_worth)}
             </span>
             {!loading && change && (
               <span
-                className={`text-[14px] font-semibold ${isPositiveChange ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
+                className={`text-[14px] font-semibold ${isPositiveChange ? 'text-[#86efac]' : 'text-[#fca5a5]'}`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {isPositiveChange ? '+' : ''}{formatCurrency(change.diff)} ({isPositiveChange ? '+' : ''}{change.pct.toFixed(1)}%)
@@ -161,8 +161,8 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
           </div>
           {!loading && current && (
             <div className="mt-1 flex gap-4 text-[12px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              <span className="text-[#16a34a]">Assets: {formatCurrency(current.assets)}</span>
-              <span className="text-[#dc2626]">Debts: {formatCurrency(current.debts)}</span>
+              <span className="text-[#86efac]">Assets: {formatCurrency(current.assets)}</span>
+              <span className="text-[#fca5a5]">Debts: {formatCurrency(current.debts)}</span>
             </div>
           )}
         </div>
@@ -175,8 +175,8 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
               onClick={() => handleRangeChange(r.key)}
               className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
                 activeRange === r.key
-                  ? 'bg-[#4f46e5] text-white'
-                  : 'bg-[#f3f4f6] text-[#6a7282] hover:bg-[#e5e7eb] hover:text-[#101828]'
+                  ? 'bg-white text-[#0e7490]'
+                  : 'bg-white/15 text-white/70 hover:bg-white/25 hover:text-white'
               }`}
               style={{ fontFamily: 'JetBrains Mono,monospace' }}
             >
