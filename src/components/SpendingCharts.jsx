@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
 } from 'recharts'
 import { apiFetch } from '../lib/api'
 
@@ -57,11 +57,127 @@ function StackedTooltip({ active, payload, label }) {
   )
 }
 
+function SpendingDrillPanel({ bucket, period, accountIds, getToken, onClose }) {
+  const [transactions, setTransactions] = useState(null)
+  const open = !!bucket
+
+  useEffect(() => {
+    if (!bucket) return
+    setTransactions(null)
+    const { fromDate, toDate } = bucketDateRange(bucket.date, period)
+    let url = `/api/plaid/transactions?limit=500&from_date=${fromDate}&to_date=${toDate}`
+    if (accountIds?.length) url += `&account_ids=${accountIds.join(',')}`
+    apiFetch(url, { getToken })
+      .then((d) => setTransactions((d.transactions ?? []).filter((t) => t.amount > 0)))
+      .catch(() => setTransactions([]))
+  }, [bucket, period, accountIds, getToken])
+
+  const total = transactions?.reduce((s, t) => s + t.amount, 0) ?? 0
+
+  return (
+    <>
+      {open && (
+        <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm" onClick={onClose} />
+      )}
+      <div className={`fixed right-0 top-0 z-50 flex h-full w-1/3 flex-col border-l border-[#d9d9d9] bg-white shadow-xl transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+        {/* Header — identical to TransactionDetailPanel */}
+        <div className="flex shrink-0 items-center justify-between border-b border-[#d9d9d9] px-5 py-4">
+          <span className="text-[16px] font-normal text-[#1e1e1e]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            {bucket?.label ?? ''}
+            {transactions && (
+              <span className="ml-2 text-[13px] text-[#6a7282]">
+                — {formatCurrency(total)} · {transactions.length} txn{transactions.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-[#999] hover:text-[#1e1e1e] transition-colors text-xl leading-none cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto">
+          {!transactions ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading…</span>
+            </div>
+          ) : transactions.length === 0 ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions</span>
+            </div>
+          ) : (
+            <div className="divide-y divide-[#f3f4f6]">
+              {transactions.map((t) => {
+                const logo = t.logo_url ?? (t.website ? `https://www.google.com/s2/favicons?domain=${t.website.replace(/^https?:\/\//, '').split('/')[0]}&sz=64` : null)
+                const initial = (t.name ?? '?')[0].toUpperCase()
+                const displayAmt = `-$${Math.abs(t.amount).toFixed(2)}`
+                const dateStr = t.authorized_date
+                  ? new Date(String(t.authorized_date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  : null
+                return (
+                  <div key={t.plaid_transaction_id ?? t.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {logo ? (
+                        <div className="relative h-9 w-9 shrink-0">
+                          <img src={logo} alt="" className="h-9 w-9 rounded-full border border-[#e5e7eb] object-contain bg-white"
+                            onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+                          <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[12px] font-bold text-[#4a5565]"
+                            style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
+                        </div>
+                      ) : (
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[12px] font-bold text-[#4a5565]"
+                          style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-[14px] font-medium text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{t.name}</p>
+                        <p className="text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                          {[t.account_name, dateStr].filter(Boolean).join(' · ')}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[14px] font-bold text-[#f54900]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                      {displayAmt}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+function bucketDateRange(dateKey, period) {
+  if (period === 'week') {
+    return { fromDate: dateKey, toDate: dateKey }
+  } else if (period === 'month') {
+    const start = new Date(dateKey + 'T00:00:00')
+    const end = new Date(start)
+    end.setDate(end.getDate() + 6)
+    const pad = (n) => String(n).padStart(2, '0')
+    return {
+      fromDate: dateKey,
+      toDate: `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`,
+    }
+  } else {
+    const [y, m] = dateKey.split('-')
+    const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate()
+    return { fromDate: `${dateKey}-01`, toDate: `${dateKey}-${String(lastDay).padStart(2, '0')}` }
+  }
+}
+
 export const SpendingCharts = forwardRef(function SpendingCharts({ connections, getToken, embeddedHeight }, ref) {
   const [activePeriod, setActivePeriod] = useState('week')
   const [data, setData] = useState({ week: null, month: null, year: null })
   const [loading, setLoading] = useState({ week: true, month: true, year: true })
   const [selectedAccountIds, setSelectedAccountIds] = useState(null)
+  const [drillBucket, setDrillBucket] = useState(null)
 
   const allAccounts = useMemo(() => {
     const list = []
@@ -155,6 +271,14 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
   }
 
   return (
+    <>
+    <SpendingDrillPanel
+      bucket={drillBucket}
+      period={activePeriod}
+      accountIds={selectedAccountIds}
+      getToken={getToken}
+      onClose={() => setDrillBucket(null)}
+    />
     <div
       className={`rounded-[14px] border border-[#e5e7eb] bg-white ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
@@ -210,7 +334,16 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={activeBuckets} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+            <BarChart
+              data={activeBuckets}
+              margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
+              style={{ cursor: 'pointer' }}
+              onClick={(chartData) => {
+                if (!chartData?.activeLabel) return
+                const b = activeBuckets.find((bkt) => bkt.label === chartData.activeLabel)
+                if (b) setDrillBucket({ date: b.date, label: b.label })
+              }}
+            >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis
                 dataKey="label"
@@ -233,6 +366,8 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
                   fill={stableColorMap[name] || colorForIndex(i)}
                   maxBarSize={64}
                   radius={i === activeAccounts.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                  style={{ cursor: 'pointer' }}
+                  onClick={(barData) => setDrillBucket({ date: barData.date, label: barData.label })}
                 />
               ))}
             </BarChart>
@@ -269,5 +404,6 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
         </div>
       )}
     </div>
+    </>
   )
 })

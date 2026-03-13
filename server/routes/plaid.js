@@ -226,13 +226,17 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
     const request = {
       access_token: accessToken,
       ...(cursor ? { cursor } : {}),
-      options: { personal_finance_category_version: 'v2' },
+      options: { personal_finance_category_version: 'v2', include_original_description: true },
     }
     const res = await plaidClient.transactionsSync(request)
     const { added, modified, removed, next_cursor, has_more } = res.data
 
     const toUpsert = [...added, ...modified].map((t) => {
       const logoUrl = t.logo_url ?? t.logoUrl ?? t.counterparties?.[0]?.logo_url ?? t.counterparties?.[0]?.logoUrl ?? null
+      const loc = t.location ?? null
+      const location = (loc && Object.values(loc).some(Boolean)) ? loc : null
+      const paymentMeta = t.payment_meta ?? null
+      const hasPaymentMeta = paymentMeta && Object.values(paymentMeta).some(Boolean)
       return {
         account_id: t.account_id,
         transaction_id: t.transaction_id,
@@ -245,6 +249,15 @@ async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken)
         personal_finance_category: t.personal_finance_category?.primary ?? null,
         pending: t.pending === true,
         logo_url: logoUrl,
+        original_description: t.original_description ?? null,
+        merchant_name: t.merchant_name ?? null,
+        location,
+        website: t.website ?? null,
+        personal_finance_category_detailed: t.personal_finance_category?.detailed ?? null,
+        personal_finance_category_confidence: t.personal_finance_category?.confidence_level ?? null,
+        counterparties: t.counterparties?.length ? t.counterparties : null,
+        payment_meta: hasPaymentMeta ? paymentMeta : null,
+        check_number: t.check_number ?? null,
       }
     })
     const pendingCount = toUpsert.filter((t) => t.pending).length
@@ -447,10 +460,17 @@ plaidRouter.get('/connections', async (req, res, next) => {
 /** GET /api/plaid/transactions — recent transactions across all accounts */
 plaidRouter.get('/transactions', async (req, res, next) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 25, 200)
+    const limit = Math.min(parseInt(req.query.limit) || 25, 500)
+    const fromDate = req.query.from_date || null
+    const toDate = req.query.to_date || null
     const beforeDate = req.query.before_date || null
     const afterDate = req.query.after_date || null
-    const opts = (beforeDate && { beforeDate }) || (afterDate && { afterDate }) || {}
+    const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
+    const opts = {}
+    if (fromDate && toDate) { opts.fromDate = fromDate; opts.toDate = toDate }
+    else if (afterDate) opts.afterDate = afterDate
+    else if (beforeDate) opts.beforeDate = beforeDate
+    if (accountIds) opts.accountIds = accountIds
     const rows = await getRecentTransactions(req.uid, limit, opts)
     res.json({ transactions: rows })
   } catch (err) {

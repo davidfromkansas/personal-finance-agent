@@ -100,13 +100,17 @@ export async function upsertTransactions(userId, itemId, txns) {
   if (!txns.length) return
   for (const t of txns) {
     await query(
-      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, authorized_date, account_name, payment_channel, personal_finance_category, pending, logo_url)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO transactions (user_id, item_id, account_id, plaid_transaction_id, name, amount, date, authorized_date, account_name, payment_channel, personal_finance_category, pending, logo_url, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
        ON CONFLICT (plaid_transaction_id) DO UPDATE SET
          name = EXCLUDED.name, amount = EXCLUDED.amount, date = EXCLUDED.date, authorized_date = EXCLUDED.authorized_date,
          account_name = EXCLUDED.account_name, payment_channel = EXCLUDED.payment_channel,
-         personal_finance_category = EXCLUDED.personal_finance_category, pending = EXCLUDED.pending, logo_url = EXCLUDED.logo_url`,
-      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.authorized_date ?? null, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null, t.pending === true, t.logo_url ?? null]
+         personal_finance_category = EXCLUDED.personal_finance_category, pending = EXCLUDED.pending, logo_url = EXCLUDED.logo_url,
+         original_description = EXCLUDED.original_description, merchant_name = EXCLUDED.merchant_name, location = EXCLUDED.location,
+         website = EXCLUDED.website, personal_finance_category_detailed = EXCLUDED.personal_finance_category_detailed,
+         personal_finance_category_confidence = EXCLUDED.personal_finance_category_confidence,
+         counterparties = EXCLUDED.counterparties, payment_meta = EXCLUDED.payment_meta, check_number = EXCLUDED.check_number`,
+      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.authorized_date ?? null, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null, t.pending === true, t.logo_url ?? null, t.original_description ?? null, t.merchant_name ?? null, t.location ? JSON.stringify(t.location) : null, t.website ?? null, t.personal_finance_category_detailed ?? null, t.personal_finance_category_confidence ?? null, t.counterparties?.length ? JSON.stringify(t.counterparties) : null, t.payment_meta ? JSON.stringify(t.payment_meta) : null, t.check_number ?? null]
     )
   }
 }
@@ -139,27 +143,33 @@ export async function getLogoUrlsByPlaidTransactionIds(userId, plaidTransactionI
 }
 
 const reportedDateExpr = 'COALESCE(authorized_date, date)'
-export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate } = {}) {
-  if (afterDate) {
-    const { rows } = await query(
-      `SELECT id, plaid_transaction_id, name, amount, date, authorized_date, account_name, account_id, item_id, pending
-       FROM transactions WHERE user_id = $1 AND ${reportedDateExpr} > $3 ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
-      [userId, limit, afterDate]
-    )
-    return rows
+const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number FROM transactions`
+
+export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds } = {}) {
+  const conditions = ['user_id = $1']
+  const params = [userId, limit]
+  let p = 3
+
+  if (fromDate && toDate) {
+    conditions.push(`${reportedDateExpr} >= $${p++} AND ${reportedDateExpr} <= $${p++}`)
+    params.push(fromDate, toDate)
+  } else if (afterDate) {
+    conditions.push(`${reportedDateExpr} > $${p++}`)
+    params.push(afterDate)
+  } else if (beforeDate) {
+    conditions.push(`${reportedDateExpr} < $${p++}`)
+    params.push(beforeDate)
   }
-  if (beforeDate) {
-    const { rows } = await query(
-      `SELECT id, plaid_transaction_id, name, amount, date, authorized_date, account_name, account_id, item_id, pending
-       FROM transactions WHERE user_id = $1 AND ${reportedDateExpr} < $3 ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
-      [userId, limit, beforeDate]
-    )
-    return rows
+
+  if (accountIds?.length) {
+    conditions.push(`account_id = ANY($${p++})`)
+    params.push(accountIds)
   }
+
+  const where = conditions.join(' AND ')
   const { rows } = await query(
-    `SELECT id, plaid_transaction_id, name, amount, date, authorized_date, account_name, account_id, item_id, pending
-     FROM transactions WHERE user_id = $1 ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
-    [userId, limit]
+    `${TX_SELECT} WHERE ${where} ORDER BY ${reportedDateExpr} DESC, created_at DESC LIMIT $2`,
+    params
   )
   return rows
 }
@@ -202,19 +212,20 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
     ? [userId, null, accountIds, NON_SPENDING_CATEGORIES]
     : [userId, null, NON_SPENDING_CATEGORIES]
 
+  const txDate = 'COALESCE(authorized_date, date)'
   let bucketExpr, groupExpr
   if (period === 'week') {
     params[1] = 6 // 7 calendar days: today-6 through today
-    bucketExpr = 'date::text'
-    groupExpr = 'date'
+    bucketExpr = `(${txDate})::text`
+    groupExpr = txDate
   } else if (period === 'month') {
     params[1] = 28
-    bucketExpr = "date_trunc('week', date)::date::text"
-    groupExpr = "date_trunc('week', date)"
+    bucketExpr = `date_trunc('week', ${txDate})::date::text`
+    groupExpr = `date_trunc('week', ${txDate})`
   } else {
     params[1] = 365
-    bucketExpr = "to_char(date, 'YYYY-MM')"
-    groupExpr = "to_char(date, 'YYYY-MM')"
+    bucketExpr = `to_char(${txDate}, 'YYYY-MM')`
+    groupExpr = `to_char(${txDate}, 'YYYY-MM')`
   }
 
   const sql = `
@@ -223,7 +234,7 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
            SUM(amount) AS total
     FROM transactions
     WHERE user_id = $1 AND amount > 0
-      AND date >= CURRENT_DATE - ($2 || ' days')::interval
+      AND ${txDate} >= CURRENT_DATE - ($2 || ' days')::interval
       ${filterClause} ${pfcClause}
     GROUP BY ${groupExpr}, account_name
     ORDER BY bucket ASC, account_name ASC`
@@ -236,12 +247,12 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
 export async function getMonthlyCashFlow(userId, months = 24) {
   const n = Math.min(Math.max(months, 1), 36)
   const { rows } = await query(
-    `SELECT to_char(date_trunc('month', date), 'YYYY-MM') AS month,
+    `SELECT to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') AS month,
             SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) AS inflows,
             SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS outflows
      FROM transactions
      WHERE user_id = $1
-     GROUP BY date_trunc('month', date)
+     GROUP BY date_trunc('month', COALESCE(authorized_date, date))
      ORDER BY month DESC
      LIMIT $2`,
     [userId, n]

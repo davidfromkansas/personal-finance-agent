@@ -4,6 +4,34 @@ User-facing changes, most recent first.
 
 ---
 
+# Transaction details, logos, and spending drill-down — Shipped: March 12, 2026
+
+## Transaction detail panel
+
+Click any transaction row — on the dashboard, the Transactions page, or anywhere else — to open a full-detail side panel. The panel shows everything Crumbs knows about that transaction:
+
+- **Merchant info**: name, logo, website link, payment channel
+- **Categories**: primary Plaid category, detailed sub-category, and Plaid's confidence level (High / Medium / Low)
+- **Counterparties**: the businesses or people on the other side of the payment, with their logos, type (e.g., merchant, financial institution), and websites
+- **Payment details**: reference number, processor, payer/payee names, reason, and check number for check payments
+- **Location**: city, region, country, and — when a street address isn't available — a clickable Google Maps link using lat/lon coordinates
+
+All fields are always shown. If Plaid doesn't return a value, the field displays `—` so you always see what data exists.
+
+## Merchant logos everywhere
+
+Transaction rows now show a logo next to every transaction. If Plaid provides a logo directly, we use that. Otherwise we fall back to the merchant's favicon (fetched from their website). If no logo is available at all, a circle with the merchant's initial is shown instead — so every row always has a visual indicator.
+
+## Spending chart drill-down
+
+Click any bar in the spending chart (weekly, monthly, or yearly view) to open a panel showing the individual transactions that make up that bar. You can click directly on a bar or on the empty space above it. The panel uses the same layout as the transaction list so the experience is consistent.
+
+## Spending chart uses transaction date
+
+Spending bars now bucket transactions by the date the transaction actually occurred (the authorized/posted date) rather than the date Plaid first reported it. This means your spending totals line up with when you actually spent the money.
+
+---
+
 # AI spending assistant (beta) — Shipped: March 12, 2026
 
 ## Ask questions about your money
