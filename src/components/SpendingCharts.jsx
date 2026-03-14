@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { apiFetch } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
+import { useSpending } from '../hooks/usePlaidQueries'
 
 const PERIODS = [
   { key: 'week', label: 'Daily', subtitle: 'Last 7 days' },
@@ -57,7 +59,8 @@ function StackedTooltip({ active, payload, label }) {
   )
 }
 
-function SpendingDrillPanel({ bucket, period, accountIds, getToken, onClose }) {
+function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
+  const { getIdToken } = useAuth()
   const [transactions, setTransactions] = useState(null)
   const open = !!bucket
 
@@ -67,10 +70,10 @@ function SpendingDrillPanel({ bucket, period, accountIds, getToken, onClose }) {
     const { fromDate, toDate } = bucketDateRange(bucket.date, period)
     let url = `/api/plaid/transactions?limit=500&from_date=${fromDate}&to_date=${toDate}`
     if (accountIds?.length) url += `&account_ids=${accountIds.join(',')}`
-    apiFetch(url, { getToken })
+    apiFetch(url, { getToken: getIdToken })
       .then((d) => setTransactions((d.transactions ?? []).filter((t) => t.amount > 0)))
       .catch(() => setTransactions([]))
-  }, [bucket, period, accountIds, getToken])
+  }, [bucket, period, accountIds, getIdToken])
 
   const total = transactions?.reduce((s, t) => s + t.amount, 0) ?? 0
 
@@ -172,12 +175,14 @@ function bucketDateRange(dateKey, period) {
   }
 }
 
-export const SpendingCharts = forwardRef(function SpendingCharts({ connections, getToken, embeddedHeight }, ref) {
+export function SpendingCharts({ connections, embeddedHeight }) {
   const [activePeriod, setActivePeriod] = useState('week')
-  const [data, setData] = useState({ week: null, month: null, year: null })
-  const [loading, setLoading] = useState({ week: true, month: true, year: true })
   const [selectedAccountIds, setSelectedAccountIds] = useState(null)
   const [drillBucket, setDrillBucket] = useState(null)
+
+  const { data: spendingData, isLoading: activeLoading } = useSpending(activePeriod, selectedAccountIds ?? [])
+  const activeBuckets = spendingData?.buckets ?? []
+  const activeAccounts = spendingData?.accounts ?? []
 
   const allAccounts = useMemo(() => {
     const list = []
@@ -206,34 +211,6 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
 
   const allSelected = selectedAccountIds === null
 
-  const fetchPeriod = useCallback(async (period, accountIds) => {
-    setLoading((prev) => ({ ...prev, [period]: true }))
-    try {
-      let url = `/api/plaid/spending-summary?period=${period}`
-      if (accountIds) url += `&account_ids=${accountIds.join(',')}`
-      const result = await apiFetch(url, { getToken })
-      setData((prev) => ({
-        ...prev,
-        [period]: { buckets: result.buckets ?? [], accounts: result.accounts ?? [] },
-      }))
-    } catch (err) {
-      console.error(`Failed to fetch ${period} spending:`, err)
-      setData((prev) => ({ ...prev, [period]: { buckets: [], accounts: [] } }))
-    } finally {
-      setLoading((prev) => ({ ...prev, [period]: false }))
-    }
-  }, [getToken])
-
-  useEffect(() => {
-    PERIODS.forEach((p) => fetchPeriod(p.key, selectedAccountIds))
-  }, [fetchPeriod, selectedAccountIds])
-
-  useImperativeHandle(ref, () => ({
-    refresh() {
-      PERIODS.forEach((p) => fetchPeriod(p.key, selectedAccountIds))
-    },
-  }), [fetchPeriod, selectedAccountIds])
-
   function toggleLegendItem(accountId) {
     if (allSelected) {
       setSelectedAccountIds([accountId])
@@ -247,10 +224,6 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
   }
 
   const activeConfig = PERIODS.find((p) => p.key === activePeriod)
-  const activePeriodData = data[activePeriod]
-  const activeLoading = loading[activePeriod]
-  const activeBuckets = activePeriodData?.buckets ?? []
-  const activeAccounts = activePeriodData?.accounts ?? []
 
   const total = useMemo(() => {
     return activeBuckets.reduce((s, b) => {
@@ -276,7 +249,6 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
       bucket={drillBucket}
       period={activePeriod}
       accountIds={selectedAccountIds}
-      getToken={getToken}
       onClose={() => setDrillBucket(null)}
     />
     <div
@@ -406,4 +378,4 @@ export const SpendingCharts = forwardRef(function SpendingCharts({ connections, 
     </div>
     </>
   )
-})
+}

@@ -3,7 +3,9 @@
  * Protected routes use Firebase auth; unauthenticated users redirect to /. See docs/ONBOARDING.md.
  */
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import queryClient from './lib/queryClient'
 import { LoggedOutLandingPage } from './pages/LoggedOutLandingPage'
 import { LoggedInPage } from './pages/LoggedInPage'
 import { TransactionsPage } from './pages/TransactionsPage'
@@ -95,10 +97,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </AuthProvider>
+    </QueryClientProvider>
   )
 }

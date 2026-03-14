@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, useImperativeHandle,
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { apiFetch } from '../lib/api'
+import { useInvestments, useAccounts, usePortfolioHistory } from '../hooks/usePlaidQueries'
+
 
 const RANGES = [
   { key: '1W', label: '1W' },
@@ -128,67 +129,21 @@ function MoverCard({ holding }) {
   )
 }
 
-export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ getToken }, ref) {
-  const [holdings, setHoldings] = useState([])
-  const [holdingsLoading, setHoldingsLoading] = useState(true)
+export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, ref) {
+  const { data: investmentsData, isLoading: holdingsLoading, refetch: refetchInvestments } = useInvestments()
+  const { data: accountsData, refetch: refetchAccounts } = useAccounts()
+  const holdings = investmentsData?.holdings ?? []
+  const investmentAccounts = useMemo(
+    () => (accountsData?.accounts ?? []).filter((a) => (a.type || '').toLowerCase() === 'investment'),
+    [accountsData]
+  )
+
   const scrollRef = useRef(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
   const [activeRange, setActiveRange] = useState('1M')
-  const [chartCache, setChartCache] = useState({})
-  const [chartLoadingRanges, setChartLoadingRanges] = useState({})
   const [selectedAccountKey, setSelectedAccountKey] = useState(null)
-
-  const [investmentAccounts, setInvestmentAccounts] = useState([])
-
-  const fetchHoldings = useCallback(async () => {
-    setHoldingsLoading(true)
-    try {
-      const data = await apiFetch('/api/plaid/investments', { getToken })
-      setHoldings(data.holdings ?? [])
-    } catch (err) {
-      console.error('Failed to load investment portfolio:', err)
-      setHoldings([])
-    } finally {
-      setHoldingsLoading(false)
-    }
-  }, [getToken])
-
-  const fetchInvestmentAccounts = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/plaid/accounts', { getToken })
-      setInvestmentAccounts(
-        (data.accounts ?? []).filter((a) => (a.type || '').toLowerCase() === 'investment')
-      )
-    } catch (_) {}
-  }, [getToken])
-
-  const fetchChartRange = useCallback(async (range, accountIds) => {
-    const cacheKey = `${range}:${accountIds || 'all'}`
-    setChartLoadingRanges((prev) => ({ ...prev, [cacheKey]: true }))
-    try {
-      let url = `/api/plaid/portfolio-history?range=${range}`
-      if (accountIds) url += `&account_ids=${accountIds}`
-      const result = await apiFetch(url, { getToken })
-      setChartCache((prev) => ({
-        ...prev,
-        [cacheKey]: { history: result.history ?? [], current: result.current ?? null },
-      }))
-    } catch (err) {
-      console.error(`Failed to fetch investment history (${range}):`, err)
-      setChartCache((prev) => ({
-        ...prev,
-        [cacheKey]: { history: [], current: null },
-      }))
-    } finally {
-      setChartLoadingRanges((prev) => ({ ...prev, [cacheKey]: false }))
-    }
-  }, [getToken])
-
-  const fetchAllChartRanges = useCallback((accountIds) => {
-    RANGES.forEach((r) => fetchChartRange(r.key, accountIds))
-  }, [fetchChartRange])
 
   const accounts = useMemo(() => {
     if (holdings.length > 0) {
@@ -220,18 +175,15 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
     return acc ? acc.accountIds.join(',') : null
   }, [selectedAccountKey, accounts])
 
+  const { data: chartData, isLoading: chartLoading } = usePortfolioHistory(activeRange, selectedAccountIds)
+  const chartHistory = chartData?.history ?? null
+  const chartCurrentValue = chartData?.current?.value ?? null
+
   const refreshAll = useCallback(() => {
     setSelectedAccountKey(null)
-    fetchHoldings()
-    fetchInvestmentAccounts()
-    fetchAllChartRanges(null)
-  }, [fetchHoldings, fetchInvestmentAccounts, fetchAllChartRanges])
-
-  useEffect(() => { refreshAll() }, [refreshAll])
-
-  useEffect(() => {
-    fetchAllChartRanges(selectedAccountIds)
-  }, [selectedAccountIds, fetchAllChartRanges])
+    refetchInvestments()
+    refetchAccounts()
+  }, [refetchInvestments, refetchAccounts])
 
   useImperativeHandle(ref, () => ({
     refresh() { refreshAll() },
@@ -259,12 +211,6 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
       .slice(0, 10)
   }, [filteredHoldings])
 
-  const cacheKey = `${activeRange}:${selectedAccountIds || 'all'}`
-  const cached = chartCache[cacheKey]
-  const chartHistory = cached?.history ?? null
-  const chartCurrentValue = cached?.current?.value ?? null
-  const chartLoading = !cached || chartLoadingRanges[cacheKey]
-
   const displayValue = totalValue > 0 ? totalValue : (chartCurrentValue ?? 0)
   const hasInvestmentData = totalValue > 0 || (chartCurrentValue != null && chartCurrentValue > 0)
 
@@ -277,7 +223,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
     return { diff, pct }
   }, [chartHistory])
 
-  const chartData = useMemo(() => {
+  const chartPoints = useMemo(() => {
     if (!chartHistory?.length) return []
     const maxPoints = activeRange === '1W' ? 100 : activeRange === '1M' ? 60 : 90
     if (chartHistory.length <= maxPoints) return chartHistory
@@ -377,7 +323,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
           <div className="flex h-full items-center justify-center">
             <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
           </div>
-        ) : !chartData.length ? (
+        ) : !chartPoints.length ? (
           <div className="flex h-full items-center justify-center">
             <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               No investment history available
@@ -385,7 +331,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio({ get
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+            <AreaChart data={chartPoints} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="invGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor={LINE_COLOR} stopOpacity={0.15} />

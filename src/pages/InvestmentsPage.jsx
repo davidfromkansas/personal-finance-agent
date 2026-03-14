@@ -1,7 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useAuth } from '../context/AuthContext'
-import { apiFetch } from '../lib/api'
 import { AppHeader } from '../components/AppHeader'
+import { useInvestments } from '../hooks/usePlaidQueries'
 
 function formatCurrency(value) {
   if (value == null) return '—'
@@ -64,25 +62,8 @@ function HoldingRow({ holding }) {
 }
 
 export function InvestmentsPage() {
-  const { getIdToken } = useAuth()
-  const [holdings, setHoldings] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchInvestments = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/plaid/investments', { getToken: getIdToken })
-      setHoldings(data.holdings ?? [])
-    } catch (err) {
-      console.error('Failed to load investments:', err)
-      setHoldings([])
-    } finally {
-      setLoading(false)
-    }
-  }, [getIdToken])
-
-  useEffect(() => {
-    fetchInvestments()
-  }, [fetchInvestments])
+  const { data, isLoading: loading } = useInvestments()
+  const holdings = data?.holdings ?? []
 
   const groups = groupByInstitution(holdings)
   const totalValue = holdings.reduce((sum, h) => sum + (h.value ?? 0), 0)
@@ -113,7 +94,30 @@ export function InvestmentsPage() {
             </div>
             <div className="px-6 pb-6">
               {loading ? (
-                <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading investments…</p>
+                <div className="flex flex-col gap-4">
+                  {[0, 1].map((g) => (
+                    <div key={g} className="flex flex-col gap-1">
+                      <div className="border-b border-[#d1d5dc] pb-1 pt-2">
+                        <div className="h-4 w-28 animate-pulse rounded bg-[#e5e7eb]" />
+                      </div>
+                      {[0, 1, 2].map((r) => (
+                        <div key={r} className="flex items-center justify-between rounded-[10px] px-2 py-3">
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <div className="h-4 w-32 animate-pulse rounded bg-[#e5e7eb]" />
+                              <div className="h-4 w-10 animate-pulse rounded bg-[#f3f4f6]" />
+                            </div>
+                            <div className="h-3 w-40 animate-pulse rounded bg-[#f3f4f6]" />
+                          </div>
+                          <div className="flex flex-col items-end gap-1.5">
+                            <div className="h-4 w-20 animate-pulse rounded bg-[#e5e7eb]" />
+                            <div className="h-3 w-16 animate-pulse rounded bg-[#f3f4f6]" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               ) : holdings.length === 0 ? (
                 <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   No investment holdings found. Link an investment account to see holdings.

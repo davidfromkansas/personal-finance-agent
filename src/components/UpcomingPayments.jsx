@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { apiFetch } from '../lib/api'
+import { useState } from 'react'
+import { useRecurring } from '../hooks/usePlaidQueries'
 
 const FREQUENCY_LABELS = {
   WEEKLY: 'Every week',
@@ -81,30 +81,10 @@ function PaymentRow({ payment }) {
   )
 }
 
-export function UpcomingPayments({ getToken, refreshTrigger = 0 }) {
-  const [payments, setPayments] = useState([])
-  const [loading, setLoading] = useState(true)
+export function UpcomingPayments() {
+  const { data, isLoading: loading } = useRecurring()
+  const payments = data?.payments ?? []
   const [page, setPage] = useState(0)
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setPage(0)
-    apiFetch('/api/plaid/recurring', { getToken })
-      .then((data) => {
-        if (!cancelled) setPayments(data.payments ?? [])
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('Failed to load upcoming payments:', err)
-          setPayments([])
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
-  }, [getToken, refreshTrigger])
 
   const start = page * PAGE_SIZE
   const displayedPayments = payments.slice(start, start + PAGE_SIZE)
@@ -114,9 +94,23 @@ export function UpcomingPayments({ getToken, refreshTrigger = 0 }) {
 
   if (loading) {
     return (
-      <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        Loading upcoming payments…
-      </p>
+      <div className="flex-1 overflow-hidden px-4 pb-4" style={{ height: PAGE_SIZE * ROW_HEIGHT_PX }}>
+        <div className="flex flex-col divide-y divide-[#e5e7eb]">
+          {Array.from({ length: PAGE_SIZE }).map((_, i) => (
+            <div key={i} className="flex h-[60px] shrink-0 items-center gap-3 py-2">
+              <div className="h-9 w-9 min-h-9 min-w-9 shrink-0 animate-pulse rounded-full bg-[#e5e7eb]" />
+              <div className="flex flex-1 flex-col gap-1.5">
+                <div className="h-4 w-28 animate-pulse rounded bg-[#e5e7eb]" />
+                <div className="h-3 w-20 animate-pulse rounded bg-[#f3f4f6]" />
+              </div>
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="h-4 w-16 animate-pulse rounded bg-[#e5e7eb]" />
+                <div className="h-3 w-12 animate-pulse rounded bg-[#f3f4f6]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     )
   }
 

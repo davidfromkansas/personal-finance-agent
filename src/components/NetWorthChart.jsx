@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react'
+import { useState, useMemo } from 'react'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { apiFetch } from '../lib/api'
+import { useNetWorth } from '../hooks/usePlaidQueries'
 
 const RANGES = [
   { key: '1W', label: '1W' },
@@ -14,8 +14,6 @@ const RANGES = [
 ]
 
 const LINE_COLOR = '#4f46e5'
-const POSITIVE_COLOR = '#16a34a'
-const NEGATIVE_COLOR = '#dc2626'
 
 function formatCurrency(value) {
   if (value == null) return '$0'
@@ -70,51 +68,12 @@ function CustomTooltip({ active, payload }) {
   )
 }
 
-export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embedded }, ref) {
+export function NetWorthChart({ embedded }) {
   const [activeRange, setActiveRange] = useState('1M')
-  const [cache, setCache] = useState({})
-  const [loadingRanges, setLoadingRanges] = useState({})
+  const { data: rawData, isLoading: loading } = useNetWorth(activeRange)
 
-  const fetchRange = useCallback(async (range) => {
-    setLoadingRanges((prev) => ({ ...prev, [range]: true }))
-    try {
-      const result = await apiFetch(`/api/plaid/net-worth-history?range=${range}`, { getToken })
-      setCache((prev) => ({
-        ...prev,
-        [range]: { history: result.history ?? [], current: result.current ?? null },
-      }))
-    } catch (err) {
-      console.error(`Failed to fetch net worth history (${range}):`, err)
-      setCache((prev) => ({
-        ...prev,
-        [range]: { history: [], current: null },
-      }))
-    } finally {
-      setLoadingRanges((prev) => ({ ...prev, [range]: false }))
-    }
-  }, [getToken])
-
-  const fetchAllRanges = useCallback(() => {
-    setCache({})
-    RANGES.forEach((r) => fetchRange(r.key))
-  }, [fetchRange])
-
-  useEffect(() => {
-    fetchAllRanges()
-  }, [fetchAllRanges])
-
-  useImperativeHandle(ref, () => ({
-    refresh() { fetchAllRanges() },
-  }), [fetchAllRanges])
-
-  function handleRangeChange(range) {
-    setActiveRange(range)
-  }
-
-  const cached = cache[activeRange]
-  const data = cached?.history ?? null
-  const current = cached?.current ?? null
-  const loading = !cached || loadingRanges[activeRange]
+  const data = rawData?.history ?? null
+  const current = rawData?.current ?? null
 
   const change = useMemo(() => {
     if (!data?.length || !current) return null
@@ -172,7 +131,7 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
             <button
               key={r.key}
               type="button"
-              onClick={() => handleRangeChange(r.key)}
+              onClick={() => setActiveRange(r.key)}
               className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
                 activeRange === r.key
                   ? 'bg-white text-[#0e7490]'
@@ -242,4 +201,4 @@ export const NetWorthChart = forwardRef(function NetWorthChart({ getToken, embed
       </div>
     </div>
   )
-})
+}

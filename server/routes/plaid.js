@@ -533,14 +533,19 @@ plaidRouter.get('/recurring', async (req, res, next) => {
     const items = await getPlaidItemsByUserId(req.uid)
     const plaidClient = getPlaidClient()
     const toAmount = (v) => (v == null ? 0 : typeof v === 'number' ? v : v.amount ?? 0)
-    const payments = []
-    for (const row of items) {
-      try {
-        const res = await plaidClient.transactionsRecurringGet({
+    const itemResults = await Promise.all(items.map(async (row) => {
+      const itemPayments = []
+
+      const [recurringResult, liabResult] = await Promise.allSettled([
+        plaidClient.transactionsRecurringGet({
           access_token: row.access_token,
           options: { personal_finance_category_version: 'v2' },
-        })
-        const outflowStreams = res.data?.outflow_streams ?? []
+        }),
+        plaidClient.liabilitiesGet({ access_token: row.access_token }),
+      ])
+
+      if (recurringResult.status === 'fulfilled') {
+        const outflowStreams = recurringResult.value.data?.outflow_streams ?? []
         for (const stream of outflowStreams) {
           if (!stream.predicted_next_date) continue
           const status = stream.status ?? 'UNKNOWN'
@@ -549,7 +554,7 @@ plaidRouter.get('/recurring', async (req, res, next) => {
           const primary = typeof pfc === 'string' ? pfc : pfc?.primary ?? null
           const counterpartyLogo = stream.counterparties?.[0]?.logo_url ?? stream.counterparties?.[0]?.logoUrl
           const logoUrl = stream.logo_url ?? stream.logoUrl ?? counterpartyLogo ?? null
-          payments.push({
+          itemPayments.push({
             stream_id: stream.stream_id,
             first_transaction_id: stream.transaction_ids?.[0] ?? null,
             merchant_name: stream.merchant_name ?? stream.description ?? 'Unknown',
@@ -567,24 +572,24 @@ plaidRouter.get('/recurring', async (req, res, next) => {
             source: 'recurring',
           })
         }
-      } catch (itemErr) {
-        const code = itemErr.response?.data?.error_code
+      } else {
+        const code = recurringResult.reason?.response?.data?.error_code
         if (code !== 'PRODUCT_NOT_READY' && code !== 'PRODUCT_NOT_SUPPORTED') {
-          console.warn('[plaid] recurring get for item failed:', itemErr.message)
+          console.warn('[plaid] recurring get for item failed:', recurringResult.reason?.message)
         }
       }
-      try {
-        const liabRes = await plaidClient.liabilitiesGet({ access_token: row.access_token })
-        const accounts = liabRes.data?.accounts ?? []
+
+      if (liabResult.status === 'fulfilled') {
+        const accounts = liabResult.value.data?.accounts ?? []
         const accountByName = Object.fromEntries(accounts.map((a) => [a.account_id, a.official_name || a.name || 'Credit card']))
-        const creditLiabs = liabRes.data?.liabilities?.credit ?? []
+        const creditLiabs = liabResult.value.data?.liabilities?.credit ?? []
         for (const credit of creditLiabs) {
           const due = credit.next_payment_due_date ?? credit.nextPaymentDueDate
           if (!due) continue
           const accountId = credit.account_id ?? credit.accountId
           const name = accountByName[accountId] ?? 'Credit card'
           const minAmount = credit.minimum_payment_amount ?? credit.minimumPaymentAmount ?? 0
-          payments.push({
+          itemPayments.push({
             stream_id: `liability-${accountId}`,
             first_transaction_id: null,
             merchant_name: name,
@@ -602,13 +607,17 @@ plaidRouter.get('/recurring', async (req, res, next) => {
             source: 'liability',
           })
         }
-      } catch (itemErr) {
-        const code = itemErr.response?.data?.error_code
+      } else {
+        const code = liabResult.reason?.response?.data?.error_code
         if (code !== 'PRODUCT_NOT_READY' && code !== 'PRODUCT_NOT_SUPPORTED' && code !== 'PRODUCT_NOT_ENABLED') {
-          console.warn('[plaid] liabilities get for item failed:', itemErr.message)
+          console.warn('[plaid] liabilities get for item failed:', liabResult.reason?.message)
         }
       }
-    }
+
+      return itemPayments
+    }))
+
+    const payments = itemResults.flat()
     payments.sort((a, b) => (a.predicted_next_date || '').localeCompare(b.predicted_next_date || ''))
     const transactionIds = [...new Set(payments.map((p) => p.first_transaction_id).filter(Boolean))]
     const logoMap = transactionIds.length ? await getLogoUrlsByPlaidTransactionIds(req.uid, transactionIds) : {}
@@ -935,7 +944,10 @@ plaidRouter.get('/investment-history', async (req, res, next) => {
       sinceDate = earliest || toDateStr(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()))
     }
 
-    const allAccounts = await getAllUserAccounts(req.uid)
+    const [allAccounts, txns] = await Promise.all([
+      getAllUserAccounts(req.uid),
+      getTransactionsForNetWorth(req.uid, sinceDate),
+    ])
     let investmentAccounts = allAccounts.filter((a) => a.type === 'investment')
 
     const accountIdsParam = req.query.account_ids
@@ -949,8 +961,6 @@ plaidRouter.get('/investment-history', async (req, res, next) => {
     }
 
     const currentValue = investmentAccounts.reduce((s, a) => s + a.current, 0)
-
-    const txns = await getTransactionsForNetWorth(req.uid, sinceDate)
     const investmentIds = new Set(investmentAccounts.map((a) => a.account_id))
     const investTxns = txns.filter((t) => investmentIds.has(t.account_id))
 
@@ -1039,7 +1049,10 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
       sinceDate = earliest || toDateStr(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()))
     }
 
-    const allAccounts = await getAllUserAccounts(req.uid)
+    const [allAccounts, txns] = await Promise.all([
+      getAllUserAccounts(req.uid),
+      getTransactionsForNetWorth(req.uid, sinceDate),
+    ])
 
     if (allAccounts.length === 0) {
       return res.json({ range, current: { assets: 0, debts: 0, net_worth: 0 }, history: [] })
@@ -1048,8 +1061,6 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
     const ASSET_TYPES = new Set(['depository', 'investment'])
     const DEBT_TYPES = new Set(['credit', 'loan'])
     const BACK_CALC_TYPES = new Set(['depository', 'credit', 'loan'])
-
-    const txns = await getTransactionsForNetWorth(req.uid, sinceDate)
 
     const txnsByAccount = {}
     for (const t of txns) {
@@ -1176,15 +1187,11 @@ plaidRouter.get('/portfolio-history', async (req, res) => {
     }
 
     const accountIdsParam = req.query.account_ids
-    let history
-    if (accountIdsParam) {
-      const accountIds = accountIdsParam.split(',').map((s) => s.trim()).filter(Boolean)
-      history = await getPortfolioAccountHistory(req.uid, sinceDate, accountIds)
-    } else {
-      history = await getPortfolioHistory(req.uid, sinceDate)
-    }
+    const historyPromise = accountIdsParam
+      ? getPortfolioAccountHistory(req.uid, sinceDate, accountIdsParam.split(',').map((s) => s.trim()).filter(Boolean))
+      : getPortfolioHistory(req.uid, sinceDate)
 
-    const latestValue = await getLatestPortfolioValue(req.uid)
+    const [history, latestValue] = await Promise.all([historyPromise, getLatestPortfolioValue(req.uid)])
 
     res.json({
       range,

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, memo, useMemo } from 'react'
+import { useState, useEffect, useCallback, memo, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { usePlaidLink } from 'react-plaid-link'
 import { useAuth } from '../context/AuthContext'
@@ -9,6 +9,9 @@ import { NetWorthChart } from '../components/NetWorthChart'
 import { InvestmentPortfolio } from '../components/InvestmentPortfolio'
 import { UpcomingPayments } from '../components/UpcomingPayments'
 import { CashFlowChart } from '../components/CashFlowChart'
+import { useMutation } from '@tanstack/react-query'
+import { useConnections, invalidateAfterConnect, invalidateTransactionData } from '../hooks/usePlaidQueries'
+import queryClient from '../lib/queryClient'
 
 /**
  * Renders nothing — exists solely to own a fresh usePlaidLink instance.
@@ -646,7 +649,24 @@ export function TransactionList({ transactions, loading, title, subtitle, header
         style={{ height: contentHeightPx }}
       >
         {loading ? (
-          <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading transactions…</p>
+          <div className="flex flex-col gap-0.5">
+            {[4, 3, 5].map((rowCount, gi) => (
+              <div key={gi} className="flex flex-col gap-0">
+                <div className="flex h-[26px] shrink-0 items-center border-b border-[#d1d5dc] pb-0 pt-1">
+                  <div className="h-3 w-16 animate-pulse rounded bg-[#e5e7eb]" />
+                </div>
+                {Array.from({ length: rowCount }).map((_, ri) => (
+                  <div key={ri} className="flex h-[32px] shrink-0 items-center justify-between gap-2 px-1">
+                    <div className="flex items-center gap-2">
+                      <div className="h-5 w-5 animate-pulse rounded-full bg-[#e5e7eb]" />
+                      <div className="h-3 animate-pulse rounded bg-[#e5e7eb]" style={{ width: `${70 + ((ri * 37 + gi * 13) % 60)}px` }} />
+                    </div>
+                    <div className="h-3 w-14 animate-pulse rounded bg-[#f3f4f6]" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         ) : transactions.length === 0 ? (
           <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             No transactions yet. Link an account to see activity.
@@ -785,8 +805,11 @@ export function LoggedInPage() {
   const navigate = useNavigate()
   const { getIdToken } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [connections, setConnections] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [isPolling, setIsPolling] = useState(false)
+  const { data: connectionsData, isLoading: loading } = useConnections({
+    refetchInterval: isPolling ? 3000 : false,
+  })
+  const connections = connectionsData?.connections ?? []
   const [transactions, setTransactions] = useState([])
   const [txnStartIndex, setTxnStartIndex] = useState(0)
   const [txnPageStarts, setTxnPageStarts] = useState([0])
@@ -799,27 +822,9 @@ export function LoggedInPage() {
   const [linkLoading, setLinkLoading] = useState(false)
   const [showConnectionTypeModal, setShowConnectionTypeModal] = useState(false)
   const [oauthRedirectUri, setOauthRedirectUri] = useState(null)
-  const spendingRef = useRef(null)
-  const cashFlowRef = useRef(null)
-  const netWorthRef = useRef(null)
-  const [recurringRefreshTrigger, setRecurringRefreshTrigger] = useState(0)
-  const investmentRef = useRef(null)
-
-  const fetchConnections = useCallback(async () => {
+  const fetchTransactions = useCallback(async ({ showLoading = true } = {}) => {
     try {
-      const data = await apiFetch('/api/plaid/connections', { getToken: getIdToken })
-      setConnections(data.connections ?? [])
-    } catch (err) {
-      console.error('Failed to load connections:', err)
-      setConnections([])
-    } finally {
-      setLoading(false)
-    }
-  }, [getIdToken])
-
-  const fetchTransactions = useCallback(async () => {
-    try {
-      setTxnLoading(true)
+      if (showLoading) setTxnLoading(true)
       const data = await apiFetch('/api/plaid/transactions?limit=200', { getToken: getIdToken })
       const list = data.transactions ?? []
       setTransactions(list)
@@ -877,8 +882,17 @@ export function LoggedInPage() {
     setTxnStartIndex(newStarts[newStarts.length - 1])
   }, [txnPageStarts])
 
+  // Stop polling once no connections are syncing, then refresh data
   useEffect(() => {
-    fetchConnections()
+    if (!isPolling) return
+    if (!connections.some(c => c.syncing)) {
+      setIsPolling(false)
+      fetchTransactions({ showLoading: false })
+      invalidateTransactionData()
+    }
+  }, [connections, isPolling, fetchTransactions])
+
+  useEffect(() => {
     fetchTransactions()
 
     const fullResync = typeof localStorage !== 'undefined' && !localStorage.getItem('plaid_logos_resynced')
@@ -891,17 +905,13 @@ export function LoggedInPage() {
     })
       .then((data) => {
         if (data.synced > 0) {
-          fetchConnections()
-          fetchTransactions()
-          spendingRef.current?.refresh()
-          cashFlowRef.current?.refresh()
-          netWorthRef.current?.refresh()
-          investmentRef.current?.refresh()
-          setRecurringRefreshTrigger((k) => k + 1)
+          queryClient.refetchQueries({ queryKey: ['connections'] })
+          fetchTransactions({ showLoading: false })
+          invalidateTransactionData()
         }
       })
       .catch((err) => console.error('Background sync failed:', err))
-  }, [fetchConnections, fetchTransactions])
+  }, [fetchTransactions])
 
   useEffect(() => {
     const oauthStateId = searchParams.get('oauth_state_id')
@@ -934,33 +944,16 @@ export function LoggedInPage() {
             body: { public_token, institution_name: metadata?.institution?.name ?? null },
             getToken: getIdToken,
           })
-          // Show the new connection immediately, but don't refresh charts yet —
-          // the initial sync runs in the background and may take several seconds.
-          // Poll until no connections report syncing: true, then refresh everything.
-          await fetchConnections()
-          const pollInterval = setInterval(async () => {
-            try {
-              const data = await apiFetch('/api/plaid/connections', { getToken: getIdToken })
-              const conns = data.connections ?? []
-              setConnections(conns)
-              if (!conns.some((c) => c.syncing)) {
-                clearInterval(pollInterval)
-                await fetchTransactions()
-                spendingRef.current?.refresh()
-                cashFlowRef.current?.refresh()
-                netWorthRef.current?.refresh()
-                investmentRef.current?.refresh()
-              }
-            } catch {
-              clearInterval(pollInterval)
-            }
-          }, 3000)
+          // Show the new connection immediately; poll via refetchInterval until
+          // no connections report syncing: true, then refresh everything.
+          await queryClient.refetchQueries({ queryKey: ['connections'] })
+          setIsPolling(true)
         } else {
-          await Promise.all([fetchConnections(), fetchTransactions()])
-          spendingRef.current?.refresh()
-          cashFlowRef.current?.refresh()
-          netWorthRef.current?.refresh()
-          investmentRef.current?.refresh()
+          await Promise.all([
+            queryClient.refetchQueries({ queryKey: ['connections'] }),
+            fetchTransactions(),
+            invalidateTransactionData(),
+          ])
         }
       } catch (err) {
         setAddError(err.message ?? 'Failed to add connection')
@@ -971,7 +964,7 @@ export function LoggedInPage() {
         setOauthRedirectUri(null)
       }
     },
-    [linkMode, getIdToken, fetchConnections, fetchTransactions],
+    [linkMode, getIdToken, fetchTransactions, queryClient],
   )
 
   const handlePlaidExit = useCallback((err, metadata) => {
@@ -1017,45 +1010,71 @@ export function LoggedInPage() {
     }
   }
 
-  async function handleDisconnect(connection) {
-    if (!window.confirm(`Disconnect ${connection.institution_name ?? 'this connection'}? This will remove all linked accounts.`)) return
-    try {
-      await apiFetch('/api/plaid/disconnect', {
-        method: 'POST',
-        body: { item_id: connection.item_id },
-        getToken: getIdToken,
+  const disconnectMutation = useMutation({
+    mutationFn: (connection) => apiFetch('/api/plaid/disconnect', {
+      method: 'POST',
+      body: { item_id: connection.item_id },
+      getToken: getIdToken,
+    }),
+    onMutate: async (connection) => {
+      await queryClient.cancelQueries({ queryKey: ['connections'] })
+      const previous = queryClient.getQueryData(['connections'])
+      queryClient.setQueryData(['connections'], (old) => {
+        if (!old) return old
+        return { ...old, connections: old.connections.filter(c => c.item_id !== connection.item_id) }
       })
-      await Promise.all([fetchConnections(), fetchTransactions()])
-      spendingRef.current?.refresh()
-      cashFlowRef.current?.refresh()
-      netWorthRef.current?.refresh()
-      investmentRef.current?.refresh()
-    } catch (err) {
+      return { previous }
+    },
+    onSuccess: () => invalidateAfterConnect(),
+    onError: (err, _connection, context) => {
+      if (context?.previous) queryClient.setQueryData(['connections'], context.previous)
       setAddError(err.message ?? 'Failed to disconnect')
-    }
+    },
+  })
+
+  function handleDisconnect(connection) {
+    if (!window.confirm(`Disconnect ${connection.institution_name ?? 'this connection'}? This will remove all linked accounts.`)) return
+    disconnectMutation.mutate(connection)
   }
 
-  async function handleRefresh(connection) {
-    setAddError(null)
-    try {
-      await apiFetch('/api/plaid/refresh', {
-        method: 'POST',
-        body: { item_id: connection.item_id },
-        getToken: getIdToken,
+  const refreshMutation = useMutation({
+    mutationFn: (connection) => apiFetch('/api/plaid/refresh', {
+      method: 'POST',
+      body: { item_id: connection.item_id },
+      getToken: getIdToken,
+    }),
+    onMutate: async (connection) => {
+      await queryClient.cancelQueries({ queryKey: ['connections'] })
+      const previous = queryClient.getQueryData(['connections'])
+      queryClient.setQueryData(['connections'], (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          connections: old.connections.map(c =>
+            c.item_id === connection.item_id ? { ...c, syncing: true } : c
+          ),
+        }
       })
-      await Promise.all([fetchConnections(), fetchTransactions()])
-      spendingRef.current?.refresh()
-      cashFlowRef.current?.refresh()
-      netWorthRef.current?.refresh()
-      investmentRef.current?.refresh()
-    } catch (err) {
+      return { previous }
+    },
+    onSuccess: () => Promise.all([
+      queryClient.refetchQueries({ queryKey: ['connections'] }),
+      invalidateTransactionData(),
+    ]),
+    onError: async (err, connection, context) => {
+      if (context?.previous) queryClient.setQueryData(['connections'], context.previous)
       if (err.message === 'Login required') {
         setAddError(`${connection.institution_name ?? 'Connection'} requires re-login. Click "Reconnect" to fix.`)
-        await fetchConnections()
+        await queryClient.refetchQueries({ queryKey: ['connections'] })
       } else {
         setAddError(err.message ?? 'Failed to refresh')
       }
-    }
+    },
+  })
+
+  function handleRefresh(connection) {
+    setAddError(null)
+    refreshMutation.mutate(connection)
   }
 
   async function handleReconnect(connection) {
@@ -1153,12 +1172,12 @@ export function LoggedInPage() {
             <div className="col-span-8 min-w-0 lg:col-span-5 flex flex-col h-[826px] gap-4">
               {/* Spending: half the height of transaction module */}
               <div className="min-h-0 shrink-0 h-[404px]">
-                <SpendingCharts ref={spendingRef} connections={connections} getToken={getIdToken} embeddedHeight={404} />
+                <SpendingCharts connections={connections} embeddedHeight={404} />
               </div>
               {/* Bottom row: 3-col + recurring, each half the height of transaction module (404px), 3:2 width ratio on lg */}
               <div className="flex flex-col lg:flex-row gap-6 min-h-0 shrink-0 h-[404px]">
                 <div className="min-w-0 w-full lg:flex-[3] h-[404px] overflow-hidden">
-                  <CashFlowChart ref={cashFlowRef} getToken={getIdToken} embeddedHeight={404} />
+                  <CashFlowChart embeddedHeight={404} />
                 </div>
                 <div className="min-w-0 w-full lg:flex-[2] rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col h-[404px]">
                   <div className="shrink-0 rounded-t-[14px] bg-[#b45309] px-5 py-3">
@@ -1167,7 +1186,7 @@ export function LoggedInPage() {
                     </h2>
                   </div>
                   <div className="min-h-0 flex-1 flex flex-col">
-                    <UpcomingPayments getToken={getIdToken} refreshTrigger={recurringRefreshTrigger} />
+                    <UpcomingPayments />
                   </div>
                 </div>
               </div>
@@ -1196,7 +1215,7 @@ export function LoggedInPage() {
             {/* Net Worth + Connections: 4 columns — sits directly below left block (top-aligned) */}
             <div className="col-span-8 flex min-w-0 flex-col lg:col-span-4">
               <div className="rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden">
-              <NetWorthChart ref={netWorthRef} getToken={getIdToken} embedded />
+              <NetWorthChart embedded />
               <div className="border-t border-[#e5e7eb] px-6 pt-4 pb-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -1267,7 +1286,7 @@ export function LoggedInPage() {
 
             {/* Investment Portfolio: 4 columns */}
             <div className="col-span-8 min-w-0 lg:col-span-4">
-              <InvestmentPortfolio ref={investmentRef} getToken={getIdToken} />
+              <InvestmentPortfolio />
             </div>
           </div>
         </div>

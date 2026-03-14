@@ -1,0 +1,183 @@
+/**
+ * All TanStack Query hooks for Plaid data.
+ * Each hook encapsulates the query key, endpoint, and stale time so components
+ * just call e.g. useConnections() with no token or URL plumbing.
+ *
+ * Cache invalidation helpers are exported at the bottom for use in mutations.
+ */
+import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
+import { useAuth } from '../context/AuthContext'
+import { apiFetch } from '../lib/api'
+import queryClient, { STALE } from '../lib/queryClient'
+
+// ---------------------------------------------------------------------------
+// Shared queries
+// ---------------------------------------------------------------------------
+
+export function useConnections(options = {}) {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['connections'],
+    queryFn: () => apiFetch('/api/plaid/connections', { getToken: getIdToken }),
+    staleTime: STALE.connections,
+    ...options,
+  })
+}
+
+export function useAccounts() {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['accounts'],
+    queryFn: () => apiFetch('/api/plaid/accounts', { getToken: getIdToken }),
+    staleTime: STALE.accounts,
+  })
+}
+
+export function useInvestments() {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['investments'],
+    queryFn: () => apiFetch('/api/plaid/investments', { getToken: getIdToken }),
+    staleTime: STALE.investments,
+  })
+}
+
+export function useRecurring() {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['recurring'],
+    queryFn: () => apiFetch('/api/plaid/recurring', { getToken: getIdToken }),
+    staleTime: STALE.recurring,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Transactions (paginated)
+// ---------------------------------------------------------------------------
+
+const TRANSACTIONS_PAGE_SIZE = 50
+
+export function useTransactions(filters) {
+  const { getIdToken } = useAuth()
+  // Strip UI-only `preset` field so cache key only reflects actual API params
+  const { preset: _preset, ...filterParams } = filters
+  return useInfiniteQuery({
+    queryKey: ['transactions', filterParams],
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams()
+      params.set('limit', String(TRANSACTIONS_PAGE_SIZE))
+      params.set('offset', String(pageParam))
+      if (filterParams.after_date) params.set('after_date', filterParams.after_date)
+      if (filterParams.before_date) params.set('before_date', filterParams.before_date)
+      filterParams.account_ids.forEach(id => params.append('account_ids', id))
+      filterParams.categories.forEach(cat => params.append('categories', cat))
+      return apiFetch(`/api/plaid/transactions?${params}`, { getToken: getIdToken })
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const total = lastPage.total ?? 0
+      const fetched = allPages.reduce((sum, p) => sum + (p.transactions?.length ?? 0), 0)
+      return fetched < total ? fetched : undefined
+    },
+    staleTime: STALE.connections,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Filter reference data (TransactionsPage filter panel)
+// ---------------------------------------------------------------------------
+
+export function useTransactionAccounts() {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['transaction-accounts'],
+    queryFn: () => apiFetch('/api/plaid/transactions/accounts', { getToken: getIdToken }),
+    staleTime: STALE.refData,
+  })
+}
+
+export function useTransactionCategories() {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['transaction-categories'],
+    queryFn: () => apiFetch('/api/plaid/transactions/categories', { getToken: getIdToken }),
+    staleTime: STALE.refData,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Parameterized chart queries (lazy — only fetches when enabled)
+// ---------------------------------------------------------------------------
+
+export function useSpending(period, accountIds = []) {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ period })
+  if (accountIds.length) params.set('account_ids', accountIds.join(','))
+  return useQuery({
+    queryKey: ['spending', period, accountIds],
+    queryFn: () => apiFetch(`/api/plaid/spending-summary?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+  })
+}
+
+export function useNetWorth(range) {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['net-worth', range],
+    queryFn: () => apiFetch(`/api/plaid/net-worth-history?range=${range}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+  })
+}
+
+export function useCashFlow() {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['cash-flow'],
+    queryFn: () => apiFetch('/api/plaid/cash-flow?months=24', { getToken: getIdToken }),
+    staleTime: STALE.charts,
+  })
+}
+
+export function usePortfolioHistory(range, accountIds) {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['portfolio-history', range, accountIds ?? null],
+    queryFn: () =>
+      apiFetch(`/api/plaid/portfolio-history?range=${range}${accountIds ? `&account_ids=${accountIds}` : ''}`, {
+        getToken: getIdToken,
+      }),
+    staleTime: STALE.charts,
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Cache invalidation helpers — call these after mutations
+// ---------------------------------------------------------------------------
+
+/** Invalidate everything (e.g. after disconnect) */
+export function invalidateAll() {
+  return queryClient.invalidateQueries()
+}
+
+/** Invalidate transaction-derived data (e.g. after sync/refresh) */
+export function invalidateTransactionData() {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+    queryClient.invalidateQueries({ queryKey: ['spending'] }),
+    queryClient.invalidateQueries({ queryKey: ['net-worth'] }),
+    queryClient.invalidateQueries({ queryKey: ['cash-flow'] }),
+    queryClient.invalidateQueries({ queryKey: ['recurring'] }),
+    queryClient.invalidateQueries({ queryKey: ['transaction-categories'] }),
+  ])
+}
+
+/** Invalidate everything after a new account finishes syncing or disconnecting */
+export function invalidateAfterConnect() {
+  return Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['connections'] }),
+    queryClient.invalidateQueries({ queryKey: ['accounts'] }),
+    queryClient.invalidateQueries({ queryKey: ['investments'] }),
+    queryClient.invalidateQueries({ queryKey: ['portfolio-history'] }),
+    invalidateTransactionData(),
+  ])
+}

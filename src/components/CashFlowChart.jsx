@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useImperativeHandle, forwardRef, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
 } from 'recharts'
-import { apiFetch } from '../lib/api'
+import { useCashFlow } from '../hooks/usePlaidQueries'
 
 /** Two bars per month: blue = inflows (up), orange = outflows (down). Colorblind-friendly. */
 const BAR_POSITIVE_COLOR = '#1e40af'
@@ -52,37 +52,26 @@ function CashFlowTooltip({ active, payload, label }) {
   )
 }
 
-export const CashFlowChart = forwardRef(function CashFlowChart({ getToken, embeddedHeight = 320 }, ref) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
+export function CashFlowChart({ embeddedHeight = 320 }) {
+  const { data: rawData, isLoading: loading } = useCashFlow()
 
-  const fetchCashFlow = useCallback(async () => {
-    setLoading(true)
-    try {
-      const result = await apiFetch('/api/plaid/cash-flow?months=24', { getToken })
-      const months = result.months ?? []
-      setData(months.reverse().map((m) => ({
-        ...m,
-        label: formatMonth(m.month),
-        negativeFlow: -(m.outflows || 0),
-      })))
-    } catch (err) {
-      console.error('Failed to fetch cash flow:', err)
-      setData([])
-    } finally {
-      setLoading(false)
+  const data = useMemo(() => {
+    const months = rawData?.months ?? []
+    const now = new Date()
+    const currentYear = now.getFullYear()
+    const currentMonth = now.getMonth() + 1 // 1-12
+
+    const monthMap = {}
+    for (const m of months) monthMap[m.month] = m
+
+    const result = []
+    for (let mo = 1; mo <= currentMonth; mo++) {
+      const key = `${currentYear}-${String(mo).padStart(2, '0')}`
+      const m = monthMap[key] ?? { month: key, inflows: 0, outflows: 0, net: 0 }
+      result.push({ ...m, label: formatMonth(m.month), negativeFlow: -(m.outflows || 0) })
     }
-  }, [getToken])
-
-  useEffect(() => {
-    fetchCashFlow()
-  }, [fetchCashFlow])
-
-  useImperativeHandle(ref, () => ({
-    refresh() {
-      fetchCashFlow()
-    },
-  }), [fetchCashFlow])
+    return result
+  }, [rawData])
 
   const latestMonth = data?.length ? data[data.length - 1] : null
   const netLatest = latestMonth ? latestMonth.net : 0
@@ -216,4 +205,4 @@ export const CashFlowChart = forwardRef(function CashFlowChart({ getToken, embed
       </div>
     </div>
   )
-})
+}

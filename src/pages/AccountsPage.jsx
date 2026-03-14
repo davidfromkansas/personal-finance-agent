@@ -1,7 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useAuth } from '../context/AuthContext'
-import { apiFetch } from '../lib/api'
 import { AppHeader } from '../components/AppHeader'
+import { useAccounts } from '../hooks/usePlaidQueries'
 
 function formatCurrency(value) {
   if (value == null) return '—'
@@ -61,25 +59,8 @@ function AccountRow({ account }) {
 }
 
 export function AccountsPage() {
-  const { getIdToken } = useAuth()
-  const [accounts, setAccounts] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchAccounts = useCallback(async () => {
-    try {
-      const data = await apiFetch('/api/plaid/accounts', { getToken: getIdToken })
-      setAccounts(data.accounts ?? [])
-    } catch (err) {
-      console.error('Failed to load accounts:', err)
-      setAccounts([])
-    } finally {
-      setLoading(false)
-    }
-  }, [getIdToken])
-
-  useEffect(() => {
-    fetchAccounts()
-  }, [fetchAccounts])
+  const { data, isLoading: loading } = useAccounts()
+  const accounts = data?.accounts ?? []
 
   const groups = groupByType(accounts)
   const totalCurrent = accounts.reduce((sum, a) => {
@@ -114,7 +95,27 @@ export function AccountsPage() {
             </div>
             <div className="px-6 pb-6">
               {loading ? (
-                <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading accounts…</p>
+                <div className="flex flex-col gap-4">
+                  {[0, 1].map((g) => (
+                    <div key={g} className="flex flex-col gap-2">
+                      <div className="border-b border-[#d1d5dc] pb-1 pt-2">
+                        <div className="flex items-center justify-between">
+                          <div className="h-4 w-24 animate-pulse rounded bg-[#e5e7eb]" />
+                          <div className="h-5 w-7 animate-pulse rounded-[8px] bg-[#e5e7eb]" />
+                        </div>
+                      </div>
+                      {[0, 1, 2].map((r) => (
+                        <div key={r} className="flex items-center justify-between rounded-[10px] border border-black/10 px-[13px] py-3">
+                          <div className="flex flex-col gap-1.5">
+                            <div className="h-4 w-36 animate-pulse rounded bg-[#e5e7eb]" />
+                            <div className="h-3 w-24 animate-pulse rounded bg-[#f3f4f6]" />
+                          </div>
+                          <div className="h-4 w-20 animate-pulse rounded bg-[#e5e7eb]" />
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
               ) : accounts.length === 0 ? (
                 <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   No accounts found. Link an account from the Dashboard to get started.

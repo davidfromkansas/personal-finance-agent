@@ -4,6 +4,30 @@ User-facing changes, most recent first.
 
 ---
 
+# Faster navigation, instant data, and skeleton loading — Shipped: March 14, 2026
+
+## App feels instant when switching pages
+
+All data-fetching has been migrated to [TanStack Query](https://tanstack.com/query) with a shared cache ([full plan](docs/STATE_MANAGEMENT_PLAN.md)). Charts, accounts, transactions, investments, and upcoming payments are now cached in memory — switching between pages shows your data immediately instead of spinning each time. Data stays fresh automatically in the background.
+
+## Optimistic UI for disconnect and refresh
+
+Disconnecting an account removes it from the list immediately — no waiting for the server to confirm. Refreshing a connection marks it as syncing right away. If either action fails, the list snaps back to what it was before. Both feel instantaneous.
+
+## Skeleton loading instead of spinners
+
+Every section that loads data now shows a skeleton placeholder — gray pulsing shapes matching the real content layout — instead of a blank space or "Loading…" text. Accounts, investments, upcoming payments, and the transaction list on the dashboard all have skeletons.
+
+## Cash flow chart is now year-to-date
+
+The cash flow chart always shows January through the current month of the current year. Previously it showed a rolling window of the last 4 months. Any month with no transaction data appears as a zero bar so the full year-to-date picture is always visible.
+
+## Dashboard transaction list no longer double-loads
+
+On the dashboard, the recent transactions list was briefly showing content, then re-spinning on every page load. Fixed — background syncs now refresh silently without toggling the loading state.
+
+---
+
 # Transactions page overhaul and faster account connections — Shipped: March 13, 2026
 
 ## More transaction history on new connections

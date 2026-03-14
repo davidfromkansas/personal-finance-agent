@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { useAuth } from '../context/AuthContext'
-import { apiFetch } from '../lib/api'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { AppHeader } from '../components/AppHeader'
+import { useTransactionAccounts, useTransactionCategories, useTransactions } from '../hooks/usePlaidQueries'
 
 // ─── Shared helpers (duplicated from LoggedInPage to avoid a circular import) ─
 
@@ -614,8 +613,6 @@ function sortTransactions(txns, sort) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const PAGE_SIZE = 50
-
 function last30DaysDate() {
   const d = new Date()
   d.setDate(d.getDate() - 30)
@@ -624,123 +621,41 @@ function last30DaysDate() {
 
 const EMPTY_FILTERS = { account_ids: [], categories: [], after_date: last30DaysDate(), before_date: null, preset: 'Last 30 days' }
 
-function buildQueryString(filters, offset) {
-  const params = new URLSearchParams()
-  params.set('limit', String(PAGE_SIZE))
-  params.set('offset', String(offset))
-  if (filters.after_date) params.set('after_date', filters.after_date)
-  if (filters.before_date) params.set('before_date', filters.before_date)
-  filters.account_ids.forEach(id => params.append('account_ids', id))
-  filters.categories.forEach(cat => params.append('categories', cat))
-  return params.toString()
-}
-
 export function TransactionsPage() {
-  const { getIdToken } = useAuth()
-  // rawTransactions: all fetched pages in server order (always 'recent' from server)
-  const [rawTransactions, setRawTransactions] = useState([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [sort, setSort] = useState('recent')
   const [filters, setFilters] = useState(EMPTY_FILTERS)
-  const [accounts, setAccounts] = useState([])
-  const [allCategories, setAllCategories] = useState([])
-  const [refDataLoading, setRefDataLoading] = useState(true)
-  const cache = useRef(new Map())
-  const offsetRef = useRef(0)
-  const loadingMoreRef = useRef(false)
-  const sentinelRef = useRef(null)
-  // Refs so the IntersectionObserver callback always reads current values
-  const hasMoreRef = useRef(false)
-  const loadingRef = useRef(true)
-  const filtersRef = useRef(filters)
-  const fetchPageRef = useRef(null)
 
-  // Sorted view — derived from raw pool, no fetch needed when sort changes
+  const { data: txAcctData, isLoading: txAcctLoading } = useTransactionAccounts()
+  const { data: txCatData, isLoading: txCatLoading } = useTransactionCategories()
+  const accounts = txAcctData?.accounts ?? []
+  const allCategories = txCatData?.categories ?? []
+  const refDataLoading = txAcctLoading || txCatLoading
+
+  const {
+    data,
+    isLoading: loading,
+    isFetchingNextPage: loadingMore,
+    fetchNextPage,
+    hasNextPage,
+  } = useTransactions(filters)
+
+  const rawTransactions = useMemo(() => data?.pages.flatMap(p => p.transactions) ?? [], [data])
+  const total = data?.pages?.at(-1)?.total ?? 0
   const transactions = useMemo(() => sortTransactions(rawTransactions, sort), [rawTransactions, sort])
 
-  // Load reference data once
-  useEffect(() => {
-    async function loadRefData() {
-      try {
-        const [acctData, catData] = await Promise.all([
-          apiFetch('/api/plaid/transactions/accounts', { getToken: getIdToken }),
-          apiFetch('/api/plaid/transactions/categories', { getToken: getIdToken }),
-        ])
-        setAccounts(acctData.accounts ?? [])
-        setAllCategories(catData.categories ?? [])
-      } catch (err) {
-        console.error('Failed to load filter reference data:', err)
-      } finally {
-        setRefDataLoading(false)
-      }
-    }
-    loadRefData()
-  }, [getIdToken])
-
-  const fetchPage = useCallback(async (currentFilters, offset, append) => {
-    const qs = buildQueryString(currentFilters, offset)
-
-    if (cache.current.has(qs)) {
-      const cached = cache.current.get(qs)
-      if (append) {
-        setRawTransactions(prev => [...prev, ...cached.transactions])
-      } else {
-        setRawTransactions(cached.transactions)
-      }
-      setTotal(cached.total)
-      return
-    }
-
-    try {
-      const data = await apiFetch(`/api/plaid/transactions?${qs}`, { getToken: getIdToken })
-      const result = { transactions: data.transactions ?? [], total: data.total ?? 0 }
-      cache.current.set(qs, result)
-      if (append) {
-        setRawTransactions(prev => [...prev, ...result.transactions])
-      } else {
-        setRawTransactions(result.transactions)
-      }
-      setTotal(result.total)
-    } catch (err) {
-      console.error('Failed to load transactions:', err)
-      if (!append) setRawTransactions([])
-    }
-  }, [getIdToken])
-
-  // Keep refs current on every render so the observer callback always has fresh values
-  const hasMore = rawTransactions.length < total
-  hasMoreRef.current = hasMore
-  loadingRef.current = loading
-  filtersRef.current = filters
-  fetchPageRef.current = fetchPage
-
-  // Refetch only when filters change
-  useEffect(() => {
-    offsetRef.current = 0
-    setLoading(true)
-    fetchPage(filters, 0, false).finally(() => setLoading(false))
-  }, [filters, fetchPage])
-
-  async function loadMore() {
-    if (loadingMoreRef.current || loadingRef.current || !hasMoreRef.current) return
-    loadingMoreRef.current = true
-    const nextOffset = offsetRef.current + PAGE_SIZE
-    offsetRef.current = nextOffset
-    setLoadingMore(true)
-    await fetchPageRef.current(filtersRef.current, nextOffset, true)
-    setLoadingMore(false)
-    loadingMoreRef.current = false
-  }
+  const sentinelRef = useRef(null)
+  const fetchNextPageRef = useRef(fetchNextPage)
+  const hasNextPageRef = useRef(hasNextPage)
+  fetchNextPageRef.current = fetchNextPage
+  hasNextPageRef.current = hasNextPage
 
   // Infinite scroll — create observer once; callback reads live values via refs
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) loadMore() },
+      ([entry]) => { if (entry.isIntersecting && hasNextPageRef.current) fetchNextPageRef.current() },
       { rootMargin: '200px' }
     )
     observer.observe(sentinel)
