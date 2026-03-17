@@ -10,12 +10,13 @@ import * as jose from 'jose'
 import { getPlaidClient } from '../lib/plaidClient.js'
 import { snapshotInvestments } from '../jobs/snapshotInvestments.js'
 import {
-  getPlaidItemsByUserId, getPlaidItemByItemId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
+  getPlaidItemsByUserId, getPlaidItemByItemId, getPlaidItemByInstitutionId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow,
   updateTransactionAccountNames,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot,
+  upsertAccountBalanceSnapshot,
 } from '../db.js'
 
 /* ── Unified per-item account cache with request deduplication ────── */
@@ -121,6 +122,22 @@ function trackUserItem(userId, itemId) {
   userItemIndex.get(userId).add(itemId)
 }
 
+function snapshotBalancesInBackground(userId, row, rawAccounts) {
+  const date = new Date().toISOString().slice(0, 10)
+  for (const acc of rawAccounts ?? []) {
+    upsertAccountBalanceSnapshot(userId, row.item_id, row.institution_name ?? null, {
+      account_id: acc.account_id,
+      name: acc.official_name || acc.name || 'Account',
+      type: (acc.type || 'other').toLowerCase(),
+      subtype: acc.subtype ?? null,
+      current: acc.balances?.current ?? null,
+      available: acc.balances?.available ?? null,
+      limit: acc.balances?.limit ?? null,
+      currency: acc.balances?.iso_currency_code ?? 'USD',
+    }, date).catch((err) => console.error(`[balance snapshot] account ${acc.account_id}:`, err.message))
+  }
+}
+
 async function _callPlaid(plaidClient, userId, row, useBalanceGet) {
   try {
     const res = useBalanceGet
@@ -129,6 +146,7 @@ async function _callPlaid(plaidClient, userId, row, useBalanceGet) {
     const accounts = mapPlaidAccounts(res.data.accounts)
     itemCache.set(row.item_id, { ts: Date.now(), accounts })
     updateAccountsCache(userId, row.item_id, accounts).catch(() => {})
+    snapshotBalancesInBackground(userId, row, res.data.accounts)
     return { accounts, error: null }
   } catch (err) {
     const code = err.response?.data?.error_code ?? null
@@ -138,6 +156,7 @@ async function _callPlaid(plaidClient, userId, row, useBalanceGet) {
         const accounts = mapPlaidAccounts(fallback.data.accounts)
         itemCache.set(row.item_id, { ts: Date.now(), accounts })
         updateAccountsCache(userId, row.item_id, accounts).catch(() => {})
+        snapshotBalancesInBackground(userId, row, fallback.data.accounts)
         return { accounts, error: null }
       } catch (_) {}
     }
@@ -345,16 +364,44 @@ plaidRouter.post('/exchange-token', async (req, res, next) => {
   if (!public_token) {
     return res.status(400).json({ error: 'Missing public_token' })
   }
+  let access_token = null
   try {
     const plaidClient = getPlaidClient()
     const exchangeRes = await plaidClient.itemPublicTokenExchange({ public_token })
-    const { access_token, item_id } = exchangeRes.data
+    access_token = exchangeRes.data.access_token
+    const item_id = exchangeRes.data.item_id
+
+    // Call itemGet to get institution_id and products_granted (one call, two fields)
+    const itemRes = await plaidClient.itemGet({ access_token })
+    const institution_id = itemRes.data?.item?.institution_id ?? null
+    const products_granted = itemRes.data?.item?.billed_products ?? null
+
+    // Duplicate institution check — hard block to prevent double-counting
+    if (institution_id) {
+      const existing = await getPlaidItemByInstitutionId(req.uid, institution_id)
+      if (existing) {
+        // Clean up the orphaned access token before rejecting
+        await plaidClient.itemRemove({ access_token }).catch((e) =>
+          console.error('[exchange-token] itemRemove failed for duplicate:', e.response?.data ?? e.message)
+        )
+        return res.status(409).json({
+          error: 'duplicate_institution',
+          institution_name: institution_name || existing.institution_name || 'this institution',
+          existing_item_id: existing.item_id,
+        })
+      }
+    }
+
+    // Cache institution_id for logo lookups so /connections doesn't need to call itemGet
+    if (item_id && institution_id) itemToInstitutionCache.set(item_id, { institution_id, ts: Date.now() })
 
     await upsertPlaidItem({
       userId: req.uid,
       itemId: item_id,
       accessToken: access_token,
       institutionName: institution_name || null,
+      institutionId: institution_id,
+      productsGranted: products_granted,
       lastSyncedAt: new Date(),
     })
 
@@ -369,13 +416,20 @@ plaidRouter.post('/exchange-token', async (req, res, next) => {
       .catch((err) => console.error(`[sync] Initial sync failed for item ${item_id}:`, err.response?.data ?? err.message))
       .finally(() => syncingItems.delete(item_id))
 
-    // Snapshot new item in the background
-    snapshotInvestments(req.uid)
+    // Snapshot new item with full 2-year investment transaction history
+    snapshotInvestments(req.uid, { daysBack: 730 })
       .catch((err) => console.error('[exchange-token] Snapshot failed:', err.message))
 
     invalidateBalanceCache(req.uid)
     res.json({ success: true })
   } catch (err) {
+    // If we have an access_token but something went wrong after exchange, clean it up
+    if (access_token) {
+      try {
+        const plaidClient = getPlaidClient()
+        await plaidClient.itemRemove({ access_token })
+      } catch (_) {}
+    }
     const data = err.response?.data
     const plaidMessage = data?.error_message ?? data?.display_message
     console.error('Plaid exchange error:', plaidMessage ?? err.message, data ?? err)
@@ -391,16 +445,18 @@ plaidRouter.get('/connections', async (req, res, next) => {
     const items = await getPlaidItemsByUserId(req.uid)
     const plaidClient = getPlaidClient()
 
-    async function fetchInstitutionLogo(plaidClient, accessToken, itemId) {
+    async function fetchInstitutionLogo(plaidClient, accessToken, itemId, storedInstitutionId) {
       try {
-        let institutionId = null
-        const itemCached = itemId && itemToInstitutionCache.get(itemId)
-        if (itemCached && Date.now() - itemCached.ts < ITEM_TO_INSTITUTION_TTL_MS) {
-          institutionId = itemCached.institution_id
-        } else {
-          const itemRes = await plaidClient.itemGet({ access_token: accessToken })
-          institutionId = itemRes.data?.item?.institution_id ?? null
-          if (itemId && institutionId) itemToInstitutionCache.set(itemId, { institution_id: institutionId, ts: Date.now() })
+        let institutionId = storedInstitutionId ?? null
+        if (!institutionId) {
+          const itemCached = itemId && itemToInstitutionCache.get(itemId)
+          if (itemCached && Date.now() - itemCached.ts < ITEM_TO_INSTITUTION_TTL_MS) {
+            institutionId = itemCached.institution_id
+          } else {
+            const itemRes = await plaidClient.itemGet({ access_token: accessToken })
+            institutionId = itemRes.data?.item?.institution_id ?? null
+            if (itemId && institutionId) itemToInstitutionCache.set(itemId, { institution_id: institutionId, ts: Date.now() })
+          }
         }
         if (!institutionId) return null
 
@@ -450,13 +506,14 @@ plaidRouter.get('/connections', async (req, res, next) => {
           }
         }
 
-        const institutionLogo = await fetchInstitutionLogo(plaidClient, row.access_token, row.item_id)
+        const institutionLogo = await fetchInstitutionLogo(plaidClient, row.access_token, row.item_id, row.institution_id)
 
         return {
           id: row.id,
           item_id: row.item_id,
           institution_name: row.institution_name ?? 'Unknown',
           institution_logo: institutionLogo ?? undefined,
+          products_granted: row.products_granted ?? [],
           status,
           error_code: errorCode,
           last_synced_at: row.last_synced_at,

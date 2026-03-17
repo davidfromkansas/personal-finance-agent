@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url'
 import { authMiddleware } from './middleware/auth.js'
 import { plaidRouter, plaidWebhookHandler } from './routes/plaid.js'
 import { agentRouter } from './routes/agent.js'
+import { cronRouter } from './routes/cron.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.join(__dirname, '.env') })
@@ -48,6 +49,7 @@ app.get('/health', (req, res) => res.json({ ok: true }))
 
 app.use('/api/plaid', authMiddleware, plaidRouter)
 app.use('/api/agent', authMiddleware, agentRouter)
+app.use('/api/cron', cronRouter)
 
 const distPath = path.join(__dirname, '..', 'dist')
 if (fs.existsSync(distPath)) {

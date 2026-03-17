@@ -241,9 +241,53 @@ Tools are defined server-side and passed to the Anthropic API as the `tools` arr
 
 ---
 
+---
+
+## Investment data freshness — reactive refresh in the agent
+
+Investment holdings are refreshed nightly by a cron job. But if the user asks the agent a portfolio question mid-day (or after days of inactivity), the cron data may be hours old. The agent should handle this reactively.
+
+### How it works
+
+When the agent is about to answer a portfolio question, it should:
+
+1. Check the timestamp of the most recent `portfolio_snapshots` row for the user
+2. If data is older than a staleness threshold (e.g. 4 hours), call `snapshotInvestments` before answering
+3. Wait for the snapshot to complete, then query the fresh data
+4. Answer the question with up-to-date numbers
+
+This is a judgment call the agent is well-suited to make — it knows the question being asked, can check the age of the data, and can decide whether a refresh is worth the latency.
+
+### Tool design (M3)
+
+#### Tool: `refresh_investment_data`
+
+```json
+{
+  "name": "refresh_investment_data",
+  "description": "Fetches the latest investment holdings from Plaid and updates the database. Call this before answering portfolio questions if the data is more than a few hours old. This takes a few seconds to complete.",
+  "input_schema": { "type": "object", "properties": {} }
+}
+```
+
+The tool handler calls `snapshotInvestments(userId)` server-side and returns a short confirmation with the new snapshot timestamp. The agent then proceeds to call `get_portfolio_value` or similar tools with fresh data.
+
+### When to refresh vs. use cached data
+
+| Scenario | What the agent should do |
+|---|---|
+| Data is < 4 hours old | Answer from DB — no refresh needed |
+| Data is 4–24 hours old | Refresh proactively before answering |
+| Data is > 24 hours old | Refresh, and mention to the user that data was stale |
+| Nightly cron already ran today | Usually no refresh needed |
+
+The agent should not refresh for every message — only when it's about to use investment data and that data may be stale.
+
+---
+
 ## Future milestones (not planned yet)
 
-- **M3:** Investment tools — holdings breakdown, position-level queries, dividend income
+- **M3:** Investment tools — holdings breakdown, position-level queries, dividend income; reactive staleness refresh (see above)
 - **M4:** Streaming responses — text streams in token by token instead of waiting for full response
 - **M5:** Proactive insights — agent surfaces observations without being asked ("You spent 40% more on dining this month")
 - **M6:** Multi-turn memory — summarize past conversations so context persists across sessions

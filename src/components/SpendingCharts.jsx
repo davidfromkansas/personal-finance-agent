@@ -205,9 +205,14 @@ export function SpendingCharts({ connections, embeddedHeight }) {
 
   const stableColorMap = useMemo(() => {
     const map = {}
-    allAccounts.forEach((acc, i) => { map[acc.name] = colorForIndex(i) })
+    // Spending accounts get first colors so they stay stable before/after connections loads
+    const orderedNames = [...activeAccounts]
+    for (const acc of allAccounts) {
+      if (!orderedNames.includes(acc.name)) orderedNames.push(acc.name)
+    }
+    orderedNames.forEach((name, i) => { map[name] = colorForIndex(i) })
     return map
-  }, [allAccounts])
+  }, [allAccounts, activeAccounts])
 
   const allSelected = selectedAccountIds === null
 
@@ -347,19 +352,20 @@ export function SpendingCharts({ connections, embeddedHeight }) {
         )}
       </div>
 
-      {allAccounts.length > 0 && !activeLoading && (
+      {(allAccounts.length > 0 || (!activeLoading && activeAccounts.length > 0)) && (
         <div className="flex flex-wrap items-center gap-x-1 gap-y-1 px-5 pb-4">
-          {allAccounts.map((acc) => {
+          {(allAccounts.length > 0 ? allAccounts : activeAccounts.map((name) => ({ account_id: name, name }))).map((acc, i) => {
             const active = isAccountActive(acc.name)
-            const color = stableColorMap[acc.name]
+            const color = stableColorMap[acc.name] ?? colorForIndex(i)
+            const interactive = allAccounts.length > 0
             return (
               <button
                 key={acc.account_id}
                 type="button"
-                onClick={() => toggleLegendItem(acc.account_id)}
-                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-opacity cursor-pointer ${
-                  active ? 'opacity-100' : 'opacity-35'
-                }`}
+                onClick={interactive ? () => toggleLegendItem(acc.account_id) : undefined}
+                className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 transition-opacity ${
+                  interactive ? 'cursor-pointer' : 'cursor-default'
+                } ${active ? 'opacity-100' : 'opacity-35'}`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 <span

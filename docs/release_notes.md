@@ -4,6 +4,32 @@ User-facing changes, most recent first.
 
 ---
 
+# Account connection improvements and data accuracy — Shipped: March 17, 2026
+
+## Loan payments and rent now show in spending
+
+Loan payments and rent/utilities were previously excluded from the spending chart. They are now counted as real cash outflows, consistent with how popular finance dashboards (Mint, YNAB, Copilot) treat them. Transfers between your own accounts are still excluded to avoid double-counting.
+
+## Duplicate institution connections are now blocked
+
+If you try to add a bank you've already connected, the app now detects the duplicate and shows a clear message instead of creating a second connection that would double-count your net worth. If you want to add accounts you previously skipped (e.g., adding a 401k to an existing Chase connection), the app offers an "Update connection" button that opens your existing connection in Plaid's update mode — no duplicate created.
+
+## Charts now update when you connect or disconnect an account
+
+After connecting, reconnecting, refreshing, or disconnecting an account, all charts (spending, net worth, investments, cash flow) now refresh automatically. Previously, some charts (investments, portfolio history) were not included in the post-connect refresh and required a manual page reload to reflect the change.
+
+## Disconnecting an account clears all its data immediately
+
+When you disconnect an account, the following are now deleted together: transactions, account balance history, investment holdings history, portfolio snapshots, and investment transactions. Previously only transactions were deleted, leaving orphaned historical data in the database.
+
+## Connected accounts now show which data was granted
+
+Each connection on the dashboard now shows badges indicating whether Plaid granted access to **Transactions**, **Investments**, or both. This is populated for new connections going forward; existing connections will show the badges after they are reconnected.
+
+See the full plan: [ACCOUNT_CONNECTION_FLOW.md](docs/ACCOUNT_CONNECTION_FLOW.md) · [ACCOUNT_DISCONNECTION_FLOW.md](docs/ACCOUNT_DISCONNECTION_FLOW.md)
+
+---
+
 # Faster navigation, instant data, and skeleton loading — Shipped: March 14, 2026
 
 ## App feels instant when switching pages

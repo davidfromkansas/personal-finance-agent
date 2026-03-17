@@ -10,7 +10,7 @@ import { InvestmentPortfolio } from '../components/InvestmentPortfolio'
 import { UpcomingPayments } from '../components/UpcomingPayments'
 import { CashFlowChart } from '../components/CashFlowChart'
 import { useMutation } from '@tanstack/react-query'
-import { useConnections, invalidateAfterConnect, invalidateTransactionData } from '../hooks/usePlaidQueries'
+import { useConnections, invalidateAfterConnect } from '../hooks/usePlaidQueries'
 import queryClient from '../lib/queryClient'
 
 /**
@@ -723,11 +723,25 @@ export function TransactionList({ transactions, loading, title, subtitle, header
   )
 }
 
+function ProductBadge({ label }) {
+  return (
+    <span
+      className="inline-flex items-center rounded-[6px] border border-[#e0e7ff] bg-[#eef2ff] px-1.5 py-0.5 text-[11px] font-medium leading-4 text-[#3730a3]"
+      style={{ fontFamily: 'JetBrains Mono,monospace' }}
+    >
+      {label}
+    </span>
+  )
+}
+
 function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect }) {
   const isError = connection.status === 'error'
   const needsReconnect = isError && connection.error_code === 'ITEM_LOGIN_REQUIRED'
   const { balanceText } = getAccountSummary(accounts ?? connection.accounts)
   const displayName = connection.institution_name ?? connection.name ?? 'Unknown'
+  const products = connection.products_granted ?? []
+  const hasTransactions = products.some((p) => p === 'transactions')
+  const hasInvestments = products.some((p) => p === 'investments')
   return (
     <div className="flex min-h-[80px] items-center justify-between rounded-[10px] border border-black/10 px-[13px] py-0.5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -758,6 +772,8 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
               {isError && <AlertCircleIcon />}
               {isError ? 'Error' : 'Connected'}
             </span>
+            {hasTransactions && <ProductBadge label="Transactions" />}
+            {hasInvestments && <ProductBadge label="Investments" />}
           </div>
           {balanceText && (
             <p className="text-[12px] font-medium leading-4 text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
@@ -818,6 +834,7 @@ export function LoggedInPage() {
   const [linkToken, setLinkToken] = useState(null)
   const [linkMode, setLinkMode] = useState('add')
   const [addError, setAddError] = useState(null)
+  const [duplicateInstitution, setDuplicateInstitution] = useState(null) // { institution_name, existing_item_id }
   const [exchanging, setExchanging] = useState(false)
   const [linkLoading, setLinkLoading] = useState(false)
   const [showConnectionTypeModal, setShowConnectionTypeModal] = useState(false)
@@ -882,13 +899,13 @@ export function LoggedInPage() {
     setTxnStartIndex(newStarts[newStarts.length - 1])
   }, [txnPageStarts])
 
-  // Stop polling once no connections are syncing, then refresh data
+  // Stop polling once no connections are syncing, then refresh all data
   useEffect(() => {
     if (!isPolling) return
     if (!connections.some(c => c.syncing)) {
       setIsPolling(false)
       fetchTransactions({ showLoading: false })
-      invalidateTransactionData()
+      invalidateAfterConnect()
     }
   }, [connections, isPolling, fetchTransactions])
 
@@ -905,9 +922,8 @@ export function LoggedInPage() {
     })
       .then((data) => {
         if (data.synced > 0) {
-          queryClient.refetchQueries({ queryKey: ['connections'] })
           fetchTransactions({ showLoading: false })
-          invalidateTransactionData()
+          invalidateAfterConnect()
         }
       })
       .catch((err) => console.error('Background sync failed:', err))
@@ -950,13 +966,19 @@ export function LoggedInPage() {
           setIsPolling(true)
         } else {
           await Promise.all([
-            queryClient.refetchQueries({ queryKey: ['connections'] }),
             fetchTransactions(),
-            invalidateTransactionData(),
+            invalidateAfterConnect(),
           ])
         }
       } catch (err) {
-        setAddError(err.message ?? 'Failed to add connection')
+        if (err.status === 409 && err.data?.error === 'duplicate_institution') {
+          setDuplicateInstitution({
+            institution_name: err.data.institution_name,
+            existing_item_id: err.data.existing_item_id,
+          })
+        } else {
+          setAddError(err.message ?? 'Failed to add connection')
+        }
       } finally {
         setLinkToken(null)
         setLinkMode('add')
@@ -990,6 +1012,7 @@ export function LoggedInPage() {
     setShowConnectionTypeModal(false)
     setLinkToken(null)
     setAddError(null)
+    setDuplicateInstitution(null)
     setLinkLoading(true)
     try {
       const body = linkModeOverride === 'investments' ? { link_mode: 'investments' } : undefined
@@ -1025,7 +1048,13 @@ export function LoggedInPage() {
       })
       return { previous }
     },
-    onSuccess: () => invalidateAfterConnect(),
+    onSuccess: () => {
+      // Remove cached chart data immediately so charts show a loading state rather than
+      // frozen stale values while the refetch (which requires a Plaid API call) is in flight
+      queryClient.removeQueries({ queryKey: ['net-worth'] })
+      queryClient.removeQueries({ queryKey: ['portfolio-history'] })
+      return invalidateAfterConnect()
+    },
     onError: (err, _connection, context) => {
       if (context?.previous) queryClient.setQueryData(['connections'], context.previous)
       setAddError(err.message ?? 'Failed to disconnect')
@@ -1057,10 +1086,7 @@ export function LoggedInPage() {
       })
       return { previous }
     },
-    onSuccess: () => Promise.all([
-      queryClient.refetchQueries({ queryKey: ['connections'] }),
-      invalidateTransactionData(),
-    ]),
+    onSuccess: () => invalidateAfterConnect(),
     onError: async (err, connection, context) => {
       if (context?.previous) queryClient.setQueryData(['connections'], context.previous)
       if (err.message === 'Login required') {
@@ -1243,6 +1269,23 @@ export function LoggedInPage() {
                 <p className="pb-4 text-[14px] text-red-600" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                   {addError}
                 </p>
+              )}
+              {duplicateInstitution && (
+                <div className="pb-4 rounded-[10px] border border-[#ffc9c9] bg-[#fef2f2] px-4 py-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                  <p className="text-[13px] text-[#c10007]">
+                    You already have <strong>{duplicateInstitution.institution_name}</strong> connected. To add more accounts, update your existing connection.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setDuplicateInstitution(null)
+                      await handleReconnect({ item_id: duplicateInstitution.existing_item_id, institution_name: duplicateInstitution.institution_name })
+                    }}
+                    className="mt-2 rounded-lg bg-[#c10007] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#9a0006]"
+                  >
+                    Update {duplicateInstitution.institution_name} connection
+                  </button>
+                </div>
               )}
 
               <div className="pb-6">

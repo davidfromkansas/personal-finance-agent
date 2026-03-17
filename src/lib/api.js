@@ -18,8 +18,10 @@ export async function apiFetch(path, { method = 'GET', body, getToken } = {}) {
     ...(body != null && { body: JSON.stringify(body) }),
   })
   if (!res.ok) {
-    const err = new Error(await res.json().then((d) => d.error || res.statusText).catch(() => res.statusText))
+    const data = await res.json().catch(() => ({}))
+    const err = new Error(data.error || res.statusText)
     err.status = res.status
+    err.data = data
     throw err
   }
   return res.json()

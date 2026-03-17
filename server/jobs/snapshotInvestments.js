@@ -35,7 +35,9 @@ function todayStr() {
   return new Date().toISOString().slice(0, 10)
 }
 
-export async function snapshotInvestments(userId) {
+/** @param {string} userId
+ *  @param {{ daysBack?: number }} options - daysBack defaults to 90; pass 730 on initial connection */
+export async function snapshotInvestments(userId, { daysBack = 90 } = {}) {
   const items = await getPlaidItemsByUserId(userId)
   const plaidClient = getPlaidClient()
   const date = todayStr()
@@ -104,7 +106,7 @@ export async function snapshotInvestments(userId) {
       try {
         const txnRes = await plaidClient.investmentsTransactionsGet({
           access_token: item.access_token,
-          start_date: ninetyDaysAgo(),
+          start_date: daysAgo(daysBack),
           end_date: date,
         })
         const secMap = securityMap
@@ -163,8 +165,8 @@ export async function snapshotInvestments(userId) {
   }
 }
 
-function ninetyDaysAgo() {
+function daysAgo(n) {
   const d = new Date()
-  d.setDate(d.getDate() - 90)
+  d.setDate(d.getDate() - n)
   return d.toISOString().slice(0, 10)
 }

@@ -38,11 +38,19 @@ export async function getPlaidItemByItemId(itemId) {
 
 export async function getPlaidItemsByUserId(userId) {
   const { rows } = await query(
-    `SELECT id, user_id, item_id, access_token, institution_name, last_synced_at, created_at, accounts_cache
+    `SELECT id, user_id, item_id, access_token, institution_name, institution_id, products_granted, last_synced_at, created_at, accounts_cache
      FROM plaid_items WHERE user_id = $1 ORDER BY created_at ASC`,
     [userId]
   )
   return rows
+}
+
+export async function getPlaidItemByInstitutionId(userId, institutionId) {
+  const { rows } = await query(
+    `SELECT item_id, institution_name FROM plaid_items WHERE user_id = $1 AND institution_id = $2 LIMIT 1`,
+    [userId, institutionId]
+  )
+  return rows[0] ?? null
 }
 
 export async function updateAccountsCache(userId, itemId, accountsJson) {
@@ -52,20 +60,28 @@ export async function updateAccountsCache(userId, itemId, accountsJson) {
   )
 }
 
-export async function upsertPlaidItem({ userId, itemId, accessToken, institutionName, lastSyncedAt }) {
+export async function upsertPlaidItem({ userId, itemId, accessToken, institutionName, institutionId, productsGranted, lastSyncedAt }) {
   await query(
-    `INSERT INTO plaid_items (user_id, item_id, access_token, institution_name, last_synced_at)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO plaid_items (user_id, item_id, access_token, institution_name, institution_id, products_granted, last_synced_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (user_id, item_id) DO UPDATE SET
        access_token = EXCLUDED.access_token,
        institution_name = COALESCE(EXCLUDED.institution_name, plaid_items.institution_name),
+       institution_id = COALESCE(EXCLUDED.institution_id, plaid_items.institution_id),
+       products_granted = COALESCE(EXCLUDED.products_granted, plaid_items.products_granted),
        last_synced_at = COALESCE(EXCLUDED.last_synced_at, plaid_items.last_synced_at)`,
-    [userId, itemId, accessToken, institutionName ?? null, lastSyncedAt ?? new Date()]
+    [userId, itemId, accessToken, institutionName ?? null, institutionId ?? null, productsGranted ?? null, lastSyncedAt ?? new Date()]
   )
 }
 
 export async function deletePlaidItem(userId, itemId) {
-  await query(`DELETE FROM transactions WHERE user_id = $1 AND item_id = $2`, [userId, itemId])
+  await Promise.all([
+    query(`DELETE FROM transactions WHERE user_id = $1 AND item_id = $2`, [userId, itemId]),
+    query(`DELETE FROM account_balance_snapshots WHERE user_id = $1 AND item_id = $2`, [userId, itemId]),
+    query(`DELETE FROM portfolio_account_snapshots WHERE user_id = $1 AND item_id = $2`, [userId, itemId]),
+    query(`DELETE FROM holdings_snapshots WHERE user_id = $1 AND item_id = $2`, [userId, itemId]),
+    query(`DELETE FROM investment_transactions WHERE user_id = $1 AND item_id = $2`, [userId, itemId]),
+  ])
   const { rows } = await query(
     `DELETE FROM plaid_items WHERE user_id = $1 AND item_id = $2 RETURNING access_token`,
     [userId, itemId]
@@ -227,14 +243,17 @@ export async function getEarliestTransactionDate(userId) {
   return rows[0]?.earliest ?? null
 }
 
-/** Categories we exclude from "spending" (e.g. credit card payments = TRANSFER_OUT/LOAN_PAYMENTS). */
+/**
+ * Categories excluded from "spending". Kept intentionally narrow — only true non-expenses.
+ * TRANSFER_IN/OUT is the primary double-counting guard (e.g. suppresses the checking-side
+ * credit card payment while individual CC charges show through on the card feed).
+ * Rent, utilities, and loan payments are real cash outflows and ARE counted as spending.
+ */
 const NON_SPENDING_CATEGORIES = [
   'INCOME',
   'TRANSFER_IN',
   'TRANSFER_OUT',
-  'LOAN_PAYMENTS',
   'BANK_FEES',
-  'RENT_AND_UTILITIES',
 ]
 
 export async function getSpendingSummaryByAccount(userId, period, accountIds) {
@@ -448,7 +467,49 @@ export async function getLatestHoldingsSnapshot(userId) {
   return rows
 }
 
-/** Write a backfill snapshot row. ON CONFLICT DO NOTHING — never overwrites live data. */
+/** Upsert a daily balance snapshot for one account. Called after every live accountsBalanceGet. */
+export async function upsertAccountBalanceSnapshot(userId, itemId, institutionName, account, date) {
+  await query(
+    `INSERT INTO account_balance_snapshots
+       (user_id, item_id, account_id, account_name, institution_name, date, current, available, credit_limit, type, subtype, currency)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (user_id, account_id, date) DO UPDATE SET
+       current       = EXCLUDED.current,
+       available     = EXCLUDED.available,
+       credit_limit  = EXCLUDED.credit_limit,
+       account_name  = EXCLUDED.account_name,
+       institution_name = EXCLUDED.institution_name`,
+    [
+      userId, itemId, account.account_id,
+      account.name, institutionName ?? null, date,
+      account.current ?? null, account.available ?? null, account.limit ?? null,
+      account.type ?? null, account.subtype ?? null, account.currency ?? 'USD',
+    ]
+  )
+}
+
+/** Get balance history for all accounts belonging to a user, ordered by date ascending. */
+export async function getAccountBalanceHistory(userId, { afterDate, beforeDate } = {}) {
+  const conditions = ['user_id = $1']
+  const params = [userId]
+  if (afterDate) { params.push(afterDate); conditions.push(`date >= $${params.length}`) }
+  if (beforeDate) { params.push(beforeDate); conditions.push(`date <= $${params.length}`) }
+  const { rows } = await query(
+    `SELECT date, account_id, account_name, institution_name, type, subtype,
+            current, available, credit_limit, currency
+     FROM account_balance_snapshots
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY date ASC, account_name ASC`,
+    params
+  )
+  return rows
+}
+
+export async function getAllUserIdsWithItems() {
+  const res = await query(`SELECT DISTINCT user_id FROM plaid_items`)
+  return res.rows.map((r) => r.user_id)
+}
+
 export async function insertBackfillPortfolioSnapshot(userId, date, totalValue) {
   await query(
     `INSERT INTO portfolio_snapshots (user_id, date, total_value, source)
