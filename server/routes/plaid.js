@@ -770,16 +770,23 @@ plaidRouter.get('/spending-summary', async (req, res, next) => {
         const d = new Date(key + 'T00:00:00')
         label = DAY_NAMES[d.getDay()] || key
       } else if (period === 'month') {
-        const d = new Date(key + 'T00:00:00')
-        label = `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`
+        const start = new Date(key + 'T00:00:00')
+        const end = new Date(start)
+        end.setDate(end.getDate() + 6)
+        const startStr = `${MONTH_NAMES[start.getMonth()]} ${start.getDate()}`
+        const endStr = start.getMonth() === end.getMonth()
+          ? `${end.getDate()}`
+          : `${MONTH_NAMES[end.getMonth()]} ${end.getDate()}`
+        label = `${startStr}–${endStr}`
       } else {
         const [y, m] = key.split('-')
-        label = `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y.slice(2)}`
+        label = `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y}`
       }
       const entry = { label, date: key }
       const perAccount = bucketMap[key] || {}
       for (const name of accounts) {
-        entry[name] = perAccount[name] ?? 0
+        // Clamp to 0: refunds can make a bucket net-negative; show as $0, not a negative bar
+        entry[name] = Math.max(0, perAccount[name] ?? 0)
       }
       return entry
     })

@@ -61,7 +61,7 @@ function CustomTooltip({ active, payload }) {
         {formatCurrency(d.net_worth)}
       </p>
       <div className="mt-1 flex gap-3 text-[11px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        <span className="text-[#16a34a]">Assets {formatCurrency(d.assets)}</span>
+        <span className="text-[#155dfc]">Assets {formatCurrency(d.assets)}</span>
         <span className="text-[#dc2626]">Debts {formatCurrency(d.debts)}</span>
       </div>
     </div>

@@ -4,6 +4,33 @@ User-facing changes, most recent first.
 
 ---
 
+# Spending & cash flow improvements — Shipped: March 18, 2026
+
+## Refunds and returns now reflected in spending
+
+Merchant refunds (returns, credits) are now netted against purchases in the spending chart. A $100 purchase and a $30 refund in the same period shows $70 of net spending instead of $100. Refunds appear in green in the transaction drill-down panel. The cash flow chart already handled this correctly — refunds appear as inflows in the month the money was returned.
+
+## Search and sort in spending and cash flow drill panels
+
+The transaction panel that opens when you click a spending bar or a cash flow month now has a search field and a sort button:
+
+- **Search** — type any part of a merchant name to instantly filter the list. In cash flow, the search filters both the Inflows and Outflows columns at once, and the column totals update to match.
+- **Sort** — choose Most recent (default), Oldest first, Most expensive, or Least expensive.
+
+## Weekly spending bars now show date ranges
+
+The Weekly tab in the spending chart now labels each bar with the full date range it covers (e.g. "Feb 23–Mar 1") instead of just the start date.
+
+## Monthly spending bars now align to full calendar months
+
+Each bar in the Monthly tab now represents a complete calendar month (Jan 1–Jan 31, Feb 1–Feb 28, etc.) rather than a rolling window that could clip months at an arbitrary cutoff. Labels show the month and full year (e.g. "Apr 2025") so April 25th and April 2025 are unambiguous.
+
+## Colors updated for colorblind accessibility
+
+Blue now consistently means money in / positive, and red means money out / negative across all charts and panels — spending drill-down, cash flow bars, transaction detail panel, investment gains/losses, and the net worth tooltip. The previous orange color for outflows has been replaced with red throughout.
+
+---
+
 # Cash flow drill-down and accuracy improvements — Shipped: March 18, 2026
 
 ## Click any month to see a breakdown of inflows and outflows

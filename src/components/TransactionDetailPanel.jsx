@@ -22,7 +22,7 @@ export function TransactionDetailPanel({ transaction, onClose, zBackdrop = 'z-40
   const amt = Number(t.amount)
   const isCredit = amt < 0
   const displayAmt = isCredit ? `+$${Math.abs(amt).toFixed(2)}` : `-$${Math.abs(amt).toFixed(2)}`
-  const amtColor = isCredit ? 'text-[#155dfc]' : 'text-[#f54900]'
+  const amtColor = isCredit ? 'text-[#155dfc]' : 'text-[#dc2626]'
 
   return (
     <>

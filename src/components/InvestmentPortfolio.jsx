@@ -103,7 +103,7 @@ function MoverCard({ holding }) {
           </span>
         )}
         <span
-          className={`text-[11px] font-semibold ${isPositive ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
+          className={`text-[11px] font-semibold ${isPositive ? 'text-[#155dfc]' : 'text-[#dc2626]'}`}
           style={{ fontFamily: 'JetBrains Mono,monospace' }}
         >
           {gainPct != null ? formatPct(gainPct) : '—'}
@@ -118,7 +118,7 @@ function MoverCard({ holding }) {
         </span>
         {gain != null && (
           <span
-            className={`text-[11px] font-medium ${isPositive ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
+            className={`text-[11px] font-medium ${isPositive ? 'text-[#155dfc]' : 'text-[#dc2626]'}`}
             style={{ fontFamily: 'JetBrains Mono,monospace' }}
           >
             {isPositive ? '+' : ''}{formatCurrency(gain)}

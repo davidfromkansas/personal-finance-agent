@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
 } from 'recharts'
 import { useCashFlow, useCashFlowTransactions } from '../hooks/usePlaidQueries'
 import { TransactionDetailPanel, bestLogoUrl } from './TransactionDetailPanel'
 
-/** Two bars per month: blue = inflows (up), orange = outflows (down). Colorblind-friendly. */
+/** Two bars per month: blue = inflows (up), red = outflows (down). */
 const BAR_POSITIVE_COLOR = '#1e40af'
-const BAR_NEGATIVE_COLOR = '#ea580c'
+const BAR_NEGATIVE_COLOR = '#dc2626'
 const LINE_NET_COLOR = '#111827'
 
 function formatCurrency(value) {
@@ -74,6 +74,22 @@ function DashedBar({ x, y, width, height, fill }) {
 
 const MONTH_NAMES_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
+const SORT_OPTIONS = [
+  { key: 'recent', label: 'Most recent' },
+  { key: 'oldest', label: 'Oldest first' },
+  { key: 'expensive', label: 'Most expensive' },
+  { key: 'cheapest', label: 'Least expensive' },
+]
+
+function applySortAndSearch(txns, q, sortKey) {
+  const filtered = q ? txns.filter(t => (t.name ?? '').toLowerCase().includes(q)) : txns
+  const copy = [...filtered]
+  if (sortKey === 'oldest') return copy.reverse()
+  if (sortKey === 'expensive') return copy.sort((a, b) => Math.abs(Number(b.amount)) - Math.abs(Number(a.amount)))
+  if (sortKey === 'cheapest') return copy.sort((a, b) => Math.abs(Number(a.amount)) - Math.abs(Number(b.amount)))
+  return copy // 'recent' — API order
+}
+
 function formatMonthFull(ym) {
   const [y, m] = String(ym).split('-')
   return `${MONTH_NAMES_FULL[parseInt(m, 10) - 1]} ${y}`
@@ -83,7 +99,7 @@ function DrillDownTransactionRow({ transaction, onClick }) {
   const amt = Number(transaction.amount)
   const isCredit = amt < 0
   const displayAmt = isCredit ? `+$${Math.abs(amt).toFixed(2)}` : `-$${Math.abs(amt).toFixed(2)}`
-  const amtColor = isCredit ? 'text-[#155dfc]' : 'text-[#f54900]'
+  const amtColor = isCredit ? 'text-[#155dfc]' : 'text-[#dc2626]'
   const logo = bestLogoUrl(transaction)
   const initial = (transaction.name ?? '?')[0].toUpperCase()
 
@@ -119,14 +135,23 @@ function DrillDownTransactionRow({ transaction, onClick }) {
 
 function CashFlowDrillDownTray({ month, onClose }) {
   const [selectedTransaction, setSelectedTransaction] = useState(null)
+  const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState('recent')
+  const [sortOpen, setSortOpen] = useState(false)
   const { data, isLoading } = useCashFlowTransactions(month)
+  useEffect(() => { setSearch(''); setSortKey('recent') }, [month])
   const open = !!month
 
-  const inflows = data?.inflows ?? []
-  const outflows = data?.outflows ?? []
+  const allInflows = data?.inflows ?? []
+  const allOutflows = data?.outflows ?? []
+  const net = allInflows.reduce((s, t) => s + Math.abs(Number(t.amount)), 0)
+            - allOutflows.reduce((s, t) => s + Number(t.amount), 0)
+
+  const q = search.trim().toLowerCase()
+  const inflows = applySortAndSearch(allInflows, q, sortKey)
+  const outflows = applySortAndSearch(allOutflows, q, sortKey)
   const totalInflows = inflows.reduce((s, t) => s + Math.abs(Number(t.amount)), 0)
   const totalOutflows = outflows.reduce((s, t) => s + Number(t.amount), 0)
-  const net = totalInflows - totalOutflows
 
   return (
     <>
@@ -149,6 +174,45 @@ function CashFlowDrillDownTray({ month, onClose }) {
           <button type="button" onClick={onClose}
             className="text-[#999] hover:text-[#1e1e1e] transition-colors text-xl leading-none cursor-pointer">×</button>
         </div>
+
+        {!isLoading && (
+          <div className="relative shrink-0 flex items-center justify-between gap-3 border-b border-[#f3f4f6] px-5 py-2">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search transactions..."
+              className="flex-1 text-[12px] text-[#1e1e1e] placeholder-[#9ca3af] bg-transparent outline-none min-w-0"
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            />
+            <button
+              type="button"
+              onClick={() => setSortOpen(v => !v)}
+              className="flex items-center gap-1 text-[11px] text-[#6a7282] hover:text-[#1e1e1e] transition-colors cursor-pointer shrink-0"
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            >
+              Sort: {SORT_OPTIONS.find(o => o.key === sortKey)?.label} ▾
+            </button>
+            {sortOpen && (
+              <>
+                <div className="fixed inset-0 z-[55]" onClick={() => setSortOpen(false)} />
+                <div className="absolute right-5 top-full mt-1 z-[56] bg-white border border-[#e5e7eb] rounded-lg shadow-lg py-1 min-w-[160px]">
+                  {SORT_OPTIONS.map(o => (
+                    <button
+                      key={o.key}
+                      type="button"
+                      onClick={() => { setSortKey(o.key); setSortOpen(false) }}
+                      className={`w-full text-left px-4 py-2 text-[12px] hover:bg-[#f9fafb] transition-colors ${sortKey === o.key ? 'text-[#1e1e1e] font-medium' : 'text-[#6a7282]'}`}
+                      style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="flex-1 overflow-hidden flex">
           {isLoading ? (
@@ -287,7 +351,7 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
             <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Included</p>
             {['Inflows: income, deposits, refunds', 'Outflows: purchases, loan payments, rent'].map(item => (
               <div key={item} className="flex items-start gap-2 mb-1">
-                <span className="text-[#16a34a] text-[12px] font-bold shrink-0 mt-px">✓</span>
+                <span className="text-[#155dfc] text-[12px] font-bold shrink-0 mt-px">✓</span>
                 <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
               </div>
             ))}

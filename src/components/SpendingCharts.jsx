@@ -5,6 +5,7 @@ import {
 import { apiFetch } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useSpending } from '../hooks/usePlaidQueries'
+import { TransactionDetailPanel } from './TransactionDetailPanel'
 
 const PERIODS = [
   { key: 'week', label: 'Daily', subtitle: 'Last 7 days' },
@@ -19,6 +20,16 @@ const STACK_COLORS = [
 
 function colorForIndex(i) {
   return STACK_COLORS[i % STACK_COLORS.length]
+}
+
+function MonthYearTick({ x, y, payload }) {
+  const [month, year] = (payload.value ?? '').split(' ')
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={12} textAnchor="middle" fill="#6a7282" fontSize={11} fontFamily="JetBrains Mono,monospace">{month}</text>
+      <text x={0} y={0} dy={24} textAnchor="middle" fill="#9ca3af" fontSize={10} fontFamily="JetBrains Mono,monospace">{year}</text>
+    </g>
+  )
 }
 
 function formatCurrency(value) {
@@ -59,27 +70,62 @@ function StackedTooltip({ active, payload, label }) {
   )
 }
 
+const SORT_OPTIONS = [
+  { key: 'recent', label: 'Most recent' },
+  { key: 'oldest', label: 'Oldest first' },
+  { key: 'expensive', label: 'Most expensive' },
+  { key: 'cheapest', label: 'Least expensive' },
+]
+
 function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
   const { getIdToken } = useAuth()
   const [transactions, setTransactions] = useState(null)
+  const [selectedTransaction, setSelectedTransaction] = useState(null)
+  const [sortKey, setSortKey] = useState('recent')
+  const [sortOpen, setSortOpen] = useState(false)
+  const [search, setSearch] = useState('')
   const open = !!bucket
 
   useEffect(() => {
     if (!bucket) return
     setTransactions(null)
+    setSearch('')
     const { fromDate, toDate } = bucketDateRange(bucket.date, period)
     let url = `/api/plaid/transactions?limit=500&from_date=${fromDate}&to_date=${toDate}`
     if (accountIds?.length) url += `&account_ids=${accountIds.join(',')}`
+    // Mirror the backend's NON_SPENDING_CATEGORIES exclusion — category filter,
+    // not amount filter, so refunds (negative spending-category amounts) are included.
+    const NON_SPENDING = ['INCOME', 'TRANSFER_IN', 'TRANSFER_OUT', 'BANK_FEES']
     apiFetch(url, { getToken: getIdToken })
-      .then((d) => setTransactions((d.transactions ?? []).filter((t) => t.amount > 0)))
+      .then((d) => setTransactions(
+        (d.transactions ?? []).filter((t) => !NON_SPENDING.includes(t.personal_finance_category))
+      ))
       .catch(() => setTransactions([]))
   }, [bucket, period, accountIds, getIdToken])
 
-  const total = transactions?.reduce((s, t) => s + t.amount, 0) ?? 0
+  const total = transactions?.reduce((s, t) => s + Number(t.amount), 0) ?? 0
+
+  const sortedTransactions = useMemo(() => {
+    if (!transactions) return null
+    const q = search.trim().toLowerCase()
+    const filtered = q ? transactions.filter(t => (t.name ?? '').toLowerCase().includes(q)) : transactions
+    const copy = [...filtered]
+    if (sortKey === 'recent') return copy // already sorted by date desc from API
+    if (sortKey === 'oldest') return copy.reverse()
+    if (sortKey === 'expensive') return copy.sort((a, b) => Number(b.amount) - Number(a.amount))
+    if (sortKey === 'cheapest') return copy.sort((a, b) => Number(a.amount) - Number(b.amount))
+    return copy
+  }, [transactions, sortKey, search])
 
   return (
     <>
-      {open && (
+      <TransactionDetailPanel
+        transaction={selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+        zBackdrop="z-[60]"
+        zPanel="z-[70]"
+      />
+      {open && !selectedTransaction && (
         <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm" onClick={onClose} />
       )}
       <div className={`fixed right-0 top-0 z-50 flex h-full w-1/3 flex-col border-l border-[#d9d9d9] bg-white shadow-xl transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
@@ -102,6 +148,46 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
           </button>
         </div>
 
+        {/* Sort + search bar */}
+        {transactions?.length > 0 && (
+          <div className="relative shrink-0 flex items-center justify-between gap-3 px-5 py-2 border-b border-[#f3f4f6]">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search transactions..."
+              className="flex-1 text-[12px] text-[#1e1e1e] placeholder-[#9ca3af] bg-transparent outline-none min-w-0"
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            />
+            <button
+              type="button"
+              onClick={() => setSortOpen(v => !v)}
+              className="flex items-center gap-1 text-[11px] text-[#6a7282] hover:text-[#1e1e1e] transition-colors cursor-pointer"
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            >
+              Sort: {SORT_OPTIONS.find(o => o.key === sortKey)?.label} ▾
+            </button>
+            {sortOpen && (
+              <>
+                <div className="fixed inset-0 z-[55]" onClick={() => setSortOpen(false)} />
+                <div className="absolute right-5 top-full mt-1 z-[56] bg-white border border-[#e5e7eb] rounded-lg shadow-lg py-1 min-w-[160px]">
+                  {SORT_OPTIONS.map(o => (
+                    <button
+                      key={o.key}
+                      type="button"
+                      onClick={() => { setSortKey(o.key); setSortOpen(false) }}
+                      className={`w-full text-left px-4 py-2 text-[12px] hover:bg-[#f9fafb] transition-colors ${sortKey === o.key ? 'text-[#1e1e1e] font-medium' : 'text-[#6a7282]'}`}
+                      style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
           {!transactions ? (
@@ -114,15 +200,16 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
             </div>
           ) : (
             <div className="divide-y divide-[#f3f4f6]">
-              {transactions.map((t) => {
+              {sortedTransactions.map((t) => {
                 const logo = t.logo_url ?? (t.website ? `https://www.google.com/s2/favicons?domain=${t.website.replace(/^https?:\/\//, '').split('/')[0]}&sz=64` : null)
                 const initial = (t.name ?? '?')[0].toUpperCase()
-                const displayAmt = `-$${Math.abs(t.amount).toFixed(2)}`
+                const isRefund = Number(t.amount) < 0
+                const displayAmt = isRefund ? `+$${Math.abs(Number(t.amount)).toFixed(2)}` : `-$${Math.abs(Number(t.amount)).toFixed(2)}`
                 const dateStr = t.authorized_date
                   ? new Date(String(t.authorized_date).slice(0, 10) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
                   : null
                 return (
-                  <div key={t.plaid_transaction_id ?? t.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                  <div key={t.plaid_transaction_id ?? t.id} className="flex items-center justify-between gap-3 px-5 py-3 cursor-pointer hover:bg-[#f9fafb] transition-colors" onClick={() => setSelectedTransaction(t)}>
                     <div className="flex items-center gap-3 min-w-0">
                       {logo ? (
                         <div className="relative h-9 w-9 shrink-0">
@@ -142,7 +229,7 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
                         </p>
                       </div>
                     </div>
-                    <span className="shrink-0 text-[14px] font-bold text-[#f54900]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                    <span className={`shrink-0 text-[14px] font-bold ${isRefund ? 'text-[#155dfc]' : 'text-[#dc2626]'}`} style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                       {displayAmt}
                     </span>
                   </div>
@@ -206,14 +293,9 @@ export function SpendingCharts({ connections, embeddedHeight }) {
 
   const stableColorMap = useMemo(() => {
     const map = {}
-    // Spending accounts get first colors so they stay stable before/after connections loads
-    const orderedNames = [...activeAccounts]
-    for (const acc of allAccounts) {
-      if (!orderedNames.includes(acc.name)) orderedNames.push(acc.name)
-    }
-    orderedNames.forEach((name, i) => { map[name] = colorForIndex(i) })
+    allAccounts.forEach((acc, i) => { map[acc.name] = colorForIndex(i) })
     return map
-  }, [allAccounts, activeAccounts])
+  }, [allAccounts])
 
   const allSelected = selectedAccountIds === null
 
@@ -278,9 +360,9 @@ export function SpendingCharts({ connections, embeddedHeight }) {
           <p className="text-[13px] font-semibold text-[#101828] mb-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>What's in this chart</p>
           <div className="mb-3">
             <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Included</p>
-            {['Purchases & payments (retail, restaurants, subscriptions, etc.)', 'Loan payments (mortgage, auto, personal)', 'Rent payments'].map(item => (
+            {['Purchases & payments (retail, restaurants, subscriptions, etc.)', 'Loan payments (mortgage, auto, personal)', 'Rent payments', 'Merchant refunds & returns (netted against purchases in the same period)'].map(item => (
               <div key={item} className="flex items-start gap-2 mb-1">
-                <span className="text-[#16a34a] text-[12px] font-bold shrink-0 mt-px">✓</span>
+                <span className="text-[#155dfc] text-[12px] font-bold shrink-0 mt-px">✓</span>
                 <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
               </div>
             ))}
@@ -340,7 +422,7 @@ export function SpendingCharts({ connections, embeddedHeight }) {
       </div>
 
       <p className="px-5 pt-4 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        Includes purchases and payments across all accounts. Transfers, income, and bank fees are excluded.
+        Includes purchases, payments, and refunds across all accounts. Transfers, income, and bank fees are excluded.
       </p>
 
       <div className={`px-4 pb-2 pt-4 ${embeddedHeight ? 'flex-1 min-h-0' : ''}`} style={embeddedHeight ? {} : { height: 299 }}>
@@ -367,7 +449,9 @@ export function SpendingCharts({ connections, embeddedHeight }) {
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
               <XAxis
                 dataKey="label"
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
+                tick={activePeriod === 'year' ? <MonthYearTick /> : { fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
+                height={activePeriod === 'year' ? 36 : 30}
+                interval={activePeriod === 'year' ? 0 : 'preserveStartEnd'}
                 axisLine={false}
                 tickLine={false}
               />
@@ -380,14 +464,14 @@ export function SpendingCharts({ connections, embeddedHeight }) {
                 tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
               />
               <Tooltip content={<StackedTooltip />} cursor={{ fill: '#f9fafb' }} />
-              {activeAccounts.map((name, i) => (
+              {allAccounts.map((acc, i) => (
                 <Bar
-                  key={name}
-                  dataKey={name}
+                  key={acc.account_id}
+                  dataKey={acc.name}
                   stackId="spending"
-                  fill={stableColorMap[name] || colorForIndex(i)}
+                  fill={stableColorMap[acc.name] || colorForIndex(i)}
                   maxBarSize={64}
-                  radius={i === activeAccounts.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                  radius={i === allAccounts.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
                   style={{ cursor: 'pointer' }}
                   onClick={(barData) => setDrillBucket({ date: barData.date, label: barData.label })}
                 />

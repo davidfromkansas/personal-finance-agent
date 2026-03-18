@@ -55,12 +55,25 @@ LIMIT $2
 | Income & deposits | ✅ Inflow | Legitimate money in |
 | Purchases & payments | ✅ Outflow | Legitimate money out |
 | Loan payments (mortgage, auto, personal) | ✅ Outflow | Real cost |
+| Merchant refunds / returns | ✅ Inflow | Negative Plaid amounts — cash returned to account; correctly increases inflow total |
 | Transfers between linked accounts | ❌ Excluded | Would double-count inter-account moves as both inflow and outflow |
 | Credit card payments | ❌ Excluded | Would double-count individual transactions already captured on the card |
 | Line of credit payments | ❌ Excluded | Same reason |
 | Credit card "Payment Thank You" (on card account) | ❌ Excluded | Mirror of the credit card payment on the checking side — both sides excluded to prevent false inflow |
 
 Exclusion is implemented via `NON_SPENDING_DETAILED_CATEGORIES` on `personal_finance_category_detailed`.
+
+### Refunds and returns
+
+Merchant refunds have negative Plaid amounts (money in), so they are naturally bucketed as **inflows** by the `amount < 0` condition in `getMonthlyCashFlow`. This is correct cash flow behavior — a refund is real money returning to the account.
+
+Cash flow does **not** net refunds against the original purchase outflow. Instead:
+- The original purchase appears as an outflow in the month it was charged
+- The refund appears as an inflow in the month it was credited
+
+This matches real cash movement and is the right framing for "am I saving money this month?" — both the cash out and the cash back are visible as discrete events.
+
+**Contrast with the Spending chart:** The spending chart nets refunds against purchases within the same bucket (a $100 purchase + $30 refund in March shows $70 net spending for March). Cash flow does not net — it shows the gross flows in both directions. The two charts answer different questions.
 
 ---
 

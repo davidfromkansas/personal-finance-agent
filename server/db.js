@@ -278,19 +278,27 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
     : [userId, null, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
 
   const txDate = 'COALESCE(authorized_date, date)'
-  let bucketExpr, groupExpr
+  let bucketExpr, groupExpr, dateFilter
   if (period === 'week') {
     params[1] = 6 // 7 calendar days: today-6 through today
     bucketExpr = `(${txDate})::text`
     groupExpr = txDate
+    dateFilter = `${txDate} >= CURRENT_DATE - ($2 || ' days')::interval`
   } else if (period === 'month') {
     params[1] = 28
     bucketExpr = `date_trunc('week', ${txDate})::date::text`
     groupExpr = `date_trunc('week', ${txDate})`
+    dateFilter = `${txDate} >= CURRENT_DATE - ($2 || ' days')::interval`
   } else {
-    params[1] = 365
+    // Month-aligned: start from the 1st of the month 11 months ago so each bar
+    // covers a complete calendar month (Jan 1–Jan 31, Feb 1–Feb 28, etc.)
+    const now = new Date()
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1)
+    const pad2 = (n) => String(n).padStart(2, '0')
+    params[1] = `${startOfMonth.getFullYear()}-${pad2(startOfMonth.getMonth() + 1)}-01`
     bucketExpr = `to_char(${txDate}, 'YYYY-MM')`
     groupExpr = `to_char(${txDate}, 'YYYY-MM')`
+    dateFilter = `${txDate} >= $2::date`
   }
 
   const sql = `
@@ -298,8 +306,8 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
            COALESCE(account_name, 'Unknown') AS account_name,
            SUM(amount) AS total
     FROM transactions
-    WHERE user_id = $1 AND amount > 0
-      AND ${txDate} >= CURRENT_DATE - ($2 || ' days')::interval
+    WHERE user_id = $1
+      AND ${dateFilter}
       ${filterClause} ${pfcClause}
     GROUP BY ${groupExpr}, account_name
     ORDER BY bucket ASC, account_name ASC`
