@@ -327,6 +327,9 @@ plaidRouter.post('/link-token', async (req, res, next) => {
         : ['transactions']
       if (envProducts.includes('investments')) optionalProducts = ['investments']
     }
+    // Always request liabilities as optional — needed for credit card due dates in Upcoming Payments.
+    // Optional so it doesn't block connections for institutions that don't support it.
+    if (!optionalProducts.includes('liabilities')) optionalProducts.push('liabilities')
 
     const linkParams = {
       user: { client_user_id: req.uid },
