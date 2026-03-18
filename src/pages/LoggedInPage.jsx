@@ -784,6 +784,8 @@ export function LoggedInPage() {
           await queryClient.refetchQueries({ queryKey: ['connections'] })
           setIsPolling(true)
         } else {
+          // Reconnect: trigger a sync first so charts reflect fresh data, then invalidate
+          await apiFetch('/api/plaid/sync', { method: 'POST', getToken: getIdToken })
           await Promise.all([
             fetchTransactions(),
             invalidateAfterConnect(),
