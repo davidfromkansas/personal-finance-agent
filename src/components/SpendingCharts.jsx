@@ -239,6 +239,18 @@ export function SpendingCharts({ connections, embeddedHeight }) {
     }, 0)
   }, [activeBuckets, activeAccounts])
 
+  const yAxisTicks = useMemo(() => {
+    const maxVal = activeBuckets.reduce((max, b) => {
+      const bucketTotal = activeAccounts.reduce((s, name) => s + (b[name] || 0), 0)
+      return Math.max(max, bucketTotal)
+    }, 0)
+    if (maxVal === 0) return [0]
+    const magnitude = Math.pow(10, Math.floor(Math.log10(maxVal)))
+    const nice = Math.ceil(maxVal / magnitude) * magnitude
+    const step = nice / 4
+    return [0, step, step * 2, step * 3, nice]
+  }, [activeBuckets, activeAccounts])
+
   const selectedNames = useMemo(() => {
     if (allSelected) return null
     const idSet = new Set(selectedAccountIds)
@@ -360,6 +372,8 @@ export function SpendingCharts({ connections, embeddedHeight }) {
                 tickLine={false}
               />
               <YAxis
+                ticks={yAxisTicks}
+                domain={[0, yAxisTicks[yAxisTicks.length - 1]]}
                 tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
