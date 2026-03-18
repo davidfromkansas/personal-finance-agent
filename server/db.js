@@ -256,14 +256,24 @@ const NON_SPENDING_CATEGORIES = [
   'BANK_FEES',
 ]
 
+// Surgical detailed-category exclusions: these fall under primary categories we
+// otherwise DO count (e.g. LOAN_PAYMENTS), but represent inter-account settlements
+// where the underlying transactions are already captured on the linked card/account.
+const NON_SPENDING_DETAILED_CATEGORIES = [
+  'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT',
+  'LOAN_PAYMENTS_LINE_OF_CREDIT_PAYMENT',
+]
+
 export async function getSpendingSummaryByAccount(userId, period, accountIds) {
   const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
-  const nextParam = hasFilter ? 4 : 3
+  const primaryParam = hasFilter ? 4 : 3
+  const detailedParam = primaryParam + 1
   const filterClause = hasFilter ? 'AND account_id = ANY($3)' : ''
-  const pfcClause = `AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${nextParam}))`
+  const pfcClause = `AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${primaryParam}))
+      AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($${detailedParam}))`
   const params = hasFilter
-    ? [userId, null, accountIds, NON_SPENDING_CATEGORIES]
-    : [userId, null, NON_SPENDING_CATEGORIES]
+    ? [userId, null, accountIds, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+    : [userId, null, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
 
   const txDate = 'COALESCE(authorized_date, date)'
   let bucketExpr, groupExpr
@@ -305,10 +315,11 @@ export async function getMonthlyCashFlow(userId, months = 24) {
             SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS outflows
      FROM transactions
      WHERE user_id = $1
+       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($3))
      GROUP BY date_trunc('month', COALESCE(authorized_date, date))
      ORDER BY month DESC
      LIMIT $2`,
-    [userId, n]
+    [userId, n, NON_SPENDING_DETAILED_CATEGORIES]
   )
   return rows.map((r) => ({
     month: r.month,

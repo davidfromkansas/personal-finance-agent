@@ -99,6 +99,14 @@ function TransactionRow({ transaction, onClick }) {
             Pending
           </span>
         )}
+        {(transaction.personal_finance_category_detailed === 'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT' ||
+          transaction.personal_finance_category_detailed === 'LOAN_PAYMENTS_LINE_OF_CREDIT_PAYMENT') && (
+          <span className="shrink-0 inline-block rounded-[6px] border border-[#c7d7fe] bg-[#eef2ff] px-1.5 py-[2px] text-[11px] font-medium leading-4 text-[#3730a3]"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            title="Credit card payment — excluded from spending totals to avoid double-counting individual transactions">
+            Excluded from spending
+          </span>
+        )}
       </div>
       <span className={`shrink-0 text-right font-bold text-[14px] leading-5 tracking-[-0.05px] ${amtColor}`}
         style={{ fontFamily: 'JetBrains Mono,monospace' }}>

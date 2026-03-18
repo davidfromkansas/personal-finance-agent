@@ -179,6 +179,7 @@ export function SpendingCharts({ connections, embeddedHeight }) {
   const [activePeriod, setActivePeriod] = useState('week')
   const [selectedAccountIds, setSelectedAccountIds] = useState(null)
   const [drillBucket, setDrillBucket] = useState(null)
+  const [showInfo, setShowInfo] = useState(false)
 
   const { data: spendingData, isLoading: activeLoading } = useSpending(activePeriod, selectedAccountIds ?? [])
   const activeBuckets = spendingData?.buckets ?? []
@@ -257,9 +258,33 @@ export function SpendingCharts({ connections, embeddedHeight }) {
       onClose={() => setDrillBucket(null)}
     />
     <div
-      className={`rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
+      className={`relative rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
+      {showInfo && (
+        <div className="absolute inset-0 z-10 rounded-[14px] bg-white/97 px-6 py-5 overflow-y-auto" onClick={() => setShowInfo(false)}>
+          <p className="text-[13px] font-semibold text-[#101828] mb-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>What's in this chart</p>
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Included</p>
+            {['Purchases & payments (retail, restaurants, subscriptions, etc.)', 'Loan payments (mortgage, auto, personal)', 'Rent payments'].map(item => (
+              <div key={item} className="flex items-start gap-2 mb-1">
+                <span className="text-[#16a34a] text-[12px] font-bold shrink-0 mt-px">✓</span>
+                <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
+              </div>
+            ))}
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Excluded</p>
+            {['Income & deposits', 'Transfers between your accounts', 'Credit card payments (individual transactions are already counted)', 'Bank fees'].map(item => (
+              <div key={item} className="flex items-start gap-2 mb-1">
+                <span className="text-[#dc2626] text-[12px] font-bold shrink-0 mt-px">✕</span>
+                <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Click anywhere to dismiss</p>
+        </div>
+      )}
       <div className="flex items-center justify-between rounded-t-[14px] bg-[#b91c1c] px-5 py-3">
         <div className="flex items-center gap-8">
           <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
@@ -293,6 +318,12 @@ export function SpendingCharts({ connections, embeddedHeight }) {
           <span className="text-[18px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {activeLoading ? '—' : formatCurrency(total)}
           </span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setShowInfo(v => !v) }}
+            className="flex items-center justify-center w-5 h-5 rounded-full border border-white/40 text-white/70 hover:text-white hover:border-white/70 transition-colors text-[11px] font-bold leading-none"
+            title="What's included in this chart"
+          >i</button>
         </div>
       </div>
 

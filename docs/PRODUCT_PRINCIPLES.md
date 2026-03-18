@@ -54,6 +54,18 @@ Applied examples:
 
 ---
 
+## 6. Surgical solutions over blunt ones
+
+Prefer targeted, specific rules over broad exclusions or inclusions. Overly broad rules create silent gaps or unintended double-counting — problems that are hard to detect because the data looks plausible but is quietly wrong.
+
+When filtering or categorizing data, identify the exact pattern causing the problem and scope the fix to that pattern only. Avoid catching more than you intend to.
+
+Applied examples:
+- Credit card payments fall under `LOAN_PAYMENTS` (primary category), but blanket-excluding all `LOAN_PAYMENTS` would also remove mortgages and car loans that are legitimate spending. Instead, exclude only `LOAN_PAYMENTS_CREDIT_CARD_PAYMENT` and `LOAN_PAYMENTS_LINE_OF_CREDIT_PAYMENT` via the detailed category field.
+- Duplicate institution detection blocks re-adding the same institution, but allows updating an existing connection — hard block for the bad path, clear escape hatch for the valid one.
+
+---
+
 ## 5. No catastrophic failures — degrade gracefully
 
 > "In principle we shouldn't have edge cases that result in all-out failure."
