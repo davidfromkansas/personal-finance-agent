@@ -138,6 +138,16 @@ export function useCashFlow() {
   })
 }
 
+export function useCashFlowTransactions(month) {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['cash-flow-transactions', month],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-transactions?month=${month}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: !!month,
+  })
+}
+
 export function usePortfolioHistory(range, accountIds) {
   const { getIdToken } = useAuth()
   return useQuery({

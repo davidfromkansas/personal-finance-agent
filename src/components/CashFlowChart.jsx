@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
 } from 'recharts'
-import { useCashFlow } from '../hooks/usePlaidQueries'
+import { useCashFlow, useCashFlowTransactions } from '../hooks/usePlaidQueries'
+import { TransactionDetailPanel, bestLogoUrl } from './TransactionDetailPanel'
 
 /** Two bars per month: blue = inflows (up), orange = outflows (down). Colorblind-friendly. */
 const BAR_POSITIVE_COLOR = '#1e40af'
@@ -52,9 +53,170 @@ function CashFlowTooltip({ active, payload, label }) {
   )
 }
 
+function DashedBar({ x, y, width, height, fill }) {
+  if (!height || Math.abs(height) < 1) return null
+  const actualY = height < 0 ? y + height : y
+  const actualHeight = Math.abs(height)
+  return (
+    <rect
+      x={x}
+      y={actualY}
+      width={width}
+      height={actualHeight}
+      fill={`${fill}22`}
+      stroke={fill}
+      strokeWidth={1.5}
+      strokeDasharray="4 2"
+      rx={2}
+    />
+  )
+}
+
+const MONTH_NAMES_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+function formatMonthFull(ym) {
+  const [y, m] = String(ym).split('-')
+  return `${MONTH_NAMES_FULL[parseInt(m, 10) - 1]} ${y}`
+}
+
+function DrillDownTransactionRow({ transaction, onClick }) {
+  const amt = Number(transaction.amount)
+  const isCredit = amt < 0
+  const displayAmt = isCredit ? `+$${Math.abs(amt).toFixed(2)}` : `-$${Math.abs(amt).toFixed(2)}`
+  const amtColor = isCredit ? 'text-[#155dfc]' : 'text-[#f54900]'
+  const logo = bestLogoUrl(transaction)
+  const initial = (transaction.name ?? '?')[0].toUpperCase()
+
+  return (
+    <div
+      className="flex h-[36px] shrink-0 items-center justify-between gap-2 rounded-[8px] px-2 cursor-pointer hover:bg-[#f0f0f0] transition-colors"
+      onClick={() => onClick(transaction)}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        {logo ? (
+          <div className="relative h-5 w-5 shrink-0">
+            <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#e5e7eb] object-contain bg-white"
+              onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
+            <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
+          </div>
+        ) : (
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
+        )}
+        <p className="shrink truncate font-medium text-[13px] leading-5 text-[#101828]"
+          style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          {transaction.name}
+        </p>
+      </div>
+      <span className={`shrink-0 text-right font-bold text-[13px] leading-5 ${amtColor}`}
+        style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+        {displayAmt}
+      </span>
+    </div>
+  )
+}
+
+function CashFlowDrillDownTray({ month, onClose }) {
+  const [selectedTransaction, setSelectedTransaction] = useState(null)
+  const { data, isLoading } = useCashFlowTransactions(month)
+  const open = !!month
+
+  const inflows = data?.inflows ?? []
+  const outflows = data?.outflows ?? []
+  const totalInflows = inflows.reduce((s, t) => s + Math.abs(Number(t.amount)), 0)
+  const totalOutflows = outflows.reduce((s, t) => s + Number(t.amount), 0)
+  const net = totalInflows - totalOutflows
+
+  return (
+    <>
+      {open && !selectedTransaction && (
+        <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm" onClick={onClose} />
+      )}
+      <div className={`fixed right-0 top-0 z-50 flex h-full w-[672px] flex-col border-l border-[#d9d9d9] bg-white shadow-xl transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-[#d9d9d9] px-5 py-4">
+          <div>
+            <p className="text-[16px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              {month ? formatMonthFull(month) : ''}
+            </p>
+            {!isLoading && (
+              <p className="text-[12px] mt-0.5" style={{ fontFamily: 'JetBrains Mono,monospace', color: net >= 0 ? BAR_POSITIVE_COLOR : BAR_NEGATIVE_COLOR }}>
+                Net {net >= 0 ? '+' : ''}{formatCurrency(net)}
+              </p>
+            )}
+          </div>
+          <button type="button" onClick={onClose}
+            className="text-[#999] hover:text-[#1e1e1e] transition-colors text-xl leading-none cursor-pointer">×</button>
+        </div>
+
+        <div className="flex-1 overflow-hidden flex">
+          {isLoading ? (
+            <div className="flex flex-1 items-center justify-center">
+              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading…</span>
+            </div>
+          ) : (
+            <>
+              {/* Inflows column */}
+              <div className="flex-1 overflow-y-auto border-r border-[#e5e7eb] px-3 pt-4 pb-4">
+                <div className="flex items-center justify-between mb-2 gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_POSITIVE_COLOR }}>
+                    In ({inflows.length})
+                  </span>
+                  <span className="text-[11px] font-semibold" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_POSITIVE_COLOR }}>
+                    +{formatCurrency(totalInflows)}
+                  </span>
+                </div>
+                {inflows.length === 0 ? (
+                  <p className="text-[12px] text-[#9ca3af] py-2" style={{ fontFamily: 'JetBrains Mono,monospace' }}>None</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {inflows.map((t) => (
+                      <DrillDownTransactionRow key={t.id} transaction={t} onClick={setSelectedTransaction} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Outflows column */}
+              <div className="flex-1 overflow-y-auto px-3 pt-4 pb-4">
+                <div className="flex items-center justify-between mb-2 gap-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_NEGATIVE_COLOR }}>
+                    Out ({outflows.length})
+                  </span>
+                  <span className="text-[11px] font-semibold" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_NEGATIVE_COLOR }}>
+                    -{formatCurrency(totalOutflows)}
+                  </span>
+                </div>
+                {outflows.length === 0 ? (
+                  <p className="text-[12px] text-[#9ca3af] py-2" style={{ fontFamily: 'JetBrains Mono,monospace' }}>None</p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {outflows.map((t) => (
+                      <DrillDownTransactionRow key={t.id} transaction={t} onClick={setSelectedTransaction} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      {/* Transaction detail panel stacks above tray using elevated z-indices */}
+      <TransactionDetailPanel
+        transaction={selectedTransaction}
+        onClose={() => setSelectedTransaction(null)}
+        zBackdrop="z-[60]"
+        zPanel="z-[70]"
+      />
+    </>
+  )
+}
+
 export function CashFlowChart({ embeddedHeight = 320 }) {
   const { data: rawData, isLoading: loading } = useCashFlow()
   const [showInfo, setShowInfo] = useState(false)
+  const [selectedMonth, setSelectedMonth] = useState(null)
 
   const data = useMemo(() => {
     const months = rawData?.months ?? []
@@ -76,6 +238,9 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
 
   const latestMonth = data?.length ? data[data.length - 1] : null
   const netLatest = latestMonth ? latestMonth.net : 0
+
+  const now = new Date()
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
   const yDomain = useMemo(() => {
     if (!data?.length) return { domain: [-10000, 10000], ticks: [-10000, -5000, 0, 5000, 10000] }
@@ -120,7 +285,7 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
           <p className="text-[13px] font-semibold text-[#101828] mb-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>What's in this chart</p>
           <div className="mb-3">
             <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Included</p>
-            {['Inflows: income, deposits, refunds, transfers in', 'Outflows: purchases, loan payments, rent, transfers out'].map(item => (
+            {['Inflows: income, deposits, refunds', 'Outflows: purchases, loan payments, rent'].map(item => (
               <div key={item} className="flex items-start gap-2 mb-1">
                 <span className="text-[#16a34a] text-[12px] font-bold shrink-0 mt-px">✓</span>
                 <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
@@ -129,7 +294,7 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
           </div>
           <div>
             <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Excluded</p>
-            {['Credit card payments (individual transactions are already counted as outflows)'].map(item => (
+            {['Transfers between your accounts', 'Credit card payments (individual transactions are already counted as outflows)'].map(item => (
               <div key={item} className="flex items-start gap-2 mb-1">
                 <span className="text-[#dc2626] text-[12px] font-bold shrink-0 mt-px">✕</span>
                 <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
@@ -161,10 +326,6 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
         </div>
       </div>
 
-      <p className="shrink-0 px-4 pt-2 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        Monthly income vs spending. Net = money in minus money out.
-      </p>
-
       <div className="flex-1 min-h-0 px-4 pb-2 pt-4">
         {loading ? (
           <div className="flex h-full items-center justify-center">
@@ -181,7 +342,17 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 24, left: 8 }} barCategoryGap="20%">
+            <ComposedChart
+              data={data}
+              margin={{ top: 8, right: 16, bottom: 24, left: 8 }}
+              barCategoryGap="20%"
+              style={{ cursor: 'pointer' }}
+              onClick={(chartData) => {
+                if (!chartData?.activeLabel) return
+                const entry = data.find(d => d.label === chartData.activeLabel)
+                if (entry?.month) setSelectedMonth(entry.month)
+              }}
+            >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
               <ReferenceLine y={0} stroke="#9ca3af" strokeWidth={1} />
               <XAxis
@@ -209,8 +380,15 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
                 fill={BAR_POSITIVE_COLOR}
                 minPointSize={3}
                 maxBarSize={40}
-                radius={[2, 2, 0, 0]}
                 isAnimationActive={false}
+                cursor="pointer"
+                onClick={(barData) => setSelectedMonth(barData.month)}
+                shape={(props) => {
+                  const { x, y, width, height, month } = props
+                  if (!height || Math.abs(height) < 1) return null
+                  if (month === currentMonthKey) return <DashedBar x={x} y={y} width={width} height={height} fill={BAR_POSITIVE_COLOR} />
+                  return <rect x={x} y={y} width={width} height={Math.abs(height)} fill={BAR_POSITIVE_COLOR} rx={2} />
+                }}
               />
               <Bar
                 dataKey="negativeFlow"
@@ -218,8 +396,16 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
                 fill={BAR_NEGATIVE_COLOR}
                 minPointSize={3}
                 maxBarSize={40}
-                radius={[0, 0, 2, 2]}
                 isAnimationActive={false}
+                cursor="pointer"
+                onClick={(barData) => setSelectedMonth(barData.month)}
+                shape={(props) => {
+                  const { x, y, width, height, month } = props
+                  if (!height || Math.abs(height) < 1) return null
+                  if (month === currentMonthKey) return <DashedBar x={x} y={y} width={width} height={height} fill={BAR_NEGATIVE_COLOR} />
+                  const actualY = height < 0 ? y + height : y
+                  return <rect x={x} y={actualY} width={width} height={Math.abs(height)} fill={BAR_NEGATIVE_COLOR} rx={2} />
+                }}
               />
               <Line
                 type="monotone"
@@ -229,11 +415,14 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
                 strokeWidth={3}
                 dot={{ fill: LINE_NET_COLOR, r: 4, strokeWidth: 2, stroke: '#ffffff' }}
                 connectNulls
+                cursor="pointer"
+                onClick={(lineData) => setSelectedMonth(lineData.month)}
               />
             </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>
+      <CashFlowDrillDownTray month={selectedMonth} onClose={() => setSelectedMonth(null)} />
     </div>
   )
 }

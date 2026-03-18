@@ -262,6 +262,8 @@ const NON_SPENDING_CATEGORIES = [
 const NON_SPENDING_DETAILED_CATEGORIES = [
   'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT',
   'LOAN_PAYMENTS_LINE_OF_CREDIT_PAYMENT',
+  // Credit card "Payment Thank You" recorded on the card account — the other side of LOAN_PAYMENTS_CREDIT_CARD_PAYMENT
+  'LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT',
 ]
 
 export async function getSpendingSummaryByAccount(userId, period, accountIds) {
@@ -306,6 +308,10 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
   return rows
 }
 
+// Inter-account transfers excluded from cash flow to avoid double-counting
+// (e.g. savings → checking shows as both inflow and outflow).
+const CASH_FLOW_EXCLUDED_CATEGORIES = ['TRANSFER_IN', 'TRANSFER_OUT']
+
 /** Monthly cash flow: inflows (credits), outflows (debits), net. Plaid: positive = out, negative = in. */
 export async function getMonthlyCashFlow(userId, months = 24) {
   const n = Math.min(Math.max(months, 1), 36)
@@ -315,11 +321,12 @@ export async function getMonthlyCashFlow(userId, months = 24) {
             SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS outflows
      FROM transactions
      WHERE user_id = $1
-       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($3))
+       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($3))
+       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($4))
      GROUP BY date_trunc('month', COALESCE(authorized_date, date))
      ORDER BY month DESC
      LIMIT $2`,
-    [userId, n, NON_SPENDING_DETAILED_CATEGORIES]
+    [userId, n, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
   )
   return rows.map((r) => ({
     month: r.month,
@@ -327,6 +334,22 @@ export async function getMonthlyCashFlow(userId, months = 24) {
     outflows: parseFloat(r.outflows) || 0,
     net: (parseFloat(r.inflows) || 0) - (parseFloat(r.outflows) || 0),
   }))
+}
+
+/** Transactions for a given month (YYYY-MM), split into inflows and outflows. Same exclusions as getMonthlyCashFlow. */
+export async function getCashFlowTransactions(userId, month) {
+  const { rows } = await query(
+    `${TX_SELECT}
+     WHERE user_id = $1
+       AND to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') = $2
+       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($3))
+       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($4))
+     ORDER BY COALESCE(authorized_date, date) DESC, created_at DESC`,
+    [userId, month, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  )
+  const inflows = rows.filter(r => Number(r.amount) < 0)
+  const outflows = rows.filter(r => Number(r.amount) > 0)
+  return { inflows, outflows }
 }
 
 // ── Investment snapshot writes ─────────────────────────────────────────────

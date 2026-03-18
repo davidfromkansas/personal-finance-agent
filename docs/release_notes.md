@@ -4,6 +4,22 @@ User-facing changes, most recent first.
 
 ---
 
+# Cash flow drill-down and accuracy improvements — Shipped: March 18, 2026
+
+## Click any month to see a breakdown of inflows and outflows
+
+Clicking a bar (or anywhere in a month column) on the cash flow chart opens a side panel showing all transactions for that month, split into Inflows and Outflows columns. Click any transaction to open the full transaction detail panel.
+
+## Credit card payment receipts no longer inflate inflows
+
+When you pay a credit card that is linked in Plaid, the credit card account records a "Payment Thank You" transaction. This was previously counted as an inflow, making it appear as if you received income. These transactions (categorized as `LOAN_DISBURSEMENTS`) are now excluded from both cash flow and the spending chart — the same treatment already applied to the payment from the checking account side.
+
+## Cash flow and spending exclusions are more transparent
+
+Both the cash flow chart and spending chart now have an info button (ⓘ) that explains exactly what is included and excluded. The current month's bars are shown with a dashed outline to indicate the data is still incomplete.
+
+---
+
 # Account connection improvements and data accuracy — Shipped: March 17, 2026
 
 ## Loan payments and rent now show in spending

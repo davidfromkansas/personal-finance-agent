@@ -13,7 +13,7 @@ import {
   getPlaidItemsByUserId, getPlaidItemByItemId, getPlaidItemByInstitutionId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
-  getMonthlyCashFlow,
+  getMonthlyCashFlow, getCashFlowTransactions,
   updateTransactionAccountNames,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot,
   upsertAccountBalanceSnapshot,
@@ -698,6 +698,21 @@ plaidRouter.get('/cash-flow', async (req, res, next) => {
   } catch (err) {
     console.error('GET /cash-flow error:', err)
     res.status(500).json({ error: 'Failed to load cash flow' })
+  }
+})
+
+/** GET /api/plaid/cash-flow-transactions?month=YYYY-MM — inflows and outflows for a single month */
+plaidRouter.get('/cash-flow-transactions', async (req, res, next) => {
+  try {
+    const { month } = req.query
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+      return res.status(400).json({ error: 'month must be in YYYY-MM format' })
+    }
+    const result = await getCashFlowTransactions(req.uid, month)
+    res.json(result)
+  } catch (err) {
+    console.error('GET /cash-flow-transactions error:', err)
+    res.status(500).json({ error: 'Failed to load cash flow transactions' })
   }
 })
 
