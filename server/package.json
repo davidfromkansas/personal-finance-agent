@@ -12,6 +12,7 @@
     "express": "^4.21.0",
     "firebase-admin": "^13.0.1",
     "jose": "^6.2.0",
+    "node-cron": "^4.2.1",
     "pg": "^8.13.0",
     "plaid": "^32.0.0",
     "yahoo-finance2": "^3.13.2"

@@ -12,10 +12,13 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
+import cron from 'node-cron'
 import { authMiddleware } from './middleware/auth.js'
 import { plaidRouter, plaidWebhookHandler } from './routes/plaid.js'
 import { agentRouter } from './routes/agent.js'
 import { cronRouter } from './routes/cron.js'
+import { getAllUserIdsWithItems } from './db.js'
+import { snapshotInvestments } from './jobs/snapshotInvestments.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.join(__dirname, '.env') })
@@ -66,3 +69,24 @@ app.use((err, req, res, next) => {
 })
 
 app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`))
+
+// Daily investment snapshot at 6 PM UTC (after US market close)
+cron.schedule('0 18 * * *', async () => {
+  console.log('[cron] daily investment snapshot: starting')
+  let userIds
+  try {
+    userIds = await getAllUserIdsWithItems()
+  } catch (err) {
+    console.error('[cron] failed to fetch user list:', err.message)
+    return
+  }
+  for (const userId of userIds) {
+    try {
+      await snapshotInvestments(userId)
+      console.log(`[cron] snapshot done for user ${userId}`)
+    } catch (err) {
+      console.error(`[cron] snapshot failed for user ${userId}:`, err.message)
+    }
+  }
+  console.log('[cron] daily investment snapshot: done')
+})
