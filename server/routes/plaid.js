@@ -674,7 +674,8 @@ plaidRouter.get('/recurring', async (req, res, next) => {
       return itemPayments
     }))
 
-    const payments = itemResults.flat()
+    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    const payments = itemResults.flat().filter((p) => p.predicted_next_date >= today)
     payments.sort((a, b) => (a.predicted_next_date || '').localeCompare(b.predicted_next_date || ''))
     const transactionIds = [...new Set(payments.map((p) => p.first_transaction_id).filter(Boolean))]
     const logoMap = transactionIds.length ? await getLogoUrlsByPlaidTransactionIds(req.uid, transactionIds) : {}

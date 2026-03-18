@@ -586,6 +586,56 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
   )
 }
 
+function UpcomingPaymentsCard() {
+  const [showInfo, setShowInfo] = useState(false)
+  return (
+    <div className="relative min-w-0 w-full lg:flex-[2] rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col h-[404px]">
+      {showInfo && (
+        <div className="absolute inset-0 z-10 rounded-[14px] bg-white/97 px-6 py-5 overflow-y-auto" onClick={() => setShowInfo(false)}>
+          <p className="text-[13px] font-semibold text-[#101828] mb-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>What's in this section</p>
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Included</p>
+            {['Recurring charges detected by Plaid (subscriptions, utilities, rent, etc.)', 'Credit card bills — next due date and minimum payment amount'].map(item => (
+              <div key={item} className="flex items-start gap-2 mb-1">
+                <span className="text-[#155dfc] text-[12px] font-bold shrink-0 mt-px">✓</span>
+                <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>How it works</p>
+            <p className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Plaid detects recurring patterns in your transaction history and predicts the next charge date. Credit card due dates and minimum payment amounts come directly from your bank.</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Not included</p>
+            {['One-off purchases', 'Inflow streams (income, deposits)'].map(item => (
+              <div key={item} className="flex items-start gap-2 mb-1">
+                <span className="text-[#dc2626] text-[12px] font-bold shrink-0 mt-px">✕</span>
+                <span className="text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Click anywhere to dismiss</p>
+        </div>
+      )}
+      <div className="shrink-0 rounded-t-[14px] bg-[#b45309] px-5 py-3 flex items-center justify-between">
+        <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          Upcoming Payments
+        </h2>
+        <button
+          type="button"
+          onClick={() => setShowInfo(v => !v)}
+          className="flex items-center justify-center w-5 h-5 rounded-full border border-white/40 text-white/70 hover:text-white hover:border-white/70 transition-colors text-[11px] font-bold leading-none"
+          title="What's included in this section"
+        >i</button>
+      </div>
+      <div className="min-h-0 flex-1 flex flex-col">
+        <UpcomingPayments />
+      </div>
+    </div>
+  )
+}
+
 export function LoggedInPage() {
   const navigate = useNavigate()
   const { getIdToken } = useAuth()
@@ -974,16 +1024,7 @@ export function LoggedInPage() {
                 <div className="min-w-0 w-full lg:flex-[3] h-[404px] overflow-hidden">
                   <CashFlowChart embeddedHeight={404} />
                 </div>
-                <div className="min-w-0 w-full lg:flex-[2] rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col h-[404px]">
-                  <div className="shrink-0 rounded-t-[14px] bg-[#b45309] px-5 py-3">
-                    <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                      Upcoming Payments
-                    </h2>
-                  </div>
-                  <div className="min-h-0 flex-1 flex flex-col">
-                    <UpcomingPayments />
-                  </div>
-                </div>
+                <UpcomingPaymentsCard />
               </div>
             </div>
             {/* Transactions: 3 columns, top-aligned with left block */}

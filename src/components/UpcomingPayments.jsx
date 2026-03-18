@@ -23,10 +23,8 @@ function formatDue(predictedNextDate) {
   const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000))
   if (diffDays === 0) return 'Today'
   if (diffDays === 1) return 'Tomorrow'
-  if (diffDays === -1) return 'Yesterday'
   if (diffDays > 0 && diffDays <= 30) return `in ${diffDays} days`
-  if (diffDays < 0 && diffDays >= -30) return `${Math.abs(diffDays)} days ago`
-  return predictedNextDate
+  return due.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function formatAmount(amount) {
