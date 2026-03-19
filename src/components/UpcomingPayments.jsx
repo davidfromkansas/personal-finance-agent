@@ -133,7 +133,7 @@ export function UpcomingPayments() {
         </div>
       </div>
       {showPagination && (
-        <div className="shrink-0 flex items-center justify-center gap-2 border-t border-[#e5e7eb] px-4 py-3">
+        <div className="shrink-0 flex items-center justify-center gap-2 border-t border-[#9ca3af] px-4 py-3">
           <button
             type="button"
             onClick={() => setPage((p) => Math.max(0, p - 1))}

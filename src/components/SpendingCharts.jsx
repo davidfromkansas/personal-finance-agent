@@ -43,7 +43,7 @@ function StackedTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   const total = payload.reduce((s, p) => s + (p.value || 0), 0)
   return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-sm min-w-[160px]">
+    <div className="rounded-lg border border-[#9ca3af] bg-white px-3 py-2.5 shadow-sm min-w-[160px]">
       <p className="text-[12px] font-medium text-[#6a7282] mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {label}
       </p>
@@ -61,7 +61,7 @@ function StackedTooltip({ active, payload, label }) {
         </div>
       ))}
       {payload.length > 1 && (
-        <div className="flex items-center justify-between gap-4 border-t border-[#e5e7eb] mt-1.5 pt-1.5">
+        <div className="flex items-center justify-between gap-4 border-t border-[#9ca3af] mt-1.5 pt-1.5">
           <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Total</span>
           <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{formatCurrency(total)}</span>
         </div>
@@ -177,7 +177,7 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
             {sortOpen && (
               <>
                 <div className="fixed inset-0 z-[55]" onClick={() => setSortOpen(false)} />
-                <div className="absolute right-5 top-full mt-1 z-[56] bg-white border border-[#e5e7eb] rounded-lg shadow-lg py-1 min-w-[160px]">
+                <div className="absolute right-5 top-full mt-1 z-[56] bg-white border border-[#9ca3af] rounded-lg shadow-lg py-1 min-w-[160px]">
                   {SORT_OPTIONS.map(o => (
                     <button
                       key={o.key}
@@ -206,7 +206,7 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
               <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions</span>
             </div>
           ) : (
-            <div className="divide-y divide-[#f3f4f6]">
+            <div className="divide-y divide-[#d1d5db]">
               {sortedTransactions.map((t) => {
                 const logo = t.logo_url ?? (t.website ? `https://www.google.com/s2/favicons?domain=${t.website.replace(/^https?:\/\//, '').split('/')[0]}&sz=64` : null)
                 const initial = (t.name ?? '?')[0].toUpperCase()
@@ -220,13 +220,13 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
                     <div className="flex items-center gap-3 min-w-0">
                       {logo ? (
                         <div className="relative h-9 w-9 shrink-0">
-                          <img src={logo} alt="" className="h-9 w-9 rounded-full border border-[#e5e7eb] object-contain bg-white"
+                          <img src={logo} alt="" className="h-9 w-9 rounded-full border border-[#9ca3af] object-contain bg-white"
                             onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
-                          <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[12px] font-bold text-[#4a5565]"
+                          <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[12px] font-bold text-[#4a5565]"
                             style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
                         </div>
                       ) : (
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[12px] font-bold text-[#4a5565]"
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[12px] font-bold text-[#4a5565]"
                           style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
                       )}
                       <div className="min-w-0">

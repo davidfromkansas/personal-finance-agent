@@ -39,11 +39,11 @@ export function TransactionDetailPanel({ transaction, onClose, zBackdrop = 'z-40
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {bestLogoUrl(t) ? (
-                <img src={bestLogoUrl(t)} alt="" className="h-10 w-10 shrink-0 rounded-full border border-[#e5e7eb] object-contain"
+                <img src={bestLogoUrl(t)} alt="" className="h-10 w-10 shrink-0 rounded-full border border-[#9ca3af] object-contain"
                   onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
                 />
               ) : null}
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[14px] font-bold text-[#4a5565]"
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[14px] font-bold text-[#4a5565]"
                 style={{ fontFamily: 'JetBrains Mono,monospace', display: bestLogoUrl(t) ? 'none' : 'flex' }}>
                 {(t.name ?? '?')[0].toUpperCase()}
               </div>
@@ -51,7 +51,7 @@ export function TransactionDetailPanel({ transaction, onClose, zBackdrop = 'z-40
             </div>
             <span className={`shrink-0 text-[22px] font-bold leading-tight ${amtColor}`} style={{ fontFamily: 'JetBrains Mono,monospace' }}>{displayAmt}</span>
           </div>
-          <div className="border-t border-[#e5e7eb]" />
+          <div className="border-t border-[#9ca3af]" />
           <div className="space-y-4">
             {[
               { label: 'Status', value: t.pending ? 'Pending' : 'Posted' },
@@ -84,16 +84,16 @@ export function TransactionDetailPanel({ transaction, onClose, zBackdrop = 'z-40
             </div>
           </div>
           {t.counterparties?.length > 0 && (
-            <div className="border-t border-[#e5e7eb] pt-4 space-y-3">
+            <div className="border-t border-[#9ca3af] pt-4 space-y-3">
               <p className="text-[12px] font-medium uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Counterparties</p>
               {t.counterparties.map((cp, i) => {
                 const cpLogo = cp.logo_url ?? (cp.website ? `https://www.google.com/s2/favicons?domain=${cp.website.replace(/^https?:\/\//, '').split('/')[0]}&sz=64` : null)
                 return (
                   <div key={i} className="flex items-center gap-3">
                     {cpLogo ? (
-                      <img src={cpLogo} alt="" className="h-7 w-7 shrink-0 rounded-full border border-[#e5e7eb] object-contain bg-white" onError={(e) => { e.target.style.display = 'none' }} />
+                      <img src={cpLogo} alt="" className="h-7 w-7 shrink-0 rounded-full border border-[#9ca3af] object-contain bg-white" onError={(e) => { e.target.style.display = 'none' }} />
                     ) : (
-                      <div className="h-7 w-7 shrink-0 rounded-full border border-[#e5e7eb] bg-[#f9fafb]" />
+                      <div className="h-7 w-7 shrink-0 rounded-full border border-[#9ca3af] bg-[#f9fafb]" />
                     )}
                     <div className="min-w-0">
                       <p className="text-[14px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{cp.name}</p>
@@ -126,7 +126,7 @@ export function TransactionDetailPanel({ transaction, onClose, zBackdrop = 'z-40
             ].filter(r => r.value)
             if (!pmRows.length) return null
             return (
-              <div className="border-t border-[#e5e7eb] pt-4 space-y-3">
+              <div className="border-t border-[#9ca3af] pt-4 space-y-3">
                 <p className="text-[12px] font-medium uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Payment Details</p>
                 {pmRows.map(({ label, value }) => (
                   <div key={label} className="flex items-start justify-between gap-4">
@@ -138,7 +138,7 @@ export function TransactionDetailPanel({ transaction, onClose, zBackdrop = 'z-40
             )
           })()}
           {t.location && Object.values(t.location).some(Boolean) && (
-            <div className="border-t border-[#e5e7eb] pt-4 space-y-1">
+            <div className="border-t border-[#9ca3af] pt-4 space-y-1">
               <p className="text-[12px] font-medium uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Location</p>
               {t.location.address && <p className="text-[14px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{t.location.address}</p>}
               {(t.location.city || t.location.region || t.location.postal_code) && (
@@ -157,7 +157,7 @@ export function TransactionDetailPanel({ transaction, onClose, zBackdrop = 'z-40
             </div>
           )}
           {t.plaid_transaction_id && (
-            <div className="border-t border-[#e5e7eb] pt-4">
+            <div className="border-t border-[#9ca3af] pt-4">
               <p className="text-[11px] text-[#bbb] break-all" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{t.plaid_transaction_id}</p>
             </div>
           )}

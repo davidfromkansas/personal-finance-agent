@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { useMarketClock } from '../hooks/useMarketClock'
 import { AppHeader } from '../components/AppHeader'
-import { useInvestments, usePortfolioHistory, usePortfolioSnapshot, useTickerHistory, useQuotes } from '../hooks/usePlaidQueries'
+import { useInvestments, usePortfolioHistory, usePortfolioSnapshot, useTickerHistory, useQuotes, useAccounts } from '../hooks/usePlaidQueries'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   LineChart, Line, PieChart, Pie, Cell,
@@ -58,7 +58,7 @@ function ChartTooltip({ active, payload }) {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   })
   return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 shadow-sm" style={MONO}>
+    <div className="rounded-lg border border-[#9ca3af] bg-white px-3 py-2 shadow-sm" style={MONO}>
       <p className="text-[11px] text-[#6a7282]">{dateLabel}</p>
       <p className="text-[14px] font-semibold text-[#101828]">{fmt(d.value)}</p>
     </div>
@@ -142,8 +142,8 @@ function AllocationDonut({ allocation }) {
 function TopMoversRow({ movers, isLoading, isOpen }) {
   if (!isLoading && movers.length === 0) return null
   return (
-    <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb] bg-white mb-4">
-      <div className="flex h-[44px] items-center justify-between border-b border-[#e5e7eb] px-5">
+    <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white mb-4">
+      <div className="flex h-[44px] items-center justify-between border-b border-[#9ca3af] px-5">
         <SectionLabel>Top Movers</SectionLabel>
         <span className="text-[11px] text-[#9ca3af]" style={MONO}>
           {isOpen
@@ -154,7 +154,7 @@ function TopMoversRow({ movers, isLoading, isOpen }) {
       <div className="flex flex-wrap gap-3 p-4">
         {isLoading
           ? [0,1,2,3,4].map(i => (
-              <div key={i} className="flex w-[160px] flex-col gap-1.5 rounded-[10px] border border-[#e5e7eb] p-4">
+              <div key={i} className="flex w-[160px] flex-col gap-1.5 rounded-[10px] border border-[#9ca3af] p-4">
                 <Skeleton className="h-3 w-10" />
                 <Skeleton className="h-4 w-16" />
                 <Skeleton className="h-3 w-12" />
@@ -165,7 +165,7 @@ function TopMoversRow({ movers, isLoading, isOpen }) {
               const has52W = m.week52Low != null && m.week52High != null && m.week52High !== m.week52Low
               const pct52W = has52W ? Math.min(100, Math.max(0, ((m.price - m.week52Low) / (m.week52High - m.week52Low)) * 100)) : null
               return (
-                <div key={m.ticker} className="flex w-[160px] flex-col rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
+                <div key={m.ticker} className="flex w-[160px] flex-col rounded-[10px] border border-[#9ca3af] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
                   <p className="text-[11px] font-bold text-[#101828]" style={MONO}>{m.ticker}</p>
                   <p className="mt-1 text-[15px] font-semibold text-[#101828]" style={MONO}>
                     ${m.price.toFixed(2)}
@@ -200,7 +200,7 @@ function TopMoversRow({ movers, isLoading, isOpen }) {
 function MarketStatusBar() {
   const { isOpen, timeStr, dateStr, tzAbbr } = useMarketClock()
   return (
-    <div className="flex items-center justify-between rounded-[14px] border border-[#e5e7eb] bg-white px-5 py-3 mb-4">
+    <div className="flex items-center justify-between rounded-[14px] border border-[#9ca3af] bg-white px-5 py-3 mb-4">
       <div className="flex items-center gap-2">
         <span className={`h-2 w-2 rounded-full ${isOpen ? 'bg-[#16a34a]' : 'bg-[#6a7282]'}`}
           style={isOpen ? { boxShadow: '0 0 0 3px #dcfce7' } : {}} />
@@ -221,6 +221,134 @@ function MarketStatusBar() {
   )
 }
 
+function AccountDetailPanel({ account, holdings, accountsMeta, onClose }) {
+  const open = !!account
+  const accHoldings = (holdings ?? []).filter(h => h.account_id === account?.account_id)
+    .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+
+  const meta = (accountsMeta ?? []).find(a => a.account_id === account?.account_id)
+
+  const totalValue = accHoldings.reduce((s, h) => s + (h.value ?? 0), 0)
+  const totalCostBasis = accHoldings.reduce((s, h) => s + (h.cost_basis ?? 0), 0)
+  const unrealizedGain = totalCostBasis > 0 ? totalValue - totalCostBasis : null
+
+  const typeLabel = [meta?.type, meta?.subtype].filter(Boolean).map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' · ')
+
+  return (
+    <>
+      {open && <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm" onClick={onClose} />}
+      <div className={`fixed right-0 top-0 z-50 flex h-full w-[400px] flex-col border-l border-[#d9d9d9] bg-white shadow-xl transition-transform duration-300 ease-in-out ${open ? 'translate-x-0' : 'translate-x-full'}`}>
+        {/* Header */}
+        <div className="flex shrink-0 items-start justify-between border-b border-[#d9d9d9] px-5 py-4">
+          <div className="min-w-0 pr-3">
+            <p className="text-[16px] font-semibold text-[#101828] leading-tight" style={MONO}>{account?.name}</p>
+            <p className="mt-0.5 text-[12px] text-[#6a7282]" style={MONO}>{account?.institution}</p>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-[#999] hover:text-[#1e1e1e] transition-colors text-xl leading-none cursor-pointer mt-0.5">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {/* Account metadata */}
+          <div className="border-b border-[#f3f4f6] px-5 py-4 flex flex-col gap-2.5">
+            {typeLabel && (
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-[#6a7282]" style={MONO}>Type</span>
+                <span className="text-[12px] font-medium text-[#101828]" style={MONO}>{typeLabel}</span>
+              </div>
+            )}
+            {meta?.current != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-[#6a7282]" style={MONO}>Current balance</span>
+                <span className="text-[12px] font-medium text-[#101828]" style={MONO}>{fmt(meta.current)}</span>
+              </div>
+            )}
+            {meta?.available != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-[#6a7282]" style={MONO}>Available balance</span>
+                <span className="text-[12px] font-medium text-[#101828]" style={MONO}>{fmt(meta.available)}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] text-[#6a7282]" style={MONO}>Holdings value</span>
+              <span className="text-[12px] font-semibold text-[#101828]" style={MONO}>{fmt(totalValue)}</span>
+            </div>
+            {unrealizedGain != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-[#6a7282]" style={MONO}>Unrealized gain/loss</span>
+                <span className={`text-[12px] font-semibold ${unrealizedGain >= 0 ? 'text-[#16a34a]' : 'text-[#dc2626]'}`} style={MONO}>
+                  {unrealizedGain >= 0 ? '+' : ''}{fmt(unrealizedGain)}
+                </span>
+              </div>
+            )}
+            {totalCostBasis > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-[#6a7282]" style={MONO}>Cost basis</span>
+                <span className="text-[12px] text-[#101828]" style={MONO}>{fmt(totalCostBasis)}</span>
+              </div>
+            )}
+            {meta?.account_id && (
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] text-[#6a7282]" style={MONO}>Account ID</span>
+                <span className="text-[11px] text-[#9ca3af] font-mono">{meta.account_id}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Holdings */}
+          {accHoldings.length > 0 && (
+            <div className="px-5 py-4">
+              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>
+                Holdings ({accHoldings.length})
+              </p>
+              <div className="divide-y divide-[#d1d5db]">
+                {accHoldings.map((h, i) => {
+                  const gain = h.cost_basis != null && h.value != null ? h.value - h.cost_basis : null
+                  const gainPct = gain != null && h.cost_basis > 0 ? (gain / h.cost_basis) * 100 : null
+                  return (
+                    <div key={i} className="py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-semibold text-[#101828]" style={MONO}>{h.ticker ?? '—'}</p>
+                          <p className="truncate text-[11px] text-[#6a7282]" style={MONO}>{h.security_name}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-[13px] font-semibold text-[#101828]" style={MONO}>{fmt(h.value)}</p>
+                          {gain != null && (
+                            <p className={`text-[11px] ${gain >= 0 ? 'text-[#16a34a]' : 'text-[#dc2626]'}`} style={MONO}>
+                              {gain >= 0 ? '+' : ''}{fmt(gain)}{gainPct != null ? ` (${gainPct >= 0 ? '+' : ''}${gainPct.toFixed(1)}%)` : ''}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+                        {h.quantity != null && (
+                          <span className="text-[11px] text-[#9ca3af]" style={MONO}>{h.quantity.toFixed(4)} shares</span>
+                        )}
+                        {h.close_price != null && (
+                          <span className="text-[11px] text-[#9ca3af]" style={MONO}>@ {fmt(h.close_price)}</span>
+                        )}
+                        {h.security_type && (
+                          <span className="text-[11px] text-[#9ca3af]" style={MONO}>{h.security_type}</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {accHoldings.length === 0 && (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-[13px] text-[#6a7282]" style={MONO}>No holdings data available</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
 export function InvestmentsPage() {
   const { isOpen } = useMarketClock()
   const [chartRange, setChartRange] = useState('1W')
@@ -229,9 +357,11 @@ export function InvestmentsPage() {
   const [highlightedTicker, setHighlightedTicker] = useState(null)
   const [showAllAccounts, setShowAllAccounts] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState(null)
+  const [panelAccount, setPanelAccount] = useState(null)
   const hoveredDateRef = useRef(null)
 
   const { data: investmentsData, isLoading: holdingsLoading } = useInvestments()
+  const { data: accountsData } = useAccounts()
   const { data: chartData, isLoading: chartLoading } = usePortfolioHistory(chartRange, selectedAccountId)
   const { data: ytdData } = usePortfolioHistory('YTD', selectedAccountId)
   const { data: weekData } = usePortfolioHistory('1W', selectedAccountId)
@@ -364,8 +494,15 @@ export function InvestmentsPage() {
   const isLoading = holdingsLoading
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8]">
+    <div className="min-h-screen bg-slate-900 pl-[220px]">
       <AppHeader />
+
+      <AccountDetailPanel
+        account={panelAccount}
+        holdings={holdings}
+        accountsMeta={accountsData?.accounts}
+        onClose={() => { setPanelAccount(null); setSelectedAccountId(null) }}
+      />
 
       {/* Snapshot side panel */}
       {selectedDate && (
@@ -375,7 +512,7 @@ export function InvestmentsPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-[#e5e7eb] px-5 py-4">
+            <div className="flex items-center justify-between border-b border-[#9ca3af] px-5 py-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>Snapshot</p>
                 <p className="mt-0.5 text-[15px] font-semibold text-[#101828]" style={MONO}>
@@ -400,14 +537,14 @@ export function InvestmentsPage() {
             ) : (
               <>
                 {/* Total value */}
-                <div className="border-b border-[#e5e7eb] px-5 py-4">
+                <div className="border-b border-[#9ca3af] px-5 py-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>Total Value</p>
                   <p className="mt-1 text-[28px] font-bold tracking-tight text-[#101828]" style={MONO}>{fmt(snapshotData.total)}</p>
                 </div>
 
                 {/* Accounts */}
                 {snapshotData.accounts?.length > 0 && (
-                  <div className="border-b border-[#e5e7eb] px-5 py-4">
+                  <div className="border-b border-[#9ca3af] px-5 py-4">
                     <p className="mb-3 text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>Accounts</p>
                     <div className="flex flex-col gap-2">
                       {snapshotData.accounts.map((acc, i) => (
@@ -428,7 +565,7 @@ export function InvestmentsPage() {
                   <p className="mb-3 text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>
                     Holdings ({snapshotData.holdings.length})
                   </p>
-                  <div className="flex flex-col divide-y divide-[#f3f4f6]">
+                  <div className="flex flex-col divide-y divide-[#d1d5db]">
                     {snapshotData.holdings.map((h, i) => {
                       const gainLoss = h.value != null && h.cost_basis != null ? h.value - h.cost_basis : null
                       const gainPct = gainLoss != null && h.cost_basis ? (gainLoss / h.cost_basis) * 100 : null
@@ -472,13 +609,13 @@ export function InvestmentsPage() {
         <div className="mx-auto max-w-[1100px]">
           <MarketStatusBar />
           <TopMoversRow movers={topMovers} isLoading={holdingsLoading || quotesLoading} isOpen={isOpen} />
-          <div className="overflow-hidden rounded-[14px] border border-[#e5e7eb] bg-white">
+          <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white">
 
             {/* ── Top stats row ── */}
-            <div className="grid grid-cols-1 divide-y divide-[#e5e7eb] border-b border-[#e5e7eb] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
+            <div className="grid grid-cols-1 divide-y divide-[#9ca3af] border-b border-[#9ca3af] sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               {/* Total Balance */}
               <div className="px-6 py-5">
-                <SectionLabel>Portfolio Value</SectionLabel>
+                <SectionLabel>Total Portfolio Value</SectionLabel>
                 {isLoading ? (
                   <Skeleton className="mt-3 h-9 w-52" />
                 ) : (
@@ -542,13 +679,13 @@ export function InvestmentsPage() {
             </div>
 
             {/* ── Main content ── */}
-            <div className="flex flex-col divide-y divide-[#e5e7eb] lg:flex-row lg:divide-x lg:divide-y-0" style={{ minHeight: 480 }}>
+            <div className="flex flex-col divide-y divide-[#9ca3af] lg:flex-row lg:divide-x lg:divide-y-0" style={{ minHeight: 480 }}>
 
               {/* Left: Accounts + Allocation */}
               <div className="w-full shrink-0 lg:w-[260px]">
                 {/* Accounts */}
                 <div>
-                  <div className="flex h-[52px] items-center justify-between border-b border-[#e5e7eb] px-5">
+                  <div className="flex h-[52px] items-center justify-between border-b border-[#9ca3af] px-5">
                     <SectionLabel>Accounts</SectionLabel>
                     {!isLoading && accounts.length > 0 && (
                       <span className="text-[11px] font-semibold text-[#6a7282]" style={MONO}>{accounts.length}</span>
@@ -567,14 +704,14 @@ export function InvestmentsPage() {
                     ) : accounts.length === 0 ? (
                       <p className="text-[13px] text-[#6a7282]" style={MONO}>No accounts</p>
                     ) : (
-                      <div className="divide-y divide-[#f3f4f6]">
+                      <div className="divide-y divide-[#d1d5db]">
                         {(showAllAccounts ? accounts : accounts.slice(0, 5)).map((acc, i) => {
                           const isSelected = selectedAccountId === acc.account_id
                           return (
                           <div
                             key={i}
                             className={`flex cursor-pointer items-start justify-between gap-2 rounded-[6px] px-2 py-2.5 transition-colors ${isSelected ? 'bg-[#f0f4ff]' : 'hover:bg-[#f9fafb]'}`}
-                            onClick={() => setSelectedAccountId(isSelected ? null : acc.account_id)}
+                            onClick={() => { setPanelAccount(acc); setSelectedAccountId(acc.account_id) }}
                           >
                             <div className="min-w-0">
                               <p className={`line-clamp-2 text-[12px] ${isSelected ? 'font-semibold text-[#101828]' : 'text-[#4a5565]'}`} style={MONO}>{acc.name}</p>
@@ -602,7 +739,7 @@ export function InvestmentsPage() {
 
                 {/* Allocation */}
                 <div>
-                  <div className="flex h-[52px] items-center border-b border-[#e5e7eb] px-5">
+                  <div className="flex h-[52px] items-center border-b border-[#9ca3af] px-5">
                     <SectionLabel>Asset Allocation</SectionLabel>
                   </div>
                   <div className="px-5 pb-4">
@@ -621,7 +758,7 @@ export function InvestmentsPage() {
 
               {/* Middle: Performance chart */}
               <div className="flex min-w-0 flex-1 flex-col">
-                <div className="flex h-[52px] items-center justify-between border-b border-[#e5e7eb] px-5">
+                <div className="flex h-[52px] items-center justify-between border-b border-[#9ca3af] px-5">
                   <div className="flex items-center gap-2">
                     <SectionLabel>Performance</SectionLabel>
                     {selectedAccountId && (
@@ -714,12 +851,12 @@ export function InvestmentsPage() {
 
               {/* Right: Top Holdings */}
               <div className="w-full shrink-0 lg:w-[300px]">
-                <div className="flex h-[52px] items-center justify-between border-b border-[#e5e7eb] px-5">
+                <div className="flex h-[52px] items-center justify-between border-b border-[#9ca3af] px-5">
                   <SectionLabel>Top Holdings</SectionLabel>
                   <span className="text-[11px] font-semibold text-[#6a7282]" style={MONO}>%</span>
                 </div>
                 <div className="px-5">
-                  <div className="grid grid-cols-3 gap-2 border-b border-[#e5e7eb] py-2.5">
+                  <div className="grid grid-cols-3 gap-2 border-b border-[#9ca3af] py-2.5">
                     {['Asset', 'Price', 'Weight'].map((label, i) => (
                       <p key={label} className={`text-[11px] font-semibold uppercase tracking-[1px] text-[#6a7282] ${i > 0 ? 'text-right' : ''}`} style={MONO}>
                         {label}
@@ -798,7 +935,7 @@ function MoversTooltip({ active, payload, label, highlightedTicker }) {
     ? payload.filter(p => p.dataKey === highlightedTicker)
     : payload.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
   return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 shadow-sm" style={MONO}>
+    <div className="rounded-lg border border-[#9ca3af] bg-white px-3 py-2 shadow-sm" style={MONO}>
       <p className="mb-1.5 text-[11px] text-[#6a7282]">{dateLabel}</p>
       {items.map(p => (
         <div key={p.dataKey} className="flex items-center gap-2">
@@ -834,9 +971,9 @@ function PortfolioMoversChart({ tickers, range, onRangeChange, highlightedTicker
   const isEmpty = !isLoading && chartData.length === 0
 
   return (
-    <div className="mt-4 overflow-hidden rounded-t-[14px] border border-b-0 border-[#e5e7eb] bg-white">
+    <div className="mt-4 overflow-hidden rounded-t-[14px] border border-b-0 border-[#9ca3af] bg-white">
       {/* Header */}
-      <div className="flex h-[52px] items-center justify-between border-b border-[#e5e7eb] px-6">
+      <div className="flex h-[52px] items-center justify-between border-b border-[#9ca3af] px-6">
         <SectionLabel>Your Positions</SectionLabel>
         <div className="flex items-center gap-0.5">
           {MOVERS_RANGES.map(r => (
@@ -984,15 +1121,15 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
   const COLS = ['Asset', 'Shares', 'Price', 'Value', 'Cost Basis', 'Avg / Share', 'YTD Change', ...(showMoversCol ? [`${moversLabel} Change`] : [])]
 
   return (
-    <div className="overflow-hidden rounded-b-[14px] border border-[#e5e7eb] bg-white">
+    <div className="overflow-hidden rounded-b-[14px] border border-[#9ca3af] bg-white">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[600px] border-collapse">
           <thead>
-            <tr className="border-b border-[#e5e7eb]">
+            <tr className="border-b border-[#9ca3af]">
               {COLS.map((col, i) => (
                 <th
                   key={i}
-                  className={`px-6 py-2.5 text-[11px] font-semibold uppercase tracking-[1px] text-[#6a7282] ${i === 0 ? 'text-left' : 'text-right'} ${i < COLS.length - 1 ? 'border-r border-[#e5e7eb]' : ''}`}
+                  className={`px-6 py-2.5 text-[11px] font-semibold uppercase tracking-[1px] text-[#6a7282] ${i === 0 ? 'text-left' : 'text-right'} ${i < COLS.length - 1 ? 'border-r border-[#9ca3af]' : ''}`}
                   style={MONO}
                 >
                   {col}
@@ -1004,8 +1141,8 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
             {isLoading ? (
               [0,1,2,3,4].map(i => (
                 <tr key={i} className="border-b border-[#f3f4f6]">
-                  <td className="border-r border-[#e5e7eb] px-6 py-3"><div className="flex items-center gap-3"><Skeleton className="h-8 w-8 rounded-md" /><div className="flex flex-col gap-1"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-16" /></div></div></td>
-                  {(showMoversCol ? [0,1,2,3,4,5,6] : [0,1,2,3,4,5]).map(j => <td key={j} className={`px-6 py-3 ${j < (showMoversCol ? 6 : 5) ? 'border-r border-[#e5e7eb]' : ''}`}><Skeleton className="ml-auto h-3.5 w-20" /></td>)}
+                  <td className="border-r border-[#9ca3af] px-6 py-3"><div className="flex items-center gap-3"><Skeleton className="h-8 w-8 rounded-md" /><div className="flex flex-col gap-1"><Skeleton className="h-3.5 w-28" /><Skeleton className="h-3 w-16" /></div></div></td>
+                  {(showMoversCol ? [0,1,2,3,4,5,6] : [0,1,2,3,4,5]).map(j => <td key={j} className={`px-6 py-3 ${j < (showMoversCol ? 6 : 5) ? 'border-r border-[#9ca3af]' : ''}`}><Skeleton className="ml-auto h-3.5 w-20" /></td>)}
                 </tr>
               ))
             ) : rows.length === 0 ? (
@@ -1025,7 +1162,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                     } ${highlightedTicker === row.ticker ? 'bg-[#f5f8ff]' : ''}`}
                   >
                     {/* Asset */}
-                    <td className="relative w-[225px] max-w-[225px] border-r border-[#e5e7eb] py-3 pl-5 pr-6">
+                    <td className="relative w-[225px] max-w-[225px] border-r border-[#9ca3af] py-3 pl-5 pr-6">
                       {colorMap[row.ticker] && (
                         <div
                           className="absolute left-[6px] top-[8px] bottom-[8px] w-[4px] rounded-full"
@@ -1044,17 +1181,17 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                     </td>
 
                     {/* Shares */}
-                    <td className="border-r border-[#e5e7eb] px-6 py-3 text-right text-[13px] text-[#4a5565]" style={MONO}>
+                    <td className="border-r border-[#9ca3af] px-6 py-3 text-right text-[13px] text-[#4a5565]" style={MONO}>
                       {row.quantity != null ? row.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '—'}
                     </td>
 
                     {/* Price */}
-                    <td className="border-r border-[#e5e7eb] px-6 py-3 text-right text-[13px] text-[#101828]" style={MONO}>
+                    <td className="border-r border-[#9ca3af] px-6 py-3 text-right text-[13px] text-[#101828]" style={MONO}>
                       {row.price != null ? fmt(row.price) : '—'}
                     </td>
 
                     {/* Value */}
-                    <td className="border-r border-[#e5e7eb] px-6 py-3 text-right" style={MONO}>
+                    <td className="border-r border-[#9ca3af] px-6 py-3 text-right" style={MONO}>
                       <p className="text-[13px] font-medium text-[#101828]">{fmt(row.value)}</p>
                       {gainPct != null && (
                         <p className={`text-[11px] font-semibold ${gainPct >= 0 ? 'text-[#155dfc]' : 'text-[#dc2626]'}`}>
@@ -1064,7 +1201,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                     </td>
 
                     {/* Cost Basis */}
-                    <td className="border-r border-[#e5e7eb] px-6 py-3 text-right" style={MONO}>
+                    <td className="border-r border-[#9ca3af] px-6 py-3 text-right" style={MONO}>
                       {row.has_cost_basis ? (
                         <>
                           <p className="text-[13px] text-[#4a5565]">{fmt(row.cost_basis_total)}</p>
@@ -1080,7 +1217,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                     </td>
 
                     {/* Avg Cost / Share */}
-                    <td className="border-r border-[#e5e7eb] px-6 py-3 text-right" style={MONO}>
+                    <td className="border-r border-[#9ca3af] px-6 py-3 text-right" style={MONO}>
                       {row.avg_cost_per_share != null ? (
                         <>
                           <p className="text-[13px] text-[#4a5565]">{fmt(row.avg_cost_per_share)}</p>
@@ -1101,7 +1238,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                       const ytdDiff = ytdStart != null && row.price != null ? row.price - ytdStart : null
                       const ytdPct = ytdDiff != null && ytdStart ? (ytdDiff / ytdStart) * 100 : null
                       return (
-                        <td className={`px-6 py-3 text-right ${showMoversCol ? 'border-r border-[#e5e7eb]' : ''}`} style={MONO}>
+                        <td className={`px-6 py-3 text-right ${showMoversCol ? 'border-r border-[#9ca3af]' : ''}`} style={MONO}>
                           {ytdPct != null ? (
                             <>
                               <p className={`text-[13px] font-medium ${ytdPct >= 0 ? 'text-[#155dfc]' : 'text-[#dc2626]'}`}>

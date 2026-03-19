@@ -60,7 +60,7 @@ function ChartTooltip({ active, payload }) {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   })
   return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 shadow-sm">
+    <div className="rounded-lg border border-[#9ca3af] bg-white px-3 py-2 shadow-sm">
       <p className="text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {dateLabel}
       </p>
@@ -110,7 +110,7 @@ function MoverCard({ quote }) {
   const up = quote.changePct >= 0
   const MONO = { fontFamily: 'JetBrains Mono,monospace' }
   return (
-    <div className="flex w-[160px] shrink-0 flex-col rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
+    <div className="flex w-[160px] shrink-0 flex-col rounded-[10px] border border-[#9ca3af] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
       <p className="text-[11px] font-bold text-[#101828]" style={MONO}>{quote.ticker}</p>
       <p className="mt-1 text-[15px] font-semibold text-[#101828]" style={MONO}>${quote.price.toFixed(2)}</p>
       <div className={`mt-1 flex items-center gap-1 text-[11px] font-semibold ${up ? 'text-[#16a34a]' : 'text-[#dc2626]'}`} style={MONO}>
@@ -377,7 +377,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
         <>
           {/* Top Movers carousel */}
           {topMovers.length > 0 && (
-            <div className="border-t border-[#e5e7eb] px-6 pt-3 pb-5">
+            <div className="border-t border-[#9ca3af] px-6 pt-3 pb-5">
               <div className="mb-2 flex items-center justify-between">
                 <div>
                   <p className="text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
@@ -392,7 +392,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
                     type="button"
                     onClick={() => scrollBy(-1)}
                     disabled={!canScrollLeft}
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#9ca3af] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
                     aria-label="Scroll left"
                   >
                     <ChevronLeftIcon />
@@ -401,7 +401,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
                     type="button"
                     onClick={() => scrollBy(1)}
                     disabled={!canScrollRight}
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#9ca3af] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
                     aria-label="Scroll right"
                   >
                     <ChevronRightIcon />
@@ -421,7 +421,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
           )}
 
           {/* Account list */}
-          <div className="border-t border-[#e5e7eb] px-6 pt-3 pb-3">
+          <div className="border-t border-[#9ca3af] px-6 pt-3 pb-3">
             <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               Accounts
             </p>

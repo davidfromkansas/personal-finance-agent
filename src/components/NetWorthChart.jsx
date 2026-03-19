@@ -53,7 +53,7 @@ function CustomTooltip({ active, payload }) {
     weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
   })
   return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 shadow-sm">
+    <div className="rounded-lg border border-white/40 bg-white/88 backdrop-blur-xl px-3 py-2 shadow-sm">
       <p className="text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {dateLabel}
       </p>
@@ -70,6 +70,7 @@ function CustomTooltip({ active, payload }) {
 
 export function NetWorthChart({ embedded }) {
   const [activeRange, setActiveRange] = useState('1M')
+  const [showInfo, setShowInfo] = useState(false)
   const { data: rawData, isLoading: loading } = useNetWorth(activeRange)
 
   const data = rawData?.history ?? null
@@ -99,7 +100,7 @@ export function NetWorthChart({ embedded }) {
   }, [data, activeRange])
 
   return (
-    <div className={`bg-white ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-[#e5e7eb]'}`}>
+    <div className={`relative bg-white/75 backdrop-blur-xl ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.6)]'}`}>
       <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#0e7490] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
@@ -126,28 +127,73 @@ export function NetWorthChart({ embedded }) {
           )}
         </div>
 
-        <div className="flex gap-1">
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setActiveRange(r.key)}
-              className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
-                activeRange === r.key
-                  ? 'bg-white text-[#0e7490]'
-                  : 'bg-white/15 text-white/70 hover:bg-white/25 hover:text-white'
-              }`}
-              style={{ fontFamily: 'JetBrains Mono,monospace' }}
-            >
-              {r.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <div className="flex gap-1">
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                onClick={() => setActiveRange(r.key)}
+                className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+                  activeRange === r.key
+                    ? 'bg-white text-[#0e7490]'
+                    : 'bg-white/15 text-white/70 hover:bg-white/25 hover:text-white'
+                }`}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowInfo(true)}
+            className="flex h-6 w-6 items-center justify-center rounded-full bg-white/15 text-white/70 hover:bg-white/25 hover:text-white transition-colors text-[12px] font-semibold leading-none cursor-pointer"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            aria-label="How net worth is calculated"
+          >
+            i
+          </button>
         </div>
       </div>
 
-      <p className="px-6 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        Net worth = assets minus debts across all connected accounts. Investment values reflect current holdings.
-      </p>
+      {showInfo && (
+        <div className="absolute inset-0 z-10 rounded-[14px] bg-white/97 px-6 py-5 overflow-y-auto" onClick={() => setShowInfo(false)}>
+          <p className="text-[13px] font-semibold text-[#101828] mb-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>How net worth is calculated</p>
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Formula</p>
+            <p className="text-[12px] text-[#4a5565] mb-1" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Net Worth = Total Assets − Total Debts</p>
+          </div>
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Assets (counted)</p>
+            {['Checking and savings account balances', 'Investment portfolio market value (live prices)', 'Other depository accounts'].map(item => (
+              <div key={item} className="flex items-start gap-2 mb-1">
+                <span className="text-[#155dfc] text-[12px] font-bold shrink-0 mt-px">✓</span>
+                <p className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mb-3">
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Debts (subtracted)</p>
+            {['Credit card outstanding balances', 'Mortgage principal remaining', 'Auto and student loan balances'].map(item => (
+              <div key={item} className="flex items-start gap-2 mb-1">
+                <span className="text-[#dc2626] text-[12px] font-bold shrink-0 mt-px">−</span>
+                <p className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mb-4">
+            <p className="text-[11px] font-semibold text-[#4a5565] uppercase tracking-wide mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Not included</p>
+            {['Accounts not connected to Plaid', 'Pending transactions that haven\'t settled', 'Physical assets (real estate, vehicles, cash)'].map(item => (
+              <div key={item} className="flex items-start gap-2 mb-1">
+                <span className="text-[#9ca3af] text-[12px] font-bold shrink-0 mt-px">✕</span>
+                <p className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{item}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Historical snapshots are recorded daily. Tap anywhere to close.</p>
+        </div>
+      )}
 
       <div className="px-4 pb-5 pt-4" style={{ height: 260 }}>
         {loading ? (

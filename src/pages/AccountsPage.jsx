@@ -70,11 +70,11 @@ export function AccountsPage() {
   }, 0)
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8]">
+    <div className="min-h-screen bg-slate-900 pl-[220px]">
       <AppHeader />
       <main className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[700px]">
-          <div className="rounded-[14px] border border-[#e5e7eb] bg-white">
+          <div className="rounded-[14px] border border-[#9ca3af] bg-white">
             <div className="flex items-start justify-between px-6 pt-6 pb-1.5">
               <div>
                 <h2 className="text-[16px] font-medium leading-4 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>

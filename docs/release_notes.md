@@ -4,6 +4,34 @@ User-facing changes, most recent first.
 
 ---
 
+# Investments account detail, net worth explainer, and UI polish — Shipped: March 19, 2026
+
+## Investments: click an account to see full detail
+
+Clicking an account row in the Investments page now opens a slide-in detail panel showing the account's type, current balance, unrealized gain/loss, cost basis, and a full breakdown of every holding in that account. Previously, clicking an account only filtered the performance chart.
+
+## Net worth: "how is this calculated?" explainer
+
+The net worth chart now has an info button (ⓘ) next to the range tabs. Clicking it opens an overlay that explains exactly how net worth is calculated — which assets are added, which debts are subtracted, and what's excluded (like investment accounts, which are tracked separately on the Investments page).
+
+## Transactions page: load 150 most recent by default
+
+The Transactions page now loads your 150 most recent transactions when you open it, with no date filter applied. Previously it defaulted to the last 30 days, which hid older transactions unless you changed the filter.
+
+## Transactions page: separate filter buttons per dimension
+
+The single "Filter" button on the Transactions page has been split into three separate buttons — **Account**, **Date**, and **Category** — each with its own focused dropdown. Active filters fill black so it's immediately clear which dimensions are filtered.
+
+## Transactions page: year shown in date headers
+
+Date group headers on the Transactions page now include the year (e.g. "Tuesday, March 17, 2026") so transactions from previous years are unambiguous.
+
+## Visual polish: consistent border styling across all charts
+
+Border colors are now consistent across all charts, tooltips, drill-down panels, and detail cards throughout the app.
+
+---
+
 # Investments page overhaul — Shipped: March 18, 2026
 
 See the full plan: [INVESTMENTS_PLAN.md](docs/INVESTMENTS_PLAN.md) · [PRODUCT_PRINCIPLES.md](docs/PRODUCT_PRINCIPLES.md)

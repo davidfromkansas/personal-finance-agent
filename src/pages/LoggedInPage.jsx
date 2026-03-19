@@ -332,15 +332,15 @@ function TransactionRow({ transaction, onClick }) {
           const initial = (transaction.name ?? '?')[0].toUpperCase()
           if (logo) return (
             <div className="relative h-5 w-5 shrink-0">
-              <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#e5e7eb] object-contain bg-white"
+              <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#9ca3af] object-contain bg-white"
                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
               />
-              <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+              <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
             </div>
           )
           return (
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
               style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
           )
         })()}
@@ -458,7 +458,7 @@ export function TransactionList({ transactions, loading, title, subtitle, header
         )}
       </div>
       {showPagination && (
-        <div className="shrink-0 flex items-center justify-center gap-2 border-t border-[#e5e7eb] px-4 py-3">
+        <div className="shrink-0 flex items-center justify-center gap-2 border-t border-[#9ca3af] px-4 py-3">
           <button
             type="button"
             onClick={onLoadNewer}
@@ -945,7 +945,7 @@ export function LoggedInPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8]" data-name="Logged-In Dashboard">
+    <div className="min-h-screen bg-slate-900 pl-[220px]" data-name="Logged-In Dashboard">
       <AppHeader />
       {linkToken && (
         <PlaidLinkOpener
@@ -960,7 +960,7 @@ export function LoggedInPage() {
       {showConnectionTypeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowConnectionTypeModal(false)}>
           <div
-            className="w-full max-w-md rounded-[14px] border border-[#e5e7eb] bg-white p-6 shadow-lg"
+            className="w-full max-w-md rounded-[14px] border border-[#9ca3af] bg-white p-6 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <h3 className="text-[18px] font-semibold tracking-tight text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
@@ -974,7 +974,7 @@ export function LoggedInPage() {
                 type="button"
                 onClick={() => handleAddConnection('transactions')}
                 disabled={linkLoading}
-                className="flex items-center gap-4 rounded-[10px] border border-[#e5e7eb] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
+                className="flex items-center gap-4 rounded-[10px] border border-[#9ca3af] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
@@ -989,7 +989,7 @@ export function LoggedInPage() {
                 type="button"
                 onClick={() => handleAddConnection('investments')}
                 disabled={linkLoading}
-                className="flex items-center gap-4 rounded-[10px] border border-[#e5e7eb] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
+                className="flex items-center gap-4 rounded-[10px] border border-[#9ca3af] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
@@ -1055,7 +1055,7 @@ export function LoggedInPage() {
             <div className="col-span-8 flex min-w-0 flex-col lg:col-span-4">
               <div className="rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden">
               <NetWorthChart embedded />
-              <div className="border-t border-[#e5e7eb] px-6 pt-4 pb-3">
+              <div className="border-t border-[#9ca3af] px-6 pt-4 pb-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-[15px] font-medium tracking-[-0.2px] text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>

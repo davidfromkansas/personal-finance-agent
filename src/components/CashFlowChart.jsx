@@ -31,7 +31,7 @@ function CashFlowTooltip({ active, payload, label }) {
   const outflow = negativeFlow <= 0 ? Math.abs(negativeFlow) : 0
   const net = inflow - outflow
   return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-sm min-w-[160px]">
+    <div className="rounded-lg border border-[#9ca3af] bg-white px-3 py-2.5 shadow-sm min-w-[160px]">
       <p className="text-[12px] font-medium text-[#6a7282] mb-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {label}
       </p>
@@ -43,7 +43,7 @@ function CashFlowTooltip({ active, payload, label }) {
         <span className="text-[12px] text-[#4a5565]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Outflows</span>
         <span className="text-[12px] font-medium" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_NEGATIVE_COLOR }}>{formatCurrency(outflow)}</span>
       </div>
-      <div className="flex items-center justify-between gap-4 border-t border-[#e5e7eb] mt-1.5 pt-1.5">
+      <div className="flex items-center justify-between gap-4 border-t border-[#9ca3af] mt-1.5 pt-1.5">
         <span className="text-[12px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Net</span>
         <span className="text-[12px] font-semibold" style={{ fontFamily: 'JetBrains Mono,monospace', color: net >= 0 ? BAR_POSITIVE_COLOR : BAR_NEGATIVE_COLOR }}>
           {formatCurrency(net)}
@@ -111,13 +111,13 @@ function DrillDownTransactionRow({ transaction, onClick }) {
       <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
         {logo ? (
           <div className="relative h-5 w-5 shrink-0">
-            <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#e5e7eb] object-contain bg-white"
+            <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#9ca3af] object-contain bg-white"
               onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }} />
-            <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+            <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
               style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
           </div>
         ) : (
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
             style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
         )}
         <p className="shrink truncate font-medium text-[13px] leading-5 text-[#101828]"
@@ -196,7 +196,7 @@ function CashFlowDrillDownTray({ month, onClose }) {
             {sortOpen && (
               <>
                 <div className="fixed inset-0 z-[55]" onClick={() => setSortOpen(false)} />
-                <div className="absolute right-5 top-full mt-1 z-[56] bg-white border border-[#e5e7eb] rounded-lg shadow-lg py-1 min-w-[160px]">
+                <div className="absolute right-5 top-full mt-1 z-[56] bg-white border border-[#9ca3af] rounded-lg shadow-lg py-1 min-w-[160px]">
                   {SORT_OPTIONS.map(o => (
                     <button
                       key={o.key}
@@ -222,7 +222,7 @@ function CashFlowDrillDownTray({ month, onClose }) {
           ) : (
             <>
               {/* Inflows column */}
-              <div className="flex-1 overflow-y-auto border-r border-[#e5e7eb] px-3 pt-4 pb-4">
+              <div className="flex-1 overflow-y-auto border-r border-[#9ca3af] px-3 pt-4 pb-4">
                 <div className="flex items-center justify-between mb-2 gap-1">
                   <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ fontFamily: 'JetBrains Mono,monospace', color: BAR_POSITIVE_COLOR }}>
                     In ({inflows.length})
