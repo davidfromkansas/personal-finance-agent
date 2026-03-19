@@ -874,6 +874,7 @@ export function LoggedInPage() {
       // frozen stale values while the refetch (which requires a Plaid API call) is in flight
       queryClient.removeQueries({ queryKey: ['net-worth'] })
       queryClient.removeQueries({ queryKey: ['portfolio-history'] })
+      fetchTransactions()
       return invalidateAfterConnect()
     },
     onError: (err, _connection, context) => {
