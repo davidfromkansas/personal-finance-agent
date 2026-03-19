@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, useImperativeHandle,
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
-import { useInvestments, useAccounts, usePortfolioHistory } from '../hooks/usePlaidQueries'
+import { useInvestments, useAccounts, usePortfolioHistory, useQuotes } from '../hooks/usePlaidQueries'
+import { useMarketClock } from '../hooks/useMarketClock'
 
 
 const RANGES = [
@@ -86,50 +87,44 @@ function ChevronRightIcon() {
   )
 }
 
-function MoverCard({ holding }) {
-  const gain = holding.cost_basis != null ? holding.value - holding.cost_basis : null
-  const gainPct = gain != null && holding.cost_basis ? (gain / Math.abs(holding.cost_basis)) * 100 : null
-  const isPositive = gain != null && gain >= 0
-
+function Week52Range({ low, high, price }) {
+  if (low == null || high == null || price == null || high === low) return null
+  const pct = Math.min(100, Math.max(0, ((price - low) / (high - low)) * 100))
+  const MONO = { fontFamily: 'JetBrains Mono,monospace' }
   return (
-    <div className="flex w-[180px] shrink-0 flex-col gap-1 rounded-[10px] border border-[#e5e7eb] bg-[#f9fafb] px-3 py-2.5">
-      <div className="flex items-center gap-1.5">
-        {holding.ticker && (
-          <span
-            className="rounded-[5px] bg-[#e0e7ff] px-1.5 py-0.5 text-[11px] font-bold text-[#3730a3]"
-            style={{ fontFamily: 'JetBrains Mono,monospace' }}
-          >
-            {holding.ticker}
-          </span>
-        )}
-        <span
-          className={`text-[11px] font-semibold ${isPositive ? 'text-[#155dfc]' : 'text-[#dc2626]'}`}
-          style={{ fontFamily: 'JetBrains Mono,monospace' }}
-        >
-          {gainPct != null ? formatPct(gainPct) : '—'}
-        </span>
+    <div className="mt-3">
+      <p className="mb-1 text-[9px] font-semibold uppercase tracking-[1px] text-[#9ca3af]" style={MONO}>52W Range</p>
+      <div className="relative h-1 rounded-full bg-[#e5e7eb]">
+        <div className="absolute inset-y-0 left-0 rounded-full bg-[#d1d5db]" style={{ width: `${pct}%` }} />
+        <div className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[#101828] shadow-sm" style={{ left: `${pct}%` }} />
       </div>
-      <p className="truncate text-[12px] font-medium leading-4 text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        {holding.security_name}
-      </p>
-      <div className="flex items-baseline justify-between">
-        <span className="text-[13px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-          {formatCurrency(holding.value)}
-        </span>
-        {gain != null && (
-          <span
-            className={`text-[11px] font-medium ${isPositive ? 'text-[#155dfc]' : 'text-[#dc2626]'}`}
-            style={{ fontFamily: 'JetBrains Mono,monospace' }}
-          >
-            {isPositive ? '+' : ''}{formatCurrency(gain)}
-          </span>
-        )}
+      <div className="mt-1 flex justify-between">
+        <span className="text-[9px] text-[#9ca3af]" style={MONO}>${low.toFixed(2)}</span>
+        <span className="text-[9px] text-[#9ca3af]" style={MONO}>${high.toFixed(2)}</span>
       </div>
     </div>
   )
 }
 
+function MoverCard({ quote }) {
+  const up = quote.changePct >= 0
+  const MONO = { fontFamily: 'JetBrains Mono,monospace' }
+  return (
+    <div className="flex w-[160px] shrink-0 flex-col rounded-[10px] border border-[#e5e7eb] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
+      <p className="text-[11px] font-bold text-[#101828]" style={MONO}>{quote.ticker}</p>
+      <p className="mt-1 text-[15px] font-semibold text-[#101828]" style={MONO}>${quote.price.toFixed(2)}</p>
+      <div className={`mt-1 flex items-center gap-1 text-[11px] font-semibold ${up ? 'text-[#16a34a]' : 'text-[#dc2626]'}`} style={MONO}>
+        <span>{up ? '▲' : '▼'}</span>
+        <span>{Math.abs(quote.changePct).toFixed(2)}%</span>
+        <span className="font-normal opacity-70">{up ? '+$' : '-$'}{Math.abs(quote.change ?? 0).toFixed(2)}</span>
+      </div>
+      <Week52Range low={quote.week52Low} high={quote.week52High} price={quote.price} />
+    </div>
+  )
+}
+
 export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, ref) {
+  const { isOpen } = useMarketClock()
   const { data: investmentsData, isLoading: holdingsLoading, refetch: refetchInvestments } = useInvestments()
   const { data: accountsData, refetch: refetchAccounts } = useAccounts()
   const holdings = investmentsData?.holdings ?? []
@@ -203,13 +198,20 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
   const totalGainPct = totalCost ? (totalGain / Math.abs(totalCost)) * 100 : 0
   const isPositiveTotal = totalGain >= 0
 
+  const portfolioTickers = useMemo(() => {
+    const seen = new Set()
+    return holdings
+      .map(h => h.ticker)
+      .filter(t => t && !t.startsWith('CUR:') && !seen.has(t) && seen.add(t))
+  }, [holdings])
+
+  const { data: quotesData } = useQuotes(portfolioTickers)
   const topMovers = useMemo(() => {
-    return filteredHoldings
-      .filter((h) => h.cost_basis != null && h.cost_basis !== 0)
-      .map((h) => ({ ...h, gainPct: ((h.value - h.cost_basis) / Math.abs(h.cost_basis)) * 100 }))
-      .sort((a, b) => Math.abs(b.gainPct) - Math.abs(a.gainPct))
-      .slice(0, 10)
-  }, [filteredHoldings])
+    if (!quotesData?.quotes?.length) return []
+    return [...quotesData.quotes]
+      .filter(q => q.changePct != null)
+      .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
+  }, [quotesData])
 
   const displayValue = totalValue > 0 ? totalValue : (chartCurrentValue ?? 0)
   const hasInvestmentData = totalValue > 0 || (chartCurrentValue != null && chartCurrentValue > 0)
@@ -279,20 +281,15 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
             <span className="text-[28px] font-bold tracking-tight text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {holdingsLoading && chartLoading ? '—' : formatCurrency(displayValue)}
             </span>
-            {!holdingsLoading && totalValue > 0 && (
+            {!holdingsLoading && !chartLoading && chartChange && (
               <span
-                className={`text-[14px] font-semibold ${isPositiveTotal ? 'text-[#6ee7b7]' : 'text-[#fca5a5]'}`}
+                className={`text-[14px] font-semibold ${chartChange.diff >= 0 ? 'text-[#6ee7b7]' : 'text-[#fca5a5]'}`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
-                {isPositiveTotal ? '+' : ''}{formatCurrency(totalGain)} ({formatPct(totalGainPct)})
+                {chartChange.diff >= 0 ? '+' : ''}{formatCurrency(chartChange.diff)} ({formatPct(chartChange.pct)})
               </span>
             )}
           </div>
-          {!holdingsLoading && !chartLoading && chartChange && (
-            <p className="mt-0.5 text-[12px] text-white/60" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              {chartChange.diff >= 0 ? '+' : ''}{formatCurrency(chartChange.diff)} ({formatPct(chartChange.pct)}) over period
-            </p>
-          )}
         </div>
         <div className="flex gap-1">
           {RANGES.map((r) => (
@@ -313,9 +310,6 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
         </div>
       </div>
 
-      <p className="px-6 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        Portfolio value based on current holdings. Historical values are approximate.
-      </p>
 
       {/* Line chart */}
       <div className="px-4 pb-3 pt-3" style={{ height: 200 }}>
@@ -381,6 +375,51 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
         </div>
       ) : accounts.length === 0 ? null : (
         <>
+          {/* Top Movers carousel */}
+          {topMovers.length > 0 && (
+            <div className="border-t border-[#e5e7eb] px-6 pt-3 pb-5">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                    Top Movers
+                  </p>
+                  <p className="text-[10px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                    {isOpen ? 'Intraday change from previous close · ~15 min delayed' : 'Change from previous close · final prices for the day'}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => scrollBy(-1)}
+                    disabled={!canScrollLeft}
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
+                    aria-label="Scroll left"
+                  >
+                    <ChevronLeftIcon />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => scrollBy(1)}
+                    disabled={!canScrollRight}
+                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
+                    aria-label="Scroll right"
+                  >
+                    <ChevronRightIcon />
+                  </button>
+                </div>
+              </div>
+              <div
+                ref={scrollRef}
+                className="flex gap-2 overflow-x-auto"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
+              >
+                {topMovers.map((q) => (
+                  <MoverCard key={q.ticker} quote={q} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Account list */}
           <div className="border-t border-[#e5e7eb] px-6 pt-3 pb-3">
             <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
@@ -416,46 +455,6 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
               })}
             </div>
           </div>
-
-          {/* Top Movers carousel */}
-          {topMovers.length > 0 && (
-            <div className="border-t border-[#e5e7eb] px-6 pt-3 pb-5">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                  Top Movers
-                </p>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => scrollBy(-1)}
-                    disabled={!canScrollLeft}
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
-                    aria-label="Scroll left"
-                  >
-                    <ChevronLeftIcon />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => scrollBy(1)}
-                    disabled={!canScrollRight}
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#e5e7eb] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
-                    aria-label="Scroll right"
-                  >
-                    <ChevronRightIcon />
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={scrollRef}
-                className="flex gap-2 overflow-x-auto"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
-              >
-                {topMovers.map((h, i) => (
-                  <MoverCard key={`${h.ticker ?? h.security_name}-${i}`} holding={h} />
-                ))}
-              </div>
-            </div>
-          )}
         </>
       )}
     </div>

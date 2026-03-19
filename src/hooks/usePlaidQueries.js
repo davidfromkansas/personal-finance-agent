@@ -160,6 +160,39 @@ export function usePortfolioHistory(range, accountIds) {
   })
 }
 
+export function useTickerHistory(tickers, range) {
+  const { getIdToken } = useAuth()
+  const tickerStr = tickers.join(',')
+  return useQuery({
+    queryKey: ['ticker-history', tickerStr, range],
+    queryFn: () => apiFetch(`/api/plaid/ticker-history?tickers=${tickerStr}&range=${range}`, { getToken: getIdToken }),
+    enabled: tickers.length > 0,
+    staleTime: STALE.charts,
+  })
+}
+
+export function useQuotes(tickers) {
+  const { getIdToken } = useAuth()
+  const tickerStr = tickers.join(',')
+  return useQuery({
+    queryKey: ['quotes', tickerStr],
+    queryFn: () => apiFetch(`/api/plaid/quotes?tickers=${tickerStr}`, { getToken: getIdToken }),
+    enabled: tickers.length > 0,
+    staleTime: 60_000, // 1 min — quotes are live, no need to cache long
+    refetchInterval: 60_000, // auto-refresh every minute when market is open
+  })
+}
+
+export function usePortfolioSnapshot(date) {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['portfolio-snapshot', date],
+    queryFn: () => apiFetch(`/api/plaid/portfolio-snapshot?date=${date}`, { getToken: getIdToken }),
+    enabled: !!date,
+    staleTime: Infinity, // historical snapshots never change
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Cache invalidation helpers — call these after mutations
 // ---------------------------------------------------------------------------

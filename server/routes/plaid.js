@@ -7,15 +7,18 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import * as jose from 'jose'
+import YahooFinance from 'yahoo-finance2'
 import { getPlaidClient } from '../lib/plaidClient.js'
 import { snapshotInvestments } from '../jobs/snapshotInvestments.js'
+
+const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] })
 import {
   getPlaidItemsByUserId, getPlaidItemByItemId, getPlaidItemByInstitutionId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow, getCashFlowTransactions,
   updateTransactionAccountNames,
-  getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot,
+  getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory,
   upsertAccountBalanceSnapshot,
 } from '../db.js'
 
@@ -974,6 +977,8 @@ plaidRouter.get('/investments', async (req, res, next) => {
             ticker: sec.ticker ?? null,
             security_type: sec.type ?? null,
             quantity: h.quantity ?? 0,
+            institution_price: h.institution_price ?? null,
+            institution_price_as_of: h.institution_price_as_of ?? null,
             close_price: sec.close_price ?? null,
             value: h.institution_value ?? (h.quantity ?? 0) * (sec.close_price ?? 0),
             cost_basis: h.cost_basis ?? null,
@@ -1284,6 +1289,123 @@ plaidRouter.get('/portfolio-history', async (req, res) => {
   } catch (err) {
     console.error('GET /portfolio-history error:', err)
     res.status(500).json({ error: 'Failed to load portfolio history' })
+  }
+})
+
+/** GET /api/plaid/portfolio-snapshot?date=YYYY-MM-DD — holdings detail for a specific snapshot date */
+plaidRouter.get('/portfolio-snapshot', async (req, res) => {
+  const { date } = req.query
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return res.status(400).json({ error: 'date query param is required (YYYY-MM-DD)' })
+  }
+  try {
+    const holdings = await getHoldingsSnapshotForDate(req.uid, date)
+    const total = holdings.reduce((s, h) => s + (h.value ?? 0), 0)
+
+    const accountMap = {}
+    for (const h of holdings) {
+      const key = `${h.institution}|${h.account_name}`
+      if (!accountMap[key]) accountMap[key] = { account_name: h.account_name, institution: h.institution, value: 0 }
+      accountMap[key].value += h.value ?? 0
+    }
+    const accounts = Object.values(accountMap).sort((a, b) => b.value - a.value)
+
+    res.json({ date, total, accounts, holdings })
+  } catch (err) {
+    console.error('GET /portfolio-snapshot error:', err)
+    res.status(500).json({ error: 'Failed to load snapshot' })
+  }
+})
+
+/** GET /api/plaid/ticker-history?tickers=VOO,PLTR&range=1W|1M|3M|YTD|1Y|ALL — Yahoo Finance price history for movers chart */
+plaidRouter.get('/ticker-history', async (req, res) => {
+  try {
+    const VALID_RANGES = ['1W', '1M', '3M', 'YTD', '1Y', '5Y', 'ALL']
+    const range = (req.query.range || '1Y').toUpperCase()
+    if (!VALID_RANGES.includes(range)) {
+      return res.status(400).json({ error: 'range must be one of: 1W, 1M, 3M, YTD, 1Y, 5Y, ALL' })
+    }
+    const tickers = (req.query.tickers || '').split(',').map(t => t.trim()).filter(Boolean)
+    if (!tickers.length) return res.json({ range, series: [] })
+
+    const today = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    let sinceDate
+    if (range === '1W') {
+      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)
+    } else if (range === '1M') {
+      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStr(d)
+    } else if (range === '3M') {
+      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStr(d)
+    } else if (range === 'YTD') {
+      sinceDate = `${today.getFullYear()}-01-01`
+    } else if (range === '1Y') {
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStr(d)
+    } else if (range === '5Y') {
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 5); sinceDate = toDateStr(d)
+    } else {
+      sinceDate = '1990-01-01'
+    }
+
+    const results = await Promise.allSettled(
+      tickers.map(async (ticker) => {
+        const result = await yahooFinance.chart(ticker, {
+          period1: sinceDate,
+          period2: toDateStr(today),
+          interval: '1d',
+        }, { validateResult: false })
+        const data = (result?.quotes ?? [])
+          .filter(q => q.adjclose != null)
+          .map(q => ({
+            date: new Date(q.date).toISOString().slice(0, 10),
+            price: q.adjclose,
+          }))
+        return { ticker, data }
+      })
+    )
+
+    const series = results
+      .filter(r => r.status === 'fulfilled' && r.value.data.length > 0)
+      .map(r => r.value)
+
+    res.json({ range, series })
+  } catch (err) {
+    console.error('GET /ticker-history error:', err)
+    res.status(500).json({ error: 'Failed to load ticker history' })
+  }
+})
+
+/** GET /api/plaid/quotes?tickers=VOO,PLTR — live Yahoo Finance quotes */
+plaidRouter.get('/quotes', async (req, res) => {
+  try {
+    const tickers = (req.query.tickers || '').split(',').map(t => t.trim()).filter(Boolean)
+    if (!tickers.length) return res.json({ quotes: [] })
+
+    const results = await Promise.allSettled(
+      tickers.map(ticker =>
+        yahooFinance.quote(ticker, {}, { validateResult: false }).then(q => ({
+          ticker,
+          name: q.shortName || q.longName || ticker,
+          price: q.regularMarketPrice ?? null,
+          prevClose: q.regularMarketPreviousClose ?? null,
+          change: q.regularMarketChange ?? null,
+          changePct: q.regularMarketChangePercent ?? null,
+          marketState: q.marketState ?? null, // REGULAR, PRE, POST, CLOSED
+          week52Low: q.fiftyTwoWeekLow ?? null,
+          week52High: q.fiftyTwoWeekHigh ?? null,
+        }))
+      )
+    )
+
+    const quotes = results
+      .filter(r => r.status === 'fulfilled' && r.value.price != null)
+      .map(r => r.value)
+
+    res.json({ quotes })
+  } catch (err) {
+    console.error('GET /quotes error:', err)
+    res.status(500).json({ error: 'Failed to load quotes' })
   }
 })
 

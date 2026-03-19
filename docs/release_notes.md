@@ -4,6 +4,42 @@ User-facing changes, most recent first.
 
 ---
 
+# Investments page overhaul — Shipped: March 18, 2026
+
+See the full plan: [INVESTMENTS_PLAN.md](docs/INVESTMENTS_PLAN.md) · [PRODUCT_PRINCIPLES.md](docs/PRODUCT_PRINCIPLES.md)
+
+## Live market status bar
+
+A new bar at the top of the Investments page shows whether the US market (NYSE/NASDAQ) is currently open or closed, with a live clock displaying the current time, date, and timezone. The clock ticks in real time and accounts for weekends and US market holidays through 2026.
+
+## Top Movers — live quotes from Yahoo Finance
+
+A new Top Movers section appears below the market status bar (and between the chart and accounts list on the dashboard). Each card shows the ticker, current price, daily % change, dollar change, and a 52-week range indicator showing where the current price sits between the 52W low and high.
+
+Prices come from Yahoo Finance (~15 min delayed when market is open, final settled prices when closed). The section auto-refreshes every 60 seconds. Context text below the header tells you exactly what the numbers mean: *"Intraday change from previous close · ~15 min delayed"* when open, *"Change from previous close · final prices for the day"* when closed. This is consistent with [Product Principle #2](docs/PRODUCT_PRINCIPLES.md) — transparency about data provenance.
+
+## Asset Allocation donut chart
+
+The Allocation section is now a donut chart. Hovering over any slice (or its legend row) shows the asset category, percentage, and dollar value in the center of the donut — no floating tooltip that blocks the chart. All other slices dim to keep focus on the hovered category. The legend shows two decimal places for precision.
+
+## Accounts list: click to filter the Performance chart
+
+Clicking an account row in the Accounts section filters the Performance chart to show only that account's historical value. Click again to deselect and return to the full portfolio view. A pill badge appears in the Performance header showing which account is active.
+
+## Performance chart: Y-axis auto-scales
+
+The Performance chart Y-axis no longer starts at $0. It auto-scales to the data range so changes are easier to read — a 5% drop doesn't look flat on a chart that goes to $0.
+
+## Your Positions chart: YTD x-axis labels fixed
+
+When the YTD range is selected in the Your Positions chart, x-axis labels now show the full date (e.g. "Jan 5") instead of just the month, so you can tell apart dates within the same month.
+
+## Dashboard: period change is now the primary figure
+
+The Investment Portfolio widget header now shows the change over the selected time range (1W, 1M, 3M, etc.) as the primary figure next to the total value, so the number actually responds to the range filter you pick. The all-time gain from cost basis has been removed to reduce noise.
+
+---
+
 # Spending & cash flow improvements — Shipped: March 18, 2026
 
 ## Refunds and returns now reflected in spending
