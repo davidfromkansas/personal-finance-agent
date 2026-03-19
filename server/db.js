@@ -278,23 +278,29 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
     : [userId, null, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
 
   const txDate = 'COALESCE(authorized_date, date)'
+  const pad2 = (n) => String(n).padStart(2, '0')
+  const fmtDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
   let bucketExpr, groupExpr, dateFilter
   if (period === 'week') {
-    params[1] = 6 // 7 calendar days: today-6 through today
+    // Pass start date from JS so the filter uses the same clock as the allKeys array in the route
+    const start = new Date()
+    start.setDate(start.getDate() - 6)
+    params[1] = fmtDate(start)
     bucketExpr = `(${txDate})::text`
     groupExpr = txDate
-    dateFilter = `${txDate} >= CURRENT_DATE - ($2 || ' days')::interval`
+    dateFilter = `${txDate} >= $2::date`
   } else if (period === 'month') {
-    params[1] = 28
+    const start = new Date()
+    start.setDate(start.getDate() - 28)
+    params[1] = fmtDate(start)
     bucketExpr = `date_trunc('week', ${txDate})::date::text`
     groupExpr = `date_trunc('week', ${txDate})`
-    dateFilter = `${txDate} >= CURRENT_DATE - ($2 || ' days')::interval`
+    dateFilter = `${txDate} >= $2::date`
   } else {
     // Month-aligned: start from the 1st of the month 11 months ago so each bar
     // covers a complete calendar month (Jan 1–Jan 31, Feb 1–Feb 28, etc.)
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-    const pad2 = (n) => String(n).padStart(2, '0')
     params[1] = `${startOfMonth.getFullYear()}-${pad2(startOfMonth.getMonth() + 1)}-01`
     bucketExpr = `to_char(${txDate}, 'YYYY-MM')`
     groupExpr = `to_char(${txDate}, 'YYYY-MM')`
@@ -459,6 +465,50 @@ export async function getPortfolioAccountHistory(userId, sinceDate, accountIds) 
     [userId, sinceDate, accountIds]
   )
   return rows.map((r) => ({ date: r.date, value: parseFloat(r.value) }))
+}
+
+/** Daily price history per ticker — used by the Portfolio Movers chart. */
+export async function getHoldingsHistory(userId, sinceDate) {
+  const { rows } = await query(
+    `SELECT date, ticker, MIN(security_name) AS security_name, MIN(security_type) AS security_type, MAX(price) AS price
+     FROM holdings_snapshots
+     WHERE user_id = $1 AND date >= $2 AND price IS NOT NULL AND price > 0 AND ticker IS NOT NULL
+     GROUP BY date, ticker
+     ORDER BY ticker, date`,
+    [userId, sinceDate]
+  )
+  return rows.map((r) => ({
+    date: r.date,
+    ticker: r.ticker,
+    security_name: r.security_name,
+    security_type: r.security_type,
+    price: parseFloat(r.price),
+  }))
+}
+
+/** Holdings snapshot for a specific date — used by the chart click side panel. */
+export async function getHoldingsSnapshotForDate(userId, date) {
+  const { rows } = await query(
+    `SELECT account_id, account_name, institution, ticker, security_name, security_type,
+            quantity, price, value, cost_basis, currency
+     FROM holdings_snapshots
+     WHERE user_id = $1 AND date = $2
+     ORDER BY value DESC NULLS LAST`,
+    [userId, date]
+  )
+  return rows.map((r) => ({
+    account_id: r.account_id,
+    account_name: r.account_name,
+    institution: r.institution,
+    ticker: r.ticker,
+    security_name: r.security_name,
+    security_type: r.security_type,
+    quantity: r.quantity != null ? parseFloat(r.quantity) : null,
+    price: r.price != null ? parseFloat(r.price) : null,
+    value: r.value != null ? parseFloat(r.value) : null,
+    cost_basis: r.cost_basis != null ? parseFloat(r.cost_basis) : null,
+    currency: r.currency,
+  }))
 }
 
 /** Latest portfolio snapshot value for a user (used as current value). */

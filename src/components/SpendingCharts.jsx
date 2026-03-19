@@ -93,12 +93,19 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose }) {
     const { fromDate, toDate } = bucketDateRange(bucket.date, period)
     let url = `/api/plaid/transactions?limit=500&from_date=${fromDate}&to_date=${toDate}`
     if (accountIds?.length) url += `&account_ids=${accountIds.join(',')}`
-    // Mirror the backend's NON_SPENDING_CATEGORIES exclusion — category filter,
-    // not amount filter, so refunds (negative spending-category amounts) are included.
-    const NON_SPENDING = ['INCOME', 'TRANSFER_IN', 'TRANSFER_OUT', 'BANK_FEES']
+    // Mirror the backend's spending exclusions exactly — both primary and detailed categories.
+    const NON_SPENDING_PRIMARY = ['INCOME', 'TRANSFER_IN', 'TRANSFER_OUT', 'BANK_FEES']
+    const NON_SPENDING_DETAILED = [
+      'LOAN_PAYMENTS_CREDIT_CARD_PAYMENT',
+      'LOAN_PAYMENTS_LINE_OF_CREDIT_PAYMENT',
+      'LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT',
+    ]
     apiFetch(url, { getToken: getIdToken })
       .then((d) => setTransactions(
-        (d.transactions ?? []).filter((t) => !NON_SPENDING.includes(t.personal_finance_category))
+        (d.transactions ?? []).filter((t) =>
+          !NON_SPENDING_PRIMARY.includes(t.personal_finance_category) &&
+          !NON_SPENDING_DETAILED.includes(t.personal_finance_category_detailed)
+        )
       ))
       .catch(() => setTransactions([]))
   }, [bucket, period, accountIds, getIdToken])
