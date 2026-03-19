@@ -945,7 +945,7 @@ export function LoggedInPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-900 pl-[220px]" data-name="Logged-In Dashboard">
+    <div className="min-h-screen bg-[#f8f8f8] pl-[220px]" data-name="Logged-In Dashboard">
       <AppHeader />
       {linkToken && (
         <PlaidLinkOpener

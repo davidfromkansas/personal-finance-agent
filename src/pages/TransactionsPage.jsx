@@ -501,7 +501,7 @@ export function TransactionsPage() {
   const groups = groupTransactionsByDate(transactions)
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8]">
+    <div className="min-h-screen bg-[#f8f8f8] pl-[220px]">
       <AppHeader />
       <TransactionDetailPanel transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} />
 

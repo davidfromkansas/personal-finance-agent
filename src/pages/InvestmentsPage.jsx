@@ -494,7 +494,7 @@ export function InvestmentsPage() {
   const isLoading = holdingsLoading
 
   return (
-    <div className="min-h-screen bg-slate-900 pl-[220px]">
+    <div className="min-h-screen bg-[#f8f8f8] pl-[220px]">
       <AppHeader />
 
       <AccountDetailPanel
