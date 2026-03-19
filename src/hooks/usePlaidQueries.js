@@ -55,7 +55,7 @@ export function useRecurring() {
 // Transactions (paginated)
 // ---------------------------------------------------------------------------
 
-const TRANSACTIONS_PAGE_SIZE = 50
+const TRANSACTIONS_PAGE_SIZE = 150
 
 export function useTransactions(filters) {
   const { getIdToken } = useAuth()

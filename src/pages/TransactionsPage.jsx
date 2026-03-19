@@ -13,7 +13,7 @@ function formatTransactionDate(dateStr) {
   const key = toDateKey(dateStr)
   const d = new Date(key + 'T00:00:00')
   if (Number.isNaN(d.getTime())) return String(dateStr)
-  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase()
+  return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase()
 }
 
 function groupTransactionsByDate(transactions) {
@@ -51,15 +51,15 @@ function TransactionRow({ transaction, onClick }) {
           const initial = (transaction.name ?? '?')[0].toUpperCase()
           if (logo) return (
             <div className="relative h-5 w-5 shrink-0">
-              <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#e5e7eb] object-contain bg-white"
+              <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#9ca3af] object-contain bg-white"
                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
               />
-              <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+              <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
             </div>
           )
           return (
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
               style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
           )
         })()}
@@ -136,7 +136,7 @@ function SortButton({ sort, onChange }) {
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-48 rounded-[10px] border border-[#e5e7eb] bg-white py-1 shadow-lg">
+        <div className="absolute right-0 z-20 mt-1 w-48 rounded-[10px] border border-[#9ca3af] bg-white py-1 shadow-lg">
           {SORT_OPTIONS.map(opt => (
             <button
               key={opt.value}
@@ -158,7 +158,7 @@ function SortButton({ sort, onChange }) {
   )
 }
 
-// ─── Filter Button & Panel ────────────────────────────────────────────────────
+// ─── Filter helpers ───────────────────────────────────────────────────────────
 
 const DATE_PRESETS = [
   { label: 'Last 7 days',  after_date: () => daysAgo(7) },
@@ -175,214 +175,207 @@ function daysAgo(n) {
   return d.toISOString().slice(0, 10)
 }
 
-function FilterButton({ filters, accounts, allCategories, refDataLoading, onChange }) {
+function useDropdown() {
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState(filters)
   const ref = useRef(null)
-
-  // Sync draft when panel opens
-  useEffect(() => { if (open) setDraft(filters) }, [open])
-
   useEffect(() => {
     if (!open) return
     function handleClick(e) { if (!ref.current?.contains(e.target)) setOpen(false) }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [open])
+  return { open, setOpen, ref }
+}
 
-  const activeCount = [
-    filters.account_ids.length > 0,
-    filters.categories.length > 0,
-    filters.after_date || filters.before_date,
-  ].filter(Boolean).length
+const FILTER_BTN_BASE = 'flex items-center gap-1.5 rounded-[8px] border px-3 py-1.5 text-[13px] font-medium transition-colors'
+const FILTER_BTN_IDLE = 'border-[#d1d5dc] bg-white text-[#374151] hover:bg-[#f9fafb]'
+const FILTER_BTN_ACTIVE = 'border-[#18181b] bg-[#18181b] text-white'
+const FILTER_CHEVRON = (active, open) =>
+  `h-3 w-3 transition-transform ${open ? 'rotate-180' : ''} ${active ? 'text-white' : 'text-[#9ca3af]'}`
 
-  function toggleAccount(id) {
-    setDraft(d => ({
-      ...d,
-      account_ids: d.account_ids.includes(id)
-        ? d.account_ids.filter(a => a !== id)
-        : [...d.account_ids, id],
-    }))
+function FilterChevron({ active, open }) {
+  return (
+    <svg className={FILTER_CHEVRON(active, open)} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  )
+}
+
+function FilterFooter({ onClear, onApply }) {
+  return (
+    <div className="flex items-center justify-between border-t border-[#f3f4f6] px-4 py-3">
+      <button onClick={onClear} className="text-[13px] text-[#6b7280] hover:text-[#374151] transition-colors" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Clear</button>
+      <button onClick={onApply} className="rounded-[8px] bg-[#18181b] px-4 py-1.5 text-[13px] font-medium text-white hover:bg-[#374151] transition-colors" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Apply</button>
+    </div>
+  )
+}
+
+// ─── Account Filter Button ────────────────────────────────────────────────────
+
+function AccountFilterButton({ filters, accounts, loading, onChange }) {
+  const { open, setOpen, ref } = useDropdown()
+  const [draft, setDraft] = useState(filters.account_ids)
+  useEffect(() => { if (open) setDraft(filters.account_ids) }, [open])
+
+  const active = filters.account_ids.length > 0
+  const label = active
+    ? filters.account_ids.length === 1
+      ? (accounts.find(a => a.account_id === filters.account_ids[0])?.account_name ?? 'Account')
+      : `${filters.account_ids.length} accounts`
+    : 'Account'
+
+  function toggle(id) {
+    setDraft(d => d.includes(id) ? d.filter(a => a !== id) : [...d, id])
   }
+  function apply() { onChange({ ...filters, account_ids: draft }); setOpen(false) }
+  function clear() { onChange({ ...filters, account_ids: [] }); setOpen(false) }
 
-  function toggleCategory(cat) {
-    setDraft(d => ({
-      ...d,
-      categories: d.categories.includes(cat)
-        ? d.categories.filter(c => c !== cat)
-        : [...d.categories, cat],
-    }))
-  }
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} className={`${FILTER_BTN_BASE} ${active ? FILTER_BTN_ACTIVE : FILTER_BTN_IDLE}`} style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+        {label}
+        <FilterChevron active={active} open={open} />
+      </button>
+      {open && (
+        <div className="absolute left-0 z-20 mt-1 w-56 rounded-[12px] border border-[#9ca3af] bg-white shadow-xl overflow-hidden">
+          <div className="px-4 pt-4 pb-3 max-h-[280px] overflow-y-auto">
+            {loading ? (
+              <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-3 w-40 rounded bg-[#f3f4f6]" />)}</div>
+            ) : accounts.length === 0 ? (
+              <p className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No accounts</p>
+            ) : (
+              <div className="space-y-1">
+                {accounts.map(acc => (
+                  <label key={acc.account_id} className="flex items-center gap-2 cursor-pointer rounded-[6px] px-1 py-1 hover:bg-[#f9fafb]">
+                    <input type="checkbox" checked={draft.includes(acc.account_id)} onChange={() => toggle(acc.account_id)} className="h-3.5 w-3.5 rounded accent-[#18181b]" />
+                    <span className="text-[13px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{acc.account_name}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <FilterFooter onClear={clear} onApply={apply} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Date Filter Button ───────────────────────────────────────────────────────
+
+function DateFilterButton({ filters, onChange }) {
+  const { open, setOpen, ref } = useDropdown()
+  const [draft, setDraft] = useState({ after_date: filters.after_date, before_date: filters.before_date, preset: filters.preset })
+  useEffect(() => { if (open) setDraft({ after_date: filters.after_date, before_date: filters.before_date, preset: filters.preset }) }, [open])
+
+  const active = !!(filters.after_date || filters.before_date)
+  const currentPresetLabel = (() => {
+    if (filters.preset === 'custom' && (filters.after_date || filters.before_date)) return 'Custom range'
+    return DATE_PRESETS.find(p => p.after_date && p.after_date() === filters.after_date)?.label ?? 'All time'
+  })()
+  const label = active ? currentPresetLabel : 'Date'
 
   function selectPreset(preset) {
     if (preset.label === 'Custom range') {
       setDraft(d => ({ ...d, preset: 'custom' }))
     } else {
-      const after = preset.after_date()
-      setDraft(d => ({ ...d, after_date: after, before_date: null, preset: preset.label }))
+      setDraft({ after_date: preset.after_date(), before_date: null, preset: preset.label })
     }
   }
-
-  function apply() {
-    onChange(draft)
-    setOpen(false)
-  }
-
-  function clearAll() {
-    const cleared = { account_ids: [], categories: [], after_date: null, before_date: null, preset: 'All time' }
-    setDraft(cleared)
-    onChange(cleared)
-    setOpen(false)
-  }
-
-  const currentPresetLabel = (() => {
-    if (filters.preset === 'custom' && (filters.after_date || filters.before_date)) return 'Custom range'
-    return DATE_PRESETS.find(p => p.after_date && p.after_date() === filters.after_date)?.label ?? 'All time'
-  })()
+  function apply() { onChange({ ...filters, after_date: draft.after_date, before_date: draft.before_date, preset: draft.preset }); setOpen(false) }
+  function clear() { onChange({ ...filters, after_date: null, before_date: null, preset: 'All time' }); setOpen(false) }
 
   return (
     <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="flex items-center gap-1.5 rounded-[8px] border border-[#d1d5dc] bg-white px-3 py-1.5 text-[13px] font-medium text-[#374151] hover:bg-[#f9fafb] transition-colors"
-        style={{ fontFamily: 'JetBrains Mono,monospace' }}
-      >
-        <svg className="h-3.5 w-3.5 text-[#6b7280]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 8h10M11 12h2" />
-        </svg>
-        Filter
-        {activeCount > 0 && (
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#18181b] text-[10px] font-bold text-white">
-            {activeCount}
-          </span>
-        )}
+      <button onClick={() => setOpen(o => !o)} className={`${FILTER_BTN_BASE} ${active ? FILTER_BTN_ACTIVE : FILTER_BTN_IDLE}`} style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+        {label}
+        <FilterChevron active={active} open={open} />
       </button>
-
       {open && (
-        <div className="absolute right-0 z-20 mt-1 w-72 rounded-[12px] border border-[#e5e7eb] bg-white shadow-xl overflow-hidden">
-          <div className="max-h-[520px] overflow-y-auto">
-
-            {/* Accounts */}
-            {refDataLoading ? (
-              <div className="px-4 pt-4 pb-3 space-y-2">
-                <div className="h-2.5 w-16 rounded bg-[#f3f4f6]" />
-                {[1,2,3].map(i => <div key={i} className="h-3 w-40 rounded bg-[#f3f4f6]" />)}
-              </div>
-            ) : accounts.length > 0 && (
-              <div className="px-4 pt-4 pb-3">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.6px] text-[#6b7280]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Account</p>
-                <div className="space-y-1">
-                  {accounts.map(acc => (
-                    <label key={acc.account_id} className="flex items-center gap-2 cursor-pointer rounded-[6px] px-1 py-1 hover:bg-[#f9fafb]">
-                      <input
-                        type="checkbox"
-                        checked={draft.account_ids.includes(acc.account_id)}
-                        onChange={() => toggleAccount(acc.account_id)}
-                        className="h-3.5 w-3.5 rounded accent-[#18181b]"
-                      />
-                      <span className="text-[13px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                        {acc.account_name}
-                      </span>
-                    </label>
-                  ))}
+        <div className="absolute left-0 z-20 mt-1 w-48 rounded-[12px] border border-[#9ca3af] bg-white shadow-xl overflow-hidden">
+          <div className="px-3 pt-3 pb-2">
+            <div className="space-y-0.5">
+              {DATE_PRESETS.map(preset => (
+                <button
+                  key={preset.label}
+                  onClick={() => selectPreset(preset)}
+                  className={`flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-[13px] transition-colors hover:bg-[#f9fafb] ${
+                    (draft.preset ?? currentPresetLabel) === preset.label ? 'font-semibold text-[#101828]' : 'text-[#374151]'
+                  }`}
+                  style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                >
+                  {preset.label}
+                  {(draft.preset ?? currentPresetLabel) === preset.label && (
+                    <svg className="h-3.5 w-3.5 text-[#18181b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+            {draft.preset === 'custom' && (
+              <div className="mt-2 flex gap-2">
+                <div className="flex-1">
+                  <label className="block text-[11px] text-[#9ca3af] mb-0.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>From</label>
+                  <input type="date" value={draft.after_date ?? ''} onChange={e => setDraft(d => ({ ...d, after_date: e.target.value || null }))} className="w-full rounded-[6px] border border-[#d1d5dc] px-2 py-1 text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }} />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-[11px] text-[#9ca3af] mb-0.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>To</label>
+                  <input type="date" value={draft.before_date ?? ''} onChange={e => setDraft(d => ({ ...d, before_date: e.target.value || null }))} className="w-full rounded-[6px] border border-[#d1d5dc] px-2 py-1 text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }} />
                 </div>
               </div>
             )}
+          </div>
+          <FilterFooter onClear={clear} onApply={apply} />
+        </div>
+      )}
+    </div>
+  )
+}
 
-            <div className="border-t border-[#f3f4f6]" />
+// ─── Category Filter Button ───────────────────────────────────────────────────
 
-            {/* Date */}
-            <div className="px-4 pt-3 pb-3">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.6px] text-[#6b7280]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Date</p>
+function CategoryFilterButton({ filters, allCategories, loading, onChange }) {
+  const { open, setOpen, ref } = useDropdown()
+  const [draft, setDraft] = useState(filters.categories)
+  useEffect(() => { if (open) setDraft(filters.categories) }, [open])
+
+  const active = filters.categories.length > 0
+  const label = active
+    ? filters.categories.length === 1 ? formatCategory(filters.categories[0]) : `${filters.categories.length} categories`
+    : 'Category'
+
+  function toggle(cat) {
+    setDraft(d => d.includes(cat) ? d.filter(c => c !== cat) : [...d, cat])
+  }
+  function apply() { onChange({ ...filters, categories: draft }); setOpen(false) }
+  function clear() { onChange({ ...filters, categories: [] }); setOpen(false) }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => setOpen(o => !o)} className={`${FILTER_BTN_BASE} ${active ? FILTER_BTN_ACTIVE : FILTER_BTN_IDLE}`} style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+        {label}
+        <FilterChevron active={active} open={open} />
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-56 rounded-[12px] border border-[#9ca3af] bg-white shadow-xl overflow-hidden">
+          <div className="px-4 pt-4 pb-3 max-h-[300px] overflow-y-auto">
+            {loading ? (
+              <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-3 w-36 rounded bg-[#f3f4f6]" />)}</div>
+            ) : allCategories.length === 0 ? (
+              <p className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No categories</p>
+            ) : (
               <div className="space-y-1">
-                {DATE_PRESETS.map(preset => (
-                  <button
-                    key={preset.label}
-                    onClick={() => selectPreset(preset)}
-                    className={`flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-[13px] transition-colors hover:bg-[#f9fafb] ${
-                      (draft.preset ?? currentPresetLabel) === preset.label ? 'font-semibold text-[#101828]' : 'text-[#374151]'
-                    }`}
-                    style={{ fontFamily: 'JetBrains Mono,monospace' }}
-                  >
-                    {preset.label}
-                    {(draft.preset ?? currentPresetLabel) === preset.label && (
-                      <svg className="h-3.5 w-3.5 text-[#18181b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    )}
-                  </button>
+                {allCategories.map(cat => (
+                  <label key={cat} className="flex items-center gap-2 cursor-pointer rounded-[6px] px-1 py-1 hover:bg-[#f9fafb]">
+                    <input type="checkbox" checked={draft.includes(cat)} onChange={() => toggle(cat)} className="h-3.5 w-3.5 rounded accent-[#18181b]" />
+                    <span className="text-[13px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{formatCategory(cat)}</span>
+                  </label>
                 ))}
               </div>
-              {draft.preset === 'custom' && (
-                <div className="mt-2 flex gap-2">
-                  <div className="flex-1">
-                    <label className="block text-[11px] text-[#9ca3af] mb-0.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>From</label>
-                    <input
-                      type="date"
-                      value={draft.after_date ?? ''}
-                      onChange={e => setDraft(d => ({ ...d, after_date: e.target.value || null }))}
-                      className="w-full rounded-[6px] border border-[#d1d5dc] px-2 py-1 text-[12px] text-[#374151]"
-                      style={{ fontFamily: 'JetBrains Mono,monospace' }}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="block text-[11px] text-[#9ca3af] mb-0.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>To</label>
-                    <input
-                      type="date"
-                      value={draft.before_date ?? ''}
-                      onChange={e => setDraft(d => ({ ...d, before_date: e.target.value || null }))}
-                      className="w-full rounded-[6px] border border-[#d1d5dc] px-2 py-1 text-[12px] text-[#374151]"
-                      style={{ fontFamily: 'JetBrains Mono,monospace' }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Categories */}
-            {(refDataLoading || allCategories.length > 0) && (
-              <>
-                <div className="border-t border-[#f3f4f6]" />
-                {refDataLoading ? (
-                  <div className="px-4 pt-3 pb-4 space-y-2">
-                    <div className="h-2.5 w-16 rounded bg-[#f3f4f6]" />
-                    {[1,2,3,4].map(i => <div key={i} className="h-3 w-36 rounded bg-[#f3f4f6]" />)}
-                  </div>
-                ) : (
-                  <div className="px-4 pt-3 pb-4">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.6px] text-[#6b7280]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Category</p>
-                    <div className="space-y-1">
-                      {allCategories.map(cat => (
-                        <label key={cat} className="flex items-center gap-2 cursor-pointer rounded-[6px] px-1 py-1 hover:bg-[#f9fafb]">
-                          <input
-                            type="checkbox"
-                            checked={draft.categories.includes(cat)}
-                            onChange={() => toggleCategory(cat)}
-                            className="h-3.5 w-3.5 rounded accent-[#18181b]"
-                          />
-                          <span className="text-[13px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                            {formatCategory(cat)}
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
             )}
           </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-between border-t border-[#e5e7eb] px-4 py-3">
-            <button onClick={clearAll} className="text-[13px] text-[#6b7280] hover:text-[#374151] transition-colors" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              Clear all
-            </button>
-            <button onClick={apply}
-              className="rounded-[8px] bg-[#18181b] px-4 py-1.5 text-[13px] font-medium text-white hover:bg-[#374151] transition-colors"
-              style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              Apply
-            </button>
-          </div>
+          <FilterFooter onClear={clear} onApply={apply} />
         </div>
       )}
     </div>
@@ -449,13 +442,7 @@ function sortTransactions(txns, sort) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-function last30DaysDate() {
-  const d = new Date()
-  d.setDate(d.getDate() - 30)
-  return d.toISOString().slice(0, 10)
-}
-
-const EMPTY_FILTERS = { account_ids: [], categories: [], after_date: last30DaysDate(), before_date: null, preset: 'Last 30 days' }
+const EMPTY_FILTERS = { account_ids: [], categories: [], after_date: null, before_date: null, preset: 'All time' }
 
 export function TransactionsPage() {
   const [selectedTransaction, setSelectedTransaction] = useState(null)
@@ -535,13 +522,9 @@ export function TransactionsPage() {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <SortButton sort={sort} onChange={setSort} />
-              <FilterButton
-                filters={filters}
-                accounts={accounts}
-                allCategories={allCategories}
-                refDataLoading={refDataLoading}
-                onChange={handleFiltersChange}
-              />
+              <AccountFilterButton filters={filters} accounts={accounts} loading={refDataLoading} onChange={handleFiltersChange} />
+              <DateFilterButton filters={filters} onChange={handleFiltersChange} />
+              <CategoryFilterButton filters={filters} allCategories={allCategories} loading={refDataLoading} onChange={handleFiltersChange} />
             </div>
           </div>
 
