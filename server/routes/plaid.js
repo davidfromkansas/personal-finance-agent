@@ -18,7 +18,7 @@ import {
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow, getCashFlowTransactions,
   updateTransactionAccountNames,
-  getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory,
+  getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
   upsertAccountBalanceSnapshot,
 } from '../db.js'
 
@@ -574,6 +574,8 @@ plaidRouter.get('/transactions', async (req, res, next) => {
     const rawAccountIds = [].concat(req.query.account_ids ?? []).flatMap(v => v.split(',')).filter(Boolean)
     const rawCategories = [].concat(req.query.categories ?? []).flatMap(v => v.split(',')).filter(Boolean)
 
+    const search = req.query.search?.trim() || null
+
     const opts = { sort, offset }
     if (fromDate && toDate) { opts.fromDate = fromDate; opts.toDate = toDate }
     else if (afterDate && beforeDate) { opts.fromDate = afterDate; opts.toDate = beforeDate }
@@ -581,6 +583,7 @@ plaidRouter.get('/transactions', async (req, res, next) => {
     else if (beforeDate) opts.beforeDate = beforeDate
     if (rawAccountIds.length) opts.accountIds = rawAccountIds
     if (rawCategories.length) opts.categories = rawCategories
+    if (search) opts.search = search
 
     const { transactions, total } = await getRecentTransactions(req.uid, limit, opts)
     res.json({ transactions, total, has_more: offset + transactions.length < total })
@@ -1237,13 +1240,34 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
   }
 })
 
+const INTRADAY_MARKET_HOLIDAYS = new Set([
+  '2025-01-01','2025-01-20','2025-02-17','2025-04-18','2025-05-26',
+  '2025-06-19','2025-07-04','2025-09-01','2025-11-27','2025-12-25',
+  '2026-01-01','2026-01-19','2026-02-16','2026-04-03','2026-05-25',
+  '2026-06-19','2026-07-03','2026-09-07','2026-11-26','2026-12-25',
+])
+
+function getMostRecentTradingDay(fromDateStr) {
+  const pad = (n) => String(n).padStart(2, '0')
+  const toStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const d = new Date(fromDateStr + 'T12:00:00Z')
+  d.setDate(d.getDate() - 1)
+  for (let i = 0; i < 10; i++) {
+    const s = toStr(d)
+    const dow = d.getDay()
+    if (dow !== 0 && dow !== 6 && !INTRADAY_MARKET_HOLIDAYS.has(s)) return s
+    d.setDate(d.getDate() - 1)
+  }
+  return fromDateStr
+}
+
 /** GET /api/plaid/portfolio-history — real portfolio value from snapshots, not back-calculation */
 plaidRouter.get('/portfolio-history', async (req, res) => {
   try {
-    const VALID_RANGES = ['1W', '1M', '3M', 'YTD', '1Y', 'ALL']
+    const VALID_RANGES = ['1D', '1W', '1M', '3M', 'YTD', '1Y', 'ALL']
     const range = (req.query.range || '').toUpperCase()
     if (!VALID_RANGES.includes(range)) {
-      return res.status(400).json({ error: 'range must be one of: 1W, 1M, 3M, YTD, 1Y, ALL' })
+      return res.status(400).json({ error: 'range must be one of: 1D, 1W, 1M, 3M, YTD, 1Y, ALL' })
     }
 
     const today = new Date()
@@ -1251,13 +1275,112 @@ plaidRouter.get('/portfolio-history', async (req, res) => {
     const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
     const todayStr = toDateStr(today)
 
+    // ── 1D: intraday portfolio value from Yahoo Finance 5m bars ─────────
+    if (range === '1D') {
+      const etStr = today.toLocaleString('en-US', { timeZone: 'America/New_York' })
+      const et = new Date(etStr)
+      const etDow = et.getDay()
+      const etDateStr = today.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+      const etTotalMin = et.getHours() * 60 + et.getMinutes()
+      const isWeekend = etDow === 0 || etDow === 6
+      const isHoliday = INTRADAY_MARKET_HOLIDAYS.has(etDateStr)
+      const marketHasStartedToday = !isWeekend && !isHoliday && etTotalMin >= 570 // 9:30am ET
+
+      const tradingDateStr = marketHasStartedToday ? etDateStr : getMostRecentTradingDay(etDateStr)
+
+      const latestHoldings = await getLatestHoldingsSnapshot(req.uid)
+      const accountIdsParam = req.query.account_ids
+      let filteredHoldings = latestHoldings
+      if (accountIdsParam) {
+        const filterSet = new Set(accountIdsParam.split(',').map((s) => s.trim()).filter(Boolean))
+        filteredHoldings = latestHoldings.filter((h) => filterSet.has(h.account_id))
+      }
+
+      // Aggregate quantities per ticker (filter out cash/non-priced securities)
+      const tickerQuantities = {}
+      for (const h of filteredHoldings) {
+        if (!h.ticker || h.ticker.startsWith('CUR:') || !h.quantity) continue
+        tickerQuantities[h.ticker] = (tickerQuantities[h.ticker] || 0) + parseFloat(h.quantity)
+      }
+
+      const tickers = Object.keys(tickerQuantities)
+      if (!tickers.length) {
+        return res.json({ range: '1D', isIntraday: true, tradingDate: tradingDateStr, current: { value: 0 }, history: [] })
+      }
+
+      // Fetch intraday 5m bars from Yahoo Finance for each ticker
+      // Use new Date() as period2 to avoid future-date parsing issues with yahoo-finance2
+      const intradayPeriod2 = new Date()
+
+      const chartResults = await Promise.allSettled(
+        tickers.map((ticker) =>
+          yahooFinance.chart(ticker, { period1: tradingDateStr, period2: intradayPeriod2, interval: '5m' }, { validateResult: false })
+            .then((result) => ({
+              ticker,
+              quotes: (result?.quotes ?? []).filter((q) => (q.close ?? q.adjclose ?? q.open) != null),
+            }))
+        )
+      )
+
+      // Build sorted price series per ticker
+      const tickerPrices = {}
+      for (const r of chartResults) {
+        if (r.status !== 'fulfilled') continue
+        const { ticker, quotes } = r.value
+        tickerPrices[ticker] = quotes
+          .filter((q) => {
+            // Strip pre-market and after-hours — keep only 9:30am–4:00pm ET
+            const etStr = new Date(q.date).toLocaleString('en-US', { timeZone: 'America/New_York' })
+            const et = new Date(etStr)
+            const min = et.getHours() * 60 + et.getMinutes()
+            return min >= 570 && min < 960
+          })
+          .map((q) => ({ ts: new Date(q.date).getTime(), price: q.close ?? q.adjclose ?? q.open }))
+          .sort((a, b) => a.ts - b.ts)
+      }
+
+      // Collect all unique timestamps across all tickers
+      const allTs = [...new Set(
+        Object.values(tickerPrices).flatMap((pts) => pts.map((p) => p.ts))
+      )].sort((a, b) => a - b)
+
+      if (!allTs.length) {
+        return res.json({ range: '1D', isIntraday: true, tradingDate: tradingDateStr, current: { value: 0 }, history: [] })
+      }
+
+      // For each timestamp compute portfolio value — use last-known price (forward-fill) per ticker
+      const history = allTs.map((ts) => {
+        let value = 0
+        for (const [ticker, qty] of Object.entries(tickerQuantities)) {
+          const pts = tickerPrices[ticker]
+          if (!pts) continue
+          let price = null
+          for (const p of pts) {
+            if (p.ts <= ts) price = p.price
+            else break
+          }
+          if (price != null) value += qty * price
+        }
+        return { date: new Date(ts).toISOString(), value: Math.round(value * 100) / 100 }
+      })
+
+      const currentValue = history.length ? history[history.length - 1].value : 0
+      return res.json({
+        range: '1D',
+        isIntraday: true,
+        tradingDate: tradingDateStr,
+        current: { value: currentValue },
+        history,
+      })
+    }
+
+    // ── Daily-range: snapshot-based history ──────────────────────────────
     // Only call Plaid once per day — skip if a live snapshot already exists for today.
     // Pass today as a string to avoid DB timezone mismatches.
     const alreadySnapshotted = await hasTodaySnapshot(req.uid, todayStr)
     if (!alreadySnapshotted) {
       await snapshotInvestments(req.uid)
     }
-
 
     let sinceDate
     if (range === '1W') {
@@ -1317,13 +1440,13 @@ plaidRouter.get('/portfolio-snapshot', async (req, res) => {
   }
 })
 
-/** GET /api/plaid/ticker-history?tickers=VOO,PLTR&range=1W|1M|3M|YTD|1Y|ALL — Yahoo Finance price history for movers chart */
+/** GET /api/plaid/ticker-history?tickers=VOO,PLTR&range=1D|1W|1M|3M|YTD|1Y|ALL — Yahoo Finance price history for movers chart */
 plaidRouter.get('/ticker-history', async (req, res) => {
   try {
-    const VALID_RANGES = ['1W', '1M', '3M', 'YTD', '1Y', '5Y', 'ALL']
+    const VALID_RANGES = ['1D', '1W', '1M', '3M', 'YTD', '1Y', '5Y', 'ALL']
     const range = (req.query.range || '1Y').toUpperCase()
     if (!VALID_RANGES.includes(range)) {
-      return res.status(400).json({ error: 'range must be one of: 1W, 1M, 3M, YTD, 1Y, 5Y, ALL' })
+      return res.status(400).json({ error: 'range must be one of: 1D, 1W, 1M, 3M, YTD, 1Y, 5Y, ALL' })
     }
     const tickers = (req.query.tickers || '').split(',').map(t => t.trim()).filter(Boolean)
     if (!tickers.length) return res.json({ range, series: [] })
@@ -1331,6 +1454,59 @@ plaidRouter.get('/ticker-history', async (req, res) => {
     const today = new Date()
     const pad = (n) => String(n).padStart(2, '0')
     const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+    // ── 1D: intraday 5m bars for the current (or last) trading session ──
+    if (range === '1D') {
+      const etStr = today.toLocaleString('en-US', { timeZone: 'America/New_York' })
+      const et = new Date(etStr)
+      const etDow = et.getDay()
+      const etDateStr = today.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+      const etTotalMin = et.getHours() * 60 + et.getMinutes()
+      const isWeekend = etDow === 0 || etDow === 6
+      const isHoliday = INTRADAY_MARKET_HOLIDAYS.has(etDateStr)
+      const marketHasStartedToday = !isWeekend && !isHoliday && etTotalMin >= 570
+
+      const tradingDateStr = marketHasStartedToday ? etDateStr : getMostRecentTradingDay(etDateStr)
+      // Use current time as period2 — avoids future-date issues with yahoo-finance2 parsing
+      // and naturally covers the full session for past trading days too
+      const period2 = new Date()
+
+      const results = await Promise.allSettled(
+        tickers.map(async (ticker) => {
+          const result = await yahooFinance.chart(ticker, {
+            period1: tradingDateStr,
+            period2,
+            interval: '5m',
+          }, { validateResult: false })
+          const data = (result?.quotes ?? [])
+            .map(q => ({
+              date: new Date(q.date).toISOString(),
+              price: q.close ?? q.adjclose ?? q.open ?? null,
+            }))
+            .filter(p => {
+              if (p.price == null) return false
+              // Strip pre-market and after-hours — keep only 9:30am–4:00pm ET
+              const etStr = new Date(p.date).toLocaleString('en-US', { timeZone: 'America/New_York' })
+              const et = new Date(etStr)
+              const min = et.getHours() * 60 + et.getMinutes()
+              return min >= 570 && min < 960
+            })
+          return { ticker, data }
+        })
+      )
+
+      const series = results
+        .filter(r => r.status === 'fulfilled' && r.value.data.length > 0)
+        .map(r => r.value)
+
+      if (series.length === 0) {
+        console.warn(`[ticker-history 1D] Empty series for tickers: ${tickers.join(',')} tradingDate: ${tradingDateStr}`)
+      }
+
+      return res.json({ range, isIntraday: true, tradingDate: tradingDateStr, series })
+    }
+
+    // ── Daily ranges ────────────────────────────────────────────────────
     let sinceDate
     if (range === '1W') {
       const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)

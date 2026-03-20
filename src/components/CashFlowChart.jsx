@@ -341,7 +341,7 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
 
   return (
     <div
-      className="relative rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex flex-col overflow-hidden"
+      className="relative rounded-[14px] border border-[#9ca3af] bg-white flex flex-col overflow-hidden"
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
       {showInfo && (
@@ -368,7 +368,7 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
           <p className="mt-3 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Click anywhere to dismiss</p>
         </div>
       )}
-      <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#1d4ed8] px-5 py-3">
+      <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] px-5 py-3">
         <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           Cash flow
         </h2>
@@ -378,7 +378,7 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
               {latestMonth.label}
             </span>
           )}
-          <span className="text-[18px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          <span className="text-[18px] font-semibold leading-5 text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {loading ? '—' : formatCurrency(netLatest)}
           </span>
           <button

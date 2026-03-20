@@ -12,13 +12,11 @@ import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
 
-import cron from 'node-cron'
 import { authMiddleware } from './middleware/auth.js'
 import { plaidRouter, plaidWebhookHandler } from './routes/plaid.js'
 import { agentRouter } from './routes/agent.js'
+import { runDemoChat } from './agent/chat.js'
 import { cronRouter } from './routes/cron.js'
-import { getAllUserIdsWithItems } from './db.js'
-import { snapshotInvestments } from './jobs/snapshotInvestments.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 dotenv.config({ path: path.join(__dirname, '.env') })
@@ -50,6 +48,16 @@ app.use(express.json())
 
 app.get('/health', (req, res) => res.json({ ok: true }))
 
+app.post('/api/agent/chat-demo', async (req, res, next) => {
+  try {
+    const { message, history, mode, demoContext } = req.body
+    const reply = await runDemoChat({ message, history: history ?? [], mode: mode ?? 'Auto', demoContext })
+    res.json({ reply })
+  } catch (err) {
+    next(err)
+  }
+})
+
 app.use('/api/plaid', authMiddleware, plaidRouter)
 app.use('/api/agent', authMiddleware, agentRouter)
 app.use('/api/cron', cronRouter)
@@ -68,25 +76,27 @@ app.use((err, req, res, next) => {
   res.status(err.status ?? 500).json({ error: err.message ?? 'Internal server error' })
 })
 
-app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`))
+const server = app.listen(PORT, () => console.log(`Server listening on http://localhost:${PORT}`))
 
-// Daily investment snapshot at 6 PM UTC (after US market close)
-cron.schedule('0 18 * * *', async () => {
-  console.log('[cron] daily investment snapshot: starting')
-  let userIds
-  try {
-    userIds = await getAllUserIdsWithItems()
-  } catch (err) {
-    console.error('[cron] failed to fetch user list:', err.message)
-    return
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} already in use. Kill the old process (lsof -ti:${PORT} | xargs kill) and retry.`)
+  } else {
+    console.error('Server error:', err)
   }
-  for (const userId of userIds) {
-    try {
-      await snapshotInvestments(userId)
-      console.log(`[cron] snapshot done for user ${userId}`)
-    } catch (err) {
-      console.error(`[cron] snapshot failed for user ${userId}:`, err.message)
-    }
-  }
-  console.log('[cron] daily investment snapshot: done')
+  process.exit(1)
 })
+
+function shutdown(signal) {
+  console.log(`[shutdown] ${signal} received — closing server`)
+  server.close(() => {
+    console.log('[shutdown] server closed')
+    process.exit(0)
+  })
+  // Force-exit if graceful close takes too long
+  setTimeout(() => process.exit(1), 5000).unref()
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))
+

@@ -71,6 +71,7 @@ export function useTransactions(filters) {
       if (filterParams.before_date) params.set('before_date', filterParams.before_date)
       filterParams.account_ids.forEach(id => params.append('account_ids', id))
       filterParams.categories.forEach(cat => params.append('categories', cat))
+      if (filterParams.search) params.set('search', filterParams.search)
       return apiFetch(`/api/plaid/transactions?${params}`, { getToken: getIdToken })
     },
     initialPageParam: 0,
@@ -148,7 +149,7 @@ export function useCashFlowTransactions(month) {
   })
 }
 
-export function usePortfolioHistory(range, accountIds) {
+export function usePortfolioHistory(range, accountIds, options = {}) {
   const { getIdToken } = useAuth()
   return useQuery({
     queryKey: ['portfolio-history', range, accountIds ?? null],
@@ -157,10 +158,11 @@ export function usePortfolioHistory(range, accountIds) {
         getToken: getIdToken,
       }),
     staleTime: STALE.charts,
+    ...options,
   })
 }
 
-export function useTickerHistory(tickers, range) {
+export function useTickerHistory(tickers, range, options = {}) {
   const { getIdToken } = useAuth()
   const tickerStr = tickers.join(',')
   return useQuery({
@@ -168,6 +170,7 @@ export function useTickerHistory(tickers, range) {
     queryFn: () => apiFetch(`/api/plaid/ticker-history?tickers=${tickerStr}&range=${range}`, { getToken: getIdToken }),
     enabled: tickers.length > 0,
     staleTime: STALE.charts,
+    ...options,
   })
 }
 

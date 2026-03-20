@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, useRef, useImperativeHandle, forwardRef } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
-import { useInvestments, useAccounts, usePortfolioHistory, useQuotes } from '../hooks/usePlaidQueries'
+import { useInvestments, useAccounts, usePortfolioHistory, useQuotes, useTickerHistory } from '../hooks/usePlaidQueries'
 import { useMarketClock } from '../hooks/useMarketClock'
 
 
 const RANGES = [
+  { key: '1D', label: '1D' },
   { key: '1W', label: '1W' },
   { key: '1M', label: '1M' },
   { key: '3M', label: '3M' },
@@ -16,6 +17,7 @@ const RANGES = [
 ]
 
 const LINE_COLOR = '#7c3aed'
+const TICKER_COLORS = ['#2563eb', '#d97706', '#16a34a', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#ca8a04']
 
 function formatCurrency(value) {
   if (value == null) return '$0'
@@ -42,6 +44,10 @@ function formatPct(value) {
 }
 
 function formatDateLabel(dateStr, range) {
+  if (range === '1D') {
+    const d = new Date(dateStr)
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  }
   const d = new Date(dateStr + 'T00:00:00')
   if (range === '1W') {
     return d.toLocaleDateString('en-US', { weekday: 'short' })
@@ -52,13 +58,21 @@ function formatDateLabel(dateStr, range) {
   }
 }
 
-function ChartTooltip({ active, payload }) {
+function ChartTooltip({ active, payload, isIntraday }) {
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload
   if (!d) return null
-  const dateLabel = new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-  })
+  let dateLabel
+  if (isIntraday) {
+    const dt = new Date(d.date)
+    dateLabel = dt.toLocaleString('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
+    })
+  } else {
+    dateLabel = new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+    })
+  }
   return (
     <div className="rounded-lg border border-[#9ca3af] bg-white px-3 py-2 shadow-sm">
       <p className="text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
@@ -67,6 +81,33 @@ function ChartTooltip({ active, payload }) {
       <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
         {formatCurrency(d.value)}
       </p>
+    </div>
+  )
+}
+
+function TickerTooltip({ active, payload, isIntraday }) {
+  if (!active || !payload?.length) return null
+  const d = payload[0]?.payload
+  if (!d) return null
+  let dateLabel
+  if (isIntraday) {
+    const dt = new Date(d.date)
+    dateLabel = dt.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+  } else {
+    dateLabel = new Date(d.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  const sorted = [...payload].sort((a, b) => (b.value ?? -Infinity) - (a.value ?? -Infinity))
+  return (
+    <div className="rounded-lg border border-[#9ca3af] bg-white px-3 py-2 shadow-sm min-w-[150px]">
+      <p className="mb-1.5 text-[11px] font-medium text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{dateLabel}</p>
+      {sorted.map((entry) => (
+        <div key={entry.dataKey} className="flex items-center justify-between gap-4">
+          <span className="text-[11px] font-semibold" style={{ color: entry.color, fontFamily: 'JetBrains Mono,monospace' }}>{entry.dataKey}</span>
+          <span className="text-[11px] font-semibold" style={{ color: entry.value >= 0 ? '#16a34a' : '#dc2626', fontFamily: 'JetBrains Mono,monospace' }}>
+            {entry.value != null ? `${entry.value >= 0 ? '+' : ''}${entry.value.toFixed(2)}%` : '—'}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -137,8 +178,9 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
 
-  const [activeRange, setActiveRange] = useState('1M')
+  const [activeRange, setActiveRange] = useState('1D')
   const [selectedAccountKey, setSelectedAccountKey] = useState(null)
+  const [chartMode, setChartMode] = useState('portfolio') // 'portfolio' | 'holdings'
 
   const accounts = useMemo(() => {
     if (holdings.length > 0) {
@@ -170,9 +212,14 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
     return acc ? acc.accountIds.join(',') : null
   }, [selectedAccountKey, accounts])
 
-  const { data: chartData, isLoading: chartLoading } = usePortfolioHistory(activeRange, selectedAccountIds)
+  const { data: chartData, isLoading: chartLoading } = usePortfolioHistory(
+    activeRange,
+    selectedAccountIds,
+    activeRange === '1D' && isOpen ? { refetchInterval: 60_000, staleTime: 60_000 } : {},
+  )
   const chartHistory = chartData?.history ?? null
   const chartCurrentValue = chartData?.current?.value ?? null
+  const isIntraday = chartData?.isIntraday ?? false
 
   const refreshAll = useCallback(() => {
     setSelectedAccountKey(null)
@@ -227,6 +274,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
 
   const chartPoints = useMemo(() => {
     if (!chartHistory?.length) return []
+    if (activeRange === '1D') return chartHistory // intraday: use all 5m bars as-is
     const maxPoints = activeRange === '1W' ? 100 : activeRange === '1M' ? 60 : 90
     if (chartHistory.length <= maxPoints) return chartHistory
     const step = Math.ceil(chartHistory.length / maxPoints)
@@ -236,6 +284,44 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
     }
     return sampled
   }, [chartHistory, activeRange])
+
+  // Top tickers by value for the % change chart (max 8, exclude cash/currency entries)
+  const topTickers = useMemo(() => {
+    const seen = new Set()
+    return [...filteredHoldings]
+      .filter((h) => h.ticker && !h.ticker.startsWith('CUR:'))
+      .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+      .map((h) => h.ticker)
+      .filter((t) => !seen.has(t) && seen.add(t))
+      .slice(0, 8)
+  }, [filteredHoldings])
+
+  const { data: tickerHistoryData, isLoading: tickerHistoryLoading } = useTickerHistory(
+    topTickers,
+    activeRange,
+    {
+      enabled: chartMode === 'holdings' && topTickers.length > 0,
+      ...(activeRange === '1D' && isOpen ? { refetchInterval: 60_000, staleTime: 60_000 } : {}),
+    },
+  )
+
+  // Normalize to % change from first price point and merge into recharts-friendly format
+  const tickerChartData = useMemo(() => {
+    const series = (tickerHistoryData?.series ?? []).filter((s) => s.data.length > 0)
+    if (!series.length) return { points: [], tickers: [] }
+    const dateMap = new Map()
+    const tickerList = series.map((s) => s.ticker)
+    for (const { ticker, data } of series) {
+      const basePrice = data[0].price
+      if (!basePrice) continue
+      for (const { date, price } of data) {
+        if (!dateMap.has(date)) dateMap.set(date, { date })
+        dateMap.get(date)[ticker] = ((price - basePrice) / basePrice) * 100
+      }
+    }
+    const points = [...dateMap.values()].sort((a, b) => a.date.localeCompare(b.date))
+    return { points, tickers: tickerList }
+  }, [tickerHistoryData])
 
   function handleAccountClick(accKey) {
     setSelectedAccountKey((prev) => prev === accKey ? null : accKey)
@@ -265,9 +351,9 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
   }
 
   return (
-    <div className="rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
+    <div className="rounded-[14px] border border-[#9ca3af] bg-white">
       {/* Header + range toggles */}
-      <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#7c3aed] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#2B2B2B] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Investment Portfolio
@@ -283,7 +369,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
             </span>
             {!holdingsLoading && !chartLoading && chartChange && (
               <span
-                className={`text-[14px] font-semibold ${chartChange.diff >= 0 ? 'text-[#6ee7b7]' : 'text-[#fca5a5]'}`}
+                className={`whitespace-nowrap text-[14px] font-semibold ${chartChange.diff >= 0 ? 'text-[#6ee7b7]' : 'text-[#fca5a5]'}`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {chartChange.diff >= 0 ? '+' : ''}{formatCurrency(chartChange.diff)} ({formatPct(chartChange.pct)})
@@ -311,55 +397,99 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
       </div>
 
 
-      {/* Line chart */}
-      <div className="px-4 pb-3 pt-3" style={{ height: 200 }}>
-        {chartLoading ? (
-          <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
-          </div>
-        ) : !chartPoints.length ? (
-          <div className="flex h-full items-center justify-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              No investment history available
+      {/* 1D session label */}
+      {activeRange === '1D' && chartData?.tradingDate && (
+        <div className="flex items-center gap-2 px-5 pt-2 pb-0">
+          {isOpen ? (
+            <>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
+              <span className="text-[10px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                Live · updates every minute
+              </span>
+            </>
+          ) : (
+            <span className="text-[10px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              {(() => {
+                const [y, m, d] = chartData.tradingDate.split('-')
+                return new Date(+y, +m - 1, +d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+              })()} session · market closed
             </span>
+          )}
+        </div>
+      )}
+
+      {/* Chart mode toggle */}
+      {topTickers.length > 0 && (
+        <div className="flex justify-end px-5 pt-2">
+          <div className="flex rounded-md border border-[#e5e7eb] bg-[#f9fafb] p-0.5">
+            {(['portfolio', 'holdings']).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setChartMode(mode)}
+                className={`rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  chartMode === mode ? 'bg-white text-[#101828] shadow-sm' : 'text-[#6a7282] hover:text-[#101828]'
+                }`}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
+              >
+                {mode === 'portfolio' ? '$ Total' : '% Holdings'}
+              </button>
+            ))}
           </div>
+        </div>
+      )}
+
+      {/* Chart */}
+      <div className="px-4 pb-3 pt-2" style={{ height: 200 }}>
+        {chartMode === 'portfolio' ? (
+          chartLoading ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
+            </div>
+          ) : !chartPoints.length ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No investment history available</span>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartPoints} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+                <defs>
+                  <linearGradient id="invGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={LINE_COLOR} stopOpacity={0.15} />
+                    <stop offset="100%" stopColor={LINE_COLOR} stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }} axisLine={false} tickLine={false} tickFormatter={(v) => formatDateLabel(v, activeRange)} interval="preserveStartEnd" minTickGap={isIntraday ? 60 : 40} />
+                <YAxis tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }} axisLine={false} tickLine={false} tickFormatter={(v) => formatCompact(v)} />
+                <Tooltip content={<ChartTooltip isIntraday={isIntraday} />} />
+                <Area type="monotone" dataKey="value" stroke={LINE_COLOR} strokeWidth={2} fill="url(#invGradient)" dot={false} activeDot={{ r: 4, fill: LINE_COLOR, stroke: '#fff', strokeWidth: 2 }} />
+              </AreaChart>
+            </ResponsiveContainer>
+          )
         ) : (
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={chartPoints} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="invGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={LINE_COLOR} stopOpacity={0.15} />
-                  <stop offset="100%" stopColor={LINE_COLOR} stopOpacity={0.01} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v) => formatDateLabel(v, activeRange)}
-                interval="preserveStartEnd"
-                minTickGap={40}
-              />
-              <YAxis
-                tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v) => formatCompact(v)}
-              />
-              <Tooltip content={<ChartTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke={LINE_COLOR}
-                strokeWidth={2}
-                fill="url(#invGradient)"
-                dot={false}
-                activeDot={{ r: 4, fill: LINE_COLOR, stroke: '#fff', strokeWidth: 2 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          tickerHistoryLoading ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
+            </div>
+          ) : !tickerChartData.points.length ? (
+            <div className="flex h-full items-center justify-center">
+              <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No price history available</span>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={tickerChartData.points} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }} axisLine={false} tickLine={false} tickFormatter={(v) => formatDateLabel(v, activeRange)} interval="preserveStartEnd" minTickGap={tickerHistoryData?.isIntraday ? 60 : 40} />
+                <YAxis tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`} />
+                <ReferenceLine y={0} stroke="#d1d5db" strokeDasharray="3 3" />
+                <Tooltip content={<TickerTooltip isIntraday={tickerHistoryData?.isIntraday} />} />
+                {tickerChartData.tickers.map((ticker, i) => (
+                  <Line key={ticker} type="monotone" dataKey={ticker} stroke={TICKER_COLORS[i % TICKER_COLORS.length]} strokeWidth={2} dot={false} activeDot={{ r: 4, stroke: '#fff', strokeWidth: 2 }} connectNulls />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          )
         )}
       </div>
 

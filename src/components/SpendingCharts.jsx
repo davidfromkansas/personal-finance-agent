@@ -359,7 +359,7 @@ export function SpendingCharts({ connections, embeddedHeight }) {
       onClose={() => setDrillBucket(null)}
     />
     <div
-      className={`relative rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
+      className={`relative rounded-[14px] border border-[#9ca3af] bg-white ${embeddedHeight ? 'flex flex-col overflow-hidden' : ''}`}
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
       {showInfo && (
@@ -386,7 +386,7 @@ export function SpendingCharts({ connections, embeddedHeight }) {
           <p className="mt-3 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Click anywhere to dismiss</p>
         </div>
       )}
-      <div className="flex items-center justify-between rounded-t-[14px] bg-[#b91c1c] px-5 py-3">
+      <div className="flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] px-5 py-3">
         <div className="flex items-center gap-8">
           <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Spending

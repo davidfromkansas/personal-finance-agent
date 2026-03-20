@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { AppHeader } from '../components/AppHeader'
 import { TransactionDetailPanel, bestLogoUrl, formatCategory, formatPaymentChannel } from '../components/TransactionDetailPanel'
 import { useTransactionAccounts, useTransactionCategories, useTransactions } from '../hooks/usePlaidQueries'
@@ -42,24 +42,24 @@ function TransactionRow({ transaction, onClick }) {
 
   return (
     <div
-      className="flex h-[36px] shrink-0 items-center justify-between gap-2 rounded-[8px] px-2 cursor-pointer hover:bg-[#f0f0f0] transition-colors"
+      className="flex items-center justify-between gap-3 border-b border-[#f3f4f6] px-5 py-3 last:border-0 cursor-pointer hover:bg-[#fafafa] transition-colors"
       onClick={() => onClick?.(transaction)}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+      <div className="flex min-w-0 flex-1 items-center gap-3 overflow-hidden">
         {(() => {
           const logo = bestLogoUrl(transaction)
           const initial = (transaction.name ?? '?')[0].toUpperCase()
           if (logo) return (
-            <div className="relative h-5 w-5 shrink-0">
-              <img src={logo} alt="" className="h-5 w-5 rounded-full border border-[#9ca3af] object-contain bg-white"
+            <div className="relative h-7 w-7 shrink-0">
+              <img src={logo} alt="" className="h-7 w-7 rounded-full border border-[#e5e7eb] object-contain bg-white"
                 onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
               />
-              <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+              <div className="absolute inset-0 hidden items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[9px] font-bold text-[#4a5565]"
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
             </div>
           )
           return (
-            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#9ca3af] bg-[#f9fafb] text-[8px] font-bold text-[#4a5565]"
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#e5e7eb] bg-[#f9fafb] text-[9px] font-bold text-[#4a5565]"
               style={{ fontFamily: 'JetBrains Mono,monospace' }}>{initial}</div>
           )
         })()}
@@ -412,7 +412,7 @@ function ActiveFilterPills({ filters, accounts, onRemove }) {
   if (pills.length === 0) return null
 
   return (
-    <div className="mb-4 flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2">
       {pills.map(pill => (
         <span key={pill.key}
           className="flex items-center gap-1.5 rounded-full border border-[#d1d5dc] bg-white px-3 py-1 text-[12px] text-[#374151]"
@@ -444,10 +444,182 @@ function sortTransactions(txns, sort) {
 
 const EMPTY_FILTERS = { account_ids: [], categories: [], after_date: null, before_date: null, preset: 'All time' }
 
+// ─── Filter Sidebar ───────────────────────────────────────────────────────────
+
+function SidebarSection({ label, summary, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between py-0.5"
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          {label}
+        </p>
+        <div className="flex items-center gap-1.5">
+          {summary && (
+            <span className="text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{summary}</span>
+          )}
+          <svg className={`h-3.5 w-3.5 text-[#9ca3af] transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+      {open && <div className="mt-2">{children}</div>}
+    </div>
+  )
+}
+
+function CheckRow({ label, checked, onChange }) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2 rounded-[6px] px-1 py-1.5 hover:bg-[#f9fafb]">
+      <input type="checkbox" checked={checked} onChange={onChange} className="h-3.5 w-3.5 rounded accent-[#18181b]" />
+      <span className="text-[13px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{label}</span>
+    </label>
+  )
+}
+
+function OptionRow({ label, active, onClick }) {
+  return (
+    <button onClick={onClick}
+      className={`flex w-full items-center justify-between rounded-[6px] px-2 py-1.5 text-[13px] transition-colors hover:bg-[#f9fafb] ${active ? 'font-semibold text-[#101828]' : 'font-normal text-[#374151]'}`}
+      style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+      {label}
+      {active && (
+        <svg className="h-3.5 w-3.5 shrink-0 text-[#18181b]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
+function FilterSidebar({ sort, onSortChange, filters, accounts, allCategories, accountsLoading, categoriesLoading, onFiltersChange }) {
+  const activeDateLabel = filters.preset === 'custom' ? 'Custom range' : (filters.preset ?? 'All time')
+  const hasActive = filters.account_ids.length > 0 || filters.after_date || filters.before_date || filters.categories.length > 0 || sort !== 'recent'
+
+  const sortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label
+  const accountSummary = filters.account_ids.length > 0 ? `${filters.account_ids.length} selected` : null
+  const catSummary = filters.categories.length > 0 ? `${filters.categories.length} selected` : null
+
+  return (
+    <div className="flex flex-col gap-3 rounded-[14px] border border-[#9ca3af] bg-white p-5">
+
+      <SidebarSection label="Sort" summary={sortLabel} defaultOpen>
+        <div className="space-y-0.5">
+          {SORT_OPTIONS.map(opt => (
+            <OptionRow key={opt.value} label={opt.label} active={sort === opt.value} onClick={() => onSortChange(opt.value)} />
+          ))}
+        </div>
+      </SidebarSection>
+
+      <div className="border-t border-[#f3f4f6]" />
+
+      <SidebarSection label="Date" summary={activeDateLabel !== 'All time' ? activeDateLabel : null}>
+        <div className="space-y-0.5">
+          {DATE_PRESETS.map(preset => (
+            <OptionRow key={preset.label} label={preset.label} active={activeDateLabel === preset.label}
+              onClick={() => {
+                if (preset.label === 'Custom range') {
+                  onFiltersChange({ ...filters, preset: 'custom' })
+                } else {
+                  onFiltersChange({ ...filters, after_date: preset.after_date(), before_date: null, preset: preset.label })
+                }
+              }}
+            />
+          ))}
+        </div>
+        {filters.preset === 'custom' && (
+          <div className="mt-3 flex flex-col gap-2">
+            <div>
+              <label className="mb-0.5 block text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>From</label>
+              <input type="date" value={filters.after_date ?? ''} onChange={e => onFiltersChange({ ...filters, after_date: e.target.value || null })}
+                className="w-full rounded-[6px] border border-[#d1d5dc] px-2 py-1 text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }} />
+            </div>
+            <div>
+              <label className="mb-0.5 block text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>To</label>
+              <input type="date" value={filters.before_date ?? ''} onChange={e => onFiltersChange({ ...filters, before_date: e.target.value || null })}
+                className="w-full rounded-[6px] border border-[#d1d5dc] px-2 py-1 text-[12px] text-[#374151]" style={{ fontFamily: 'JetBrains Mono,monospace' }} />
+            </div>
+          </div>
+        )}
+      </SidebarSection>
+
+      <div className="border-t border-[#f3f4f6]" />
+
+      <SidebarSection label="Account" summary={accountSummary}>
+        {accountsLoading ? (
+          <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-3 w-32 animate-pulse rounded bg-[#f3f4f6]" />)}</div>
+        ) : accounts.length === 0 ? (
+          <p className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No accounts</p>
+        ) : (
+          <div className="space-y-0.5">
+            {accounts.map(acc => (
+              <CheckRow key={acc.account_id} label={acc.account_name} checked={filters.account_ids.includes(acc.account_id)}
+                onChange={() => {
+                  const ids = filters.account_ids.includes(acc.account_id)
+                    ? filters.account_ids.filter(id => id !== acc.account_id)
+                    : [...filters.account_ids, acc.account_id]
+                  onFiltersChange({ ...filters, account_ids: ids })
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </SidebarSection>
+
+      <div className="border-t border-[#f3f4f6]" />
+
+      <SidebarSection label="Category" summary={catSummary}>
+        {categoriesLoading ? (
+          <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-3 w-28 animate-pulse rounded bg-[#f3f4f6]" />)}</div>
+        ) : allCategories.length === 0 ? (
+          <p className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No categories</p>
+        ) : (
+          <div className="max-h-[220px] space-y-0.5 overflow-y-auto">
+            {allCategories.map(cat => (
+              <CheckRow key={cat} label={formatCategory(cat)} checked={filters.categories.includes(cat)}
+                onChange={() => {
+                  const cats = filters.categories.includes(cat)
+                    ? filters.categories.filter(c => c !== cat)
+                    : [...filters.categories, cat]
+                  onFiltersChange({ ...filters, categories: cats })
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </SidebarSection>
+
+      {hasActive && (
+        <>
+          <div className="border-t border-[#f3f4f6]" />
+          <button onClick={() => { onFiltersChange(EMPTY_FILTERS); onSortChange('recent') }}
+            className="text-left text-[13px] text-[#9ca3af] transition-colors hover:text-[#374151]"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Clear all
+          </button>
+        </>
+      )}
+
+    </div>
+  )
+}
+
 export function TransactionsPage() {
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [sort, setSort] = useState('recent')
   const [filters, setFilters] = useState(EMPTY_FILTERS)
+  const [searchInput, setSearchInput] = useState('')
+
+  // Debounce search into filters so we don't fire on every keystroke
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters(f => ({ ...f, search: searchInput.trim() || undefined }))
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchInput])
 
   const { data: txAcctData, isLoading: txAcctLoading } = useTransactionAccounts()
   const { data: txCatData, isLoading: txCatLoading } = useTransactionCategories()
@@ -501,94 +673,123 @@ export function TransactionsPage() {
   const groups = groupTransactionsByDate(transactions)
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8] pl-[220px]">
+    <div className="min-h-screen bg-[#f8f8f8]" style={{ paddingLeft: 'var(--sidebar-w)', transition: 'padding-left 0.25s ease' }}>
       <AppHeader />
       <TransactionDetailPanel transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} />
 
+      {/* Page header — full width white bar */}
+      <div className="border-b border-[#9ca3af] bg-white px-4 py-4 sm:px-6 lg:px-8">
+        <h1 className="text-[24px] font-semibold tracking-[-0.5px] text-[#18181b]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          Transactions
+        </h1>
+        {!loading && total > 0 && (
+          <p className="mt-0.5 text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            {transactions.length} of {total}
+          </p>
+        )}
+      </div>
+
       <main className="px-4 py-8 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-[960px]">
 
-          {/* Header row */}
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h1 className="text-[20px] font-semibold text-[#18181b]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                Transactions
-              </h1>
-              {!loading && (
-                <p className="mt-0.5 text-[13px] text-[#71717a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                  {total === 0 ? 'No transactions' : `Showing ${transactions.length} of ${total}`}
-                </p>
-              )}
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <SortButton sort={sort} onChange={setSort} />
-              <AccountFilterButton filters={filters} accounts={accounts} loading={refDataLoading} onChange={handleFiltersChange} />
-              <DateFilterButton filters={filters} onChange={handleFiltersChange} />
-              <CategoryFilterButton filters={filters} allCategories={allCategories} loading={refDataLoading} onChange={handleFiltersChange} />
-            </div>
-          </div>
+          {/* Two-column layout */}
+          <div className="flex items-start gap-6">
 
-          {/* Active filter pills */}
-          <ActiveFilterPills
-            filters={filters}
-            accounts={accounts}
-            onRemove={handleRemoveFilter}
-          />
-
-          {/* Transaction list */}
-          {loading ? (
-            <div className="py-16 text-center text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              Loading…
-            </div>
-          ) : groups.length === 0 ? (
-            <div className="py-16 text-center">
-              {filters.account_ids.length > 0 || filters.categories.length > 0 || filters.after_date || filters.before_date ? (
-                <>
-                  <p className="text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions match your filters.</p>
+            {/* Left: transaction list */}
+            <div className="min-w-0 flex-1">
+              {/* Search bar */}
+              <div className="relative mb-3">
+                <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#9ca3af]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                </svg>
+                <input
+                  type="text"
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  placeholder="Search transactions..."
+                  className="w-full rounded-[14px] border border-[#9ca3af] bg-white py-2.5 pl-9 pr-8 text-[13px] text-[#18181b] placeholder-[#9ca3af] outline-none focus:border-[#6b7280] transition-colors"
+                  style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                />
+                {searchInput && (
                   <button
-                    onClick={() => setFilters(EMPTY_FILTERS)}
-                    className="mt-3 text-[13px] text-[#374151] underline"
-                    style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                    type="button"
+                    onClick={() => setSearchInput('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9ca3af] hover:text-[#4b5563] transition-colors"
                   >
-                    Clear filters
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   </button>
-                </>
-              ) : (
-                <p className="text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions yet.</p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-0.5">
-              {groups.map(group => (
-                <div key={group.date}>
-                  <div className="sticky top-0 z-10 bg-[#f8f8f8] pt-4 pb-1">
-                    <p className="text-[11px] font-semibold tracking-[0.6px] text-[#9ca3af]"
-                      style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                      {group.label}
-                    </p>
+                )}
+              </div>
+
+              <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white">
+                {loading ? (
+                  <div className="py-16 text-center text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                    Loading…
                   </div>
-                  <div className="space-y-0.5">
-                    {group.items.map(t => (
-                      <TransactionRow
-                        key={t.plaid_transaction_id ?? t.id}
-                        transaction={t}
-                        onClick={setSelectedTransaction}
-                      />
+                ) : groups.length === 0 ? (
+                  <div className="py-16 text-center">
+                    {filters.account_ids.length > 0 || filters.categories.length > 0 || filters.after_date || filters.before_date ? (
+                      <>
+                        <p className="text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions match your filters.</p>
+                        <button
+                          onClick={() => setFilters(EMPTY_FILTERS)}
+                          className="mt-3 text-[13px] text-[#374151] underline"
+                          style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                        >
+                          Clear filters
+                        </button>
+                      </>
+                    ) : (
+                      <p className="text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions yet.</p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    {groups.map(group => (
+                      <div key={group.date}>
+                        <div className="flex items-center border-b border-[#9ca3af] bg-[#fafafa] px-5 py-2">
+                          <p className="text-[13px] font-semibold text-[#18181b]"
+                            style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                            {group.label}
+                          </p>
+                        </div>
+                        <div>
+                          {group.items.map(t => (
+                            <TransactionRow
+                              key={t.plaid_transaction_id ?? t.id}
+                              transaction={t}
+                              onClick={setSelectedTransaction}
+                            />
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                </div>
-              ))}
+                )}
+                <div ref={sentinelRef} className="h-4" />
+                {loadingMore && (
+                  <div className="pb-6 text-center text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                    Loading…
+                  </div>
+                )}
+              </div>
             </div>
-          )}
 
-          {/* Infinite scroll sentinel */}
-          <div ref={sentinelRef} className="h-8" />
-          {loadingMore && (
-            <div className="pb-6 text-center text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              Loading…
+            {/* Right: filter sidebar */}
+            <div className="w-[240px] shrink-0 sticky top-8">
+              <FilterSidebar
+                sort={sort}
+                onSortChange={setSort}
+                filters={filters}
+                accounts={accounts}
+                allCategories={allCategories}
+                accountsLoading={txAcctLoading}
+                categoriesLoading={txCatLoading}
+                onFiltersChange={handleFiltersChange}
+              />
             </div>
-          )}
 
+          </div>
         </div>
       </main>
     </div>

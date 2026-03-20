@@ -70,7 +70,7 @@ export function AccountsPage() {
   }, 0)
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8] pl-[220px]">
+    <div className="min-h-screen bg-[#f8f8f8]" style={{ paddingLeft: 'var(--sidebar-w)' }}>
       <AppHeader />
       <main className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[700px]">

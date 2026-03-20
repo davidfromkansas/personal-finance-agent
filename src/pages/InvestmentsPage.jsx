@@ -8,7 +8,7 @@ import {
 } from 'recharts'
 
 const RANGES = ['1W', '1M', '3M', 'YTD', '1Y', 'ALL']
-const MOVERS_RANGES = ['1W', '1M', '3M', 'YTD', '1Y', '5Y', 'ALL']
+const MOVERS_RANGES = ['1D', '1W', '1M', '3M', 'YTD', '1Y', '5Y', 'ALL']
 const LINE_COLORS = ['#0072B2', '#E69F00', '#009E73', '#D55E00', '#CC79A7', '#56B4E9', '#F0E442', '#999999']
 
 const SECURITY_TYPE_CATEGORY = {
@@ -43,6 +43,10 @@ function fmtPct(value, decimals = 2) {
 }
 
 function fmtDateLabel(dateStr, range) {
+  if (range === '1D') {
+    const d = new Date(dateStr)
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+  }
   const d = new Date(dateStr + 'T00:00:00')
   if (range === '1W') return d.toLocaleDateString('en-US', { weekday: 'short' })
   if (range === '1M' || range === '3M') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -67,7 +71,7 @@ function ChartTooltip({ active, payload }) {
 
 function SectionLabel({ children }) {
   return (
-    <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>
+    <p className="text-[13px] font-bold uppercase tracking-[1px] text-[#101828]" style={MONO}>
       {children}
     </p>
   )
@@ -151,10 +155,10 @@ function TopMoversRow({ movers, isLoading, isOpen }) {
             : "Change from previous close · final prices for the day"}
         </span>
       </div>
-      <div className="flex flex-wrap gap-3 p-4">
+      <div className="flex gap-3 overflow-x-auto p-4 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {isLoading
           ? [0,1,2,3,4].map(i => (
-              <div key={i} className="flex w-[160px] flex-col gap-1.5 rounded-[10px] border border-[#9ca3af] p-4">
+              <div key={i} className="flex w-[160px] shrink-0 flex-col gap-1.5 rounded-[10px] border border-[#9ca3af] p-4">
                 <Skeleton className="h-3 w-10" />
                 <Skeleton className="h-4 w-16" />
                 <Skeleton className="h-3 w-12" />
@@ -165,7 +169,7 @@ function TopMoversRow({ movers, isLoading, isOpen }) {
               const has52W = m.week52Low != null && m.week52High != null && m.week52High !== m.week52Low
               const pct52W = has52W ? Math.min(100, Math.max(0, ((m.price - m.week52Low) / (m.week52High - m.week52Low)) * 100)) : null
               return (
-                <div key={m.ticker} className="flex w-[160px] flex-col rounded-[10px] border border-[#9ca3af] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
+                <div key={m.ticker} className="flex w-[160px] shrink-0 flex-col rounded-[10px] border border-[#9ca3af] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
                   <p className="text-[11px] font-bold text-[#101828]" style={MONO}>{m.ticker}</p>
                   <p className="mt-1 text-[15px] font-semibold text-[#101828]" style={MONO}>
                     ${m.price.toFixed(2)}
@@ -197,26 +201,23 @@ function TopMoversRow({ movers, isLoading, isOpen }) {
   )
 }
 
-function MarketStatusBar() {
+function MarketStatusInline() {
   const { isOpen, timeStr, dateStr, tzAbbr } = useMarketClock()
   return (
-    <div className="flex items-center justify-between rounded-[14px] border border-[#9ca3af] bg-white px-5 py-3 mb-4">
-      <div className="flex items-center gap-2">
-        <span className={`h-2 w-2 rounded-full ${isOpen ? 'bg-[#16a34a]' : 'bg-[#6a7282]'}`}
-          style={isOpen ? { boxShadow: '0 0 0 3px #dcfce7' } : {}} />
-        <span className="text-[13px] font-semibold text-[#101828]" style={MONO}>
+    <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5">
+        <span className={`h-1.5 w-1.5 rounded-full ${isOpen ? 'bg-[#16a34a]' : 'bg-[#6a7282]'}`}
+          style={isOpen ? { boxShadow: '0 0 0 2px #dcfce7' } : {}} />
+        <span className="text-[16px] font-medium text-[#4a5565]" style={MONO}>
           Market {isOpen ? 'Open' : 'Closed'}
         </span>
-        {isOpen && (
-          <span className="rounded-full bg-[#dcfce7] px-2 py-0.5 text-[10px] font-semibold text-[#16a34a]" style={MONO}>
-            NYSE · NASDAQ
-          </span>
-        )}
       </div>
-      <div className="text-right">
-        <p className="text-[13px] font-medium text-[#101828]" style={MONO}>{timeStr} <span className="text-[11px] font-normal text-[#9ca3af]">{tzAbbr}</span></p>
-        <p className="text-[11px] text-[#9ca3af]" style={MONO}>{dateStr}</p>
-      </div>
+      <span className="text-[#d1d5db]">·</span>
+      <span className="text-[16px] text-[#6a7282]" style={MONO}>
+        {timeStr} <span className="text-[#9ca3af]">{tzAbbr}</span>
+      </span>
+      <span className="text-[#d1d5db]">·</span>
+      <span className="text-[16px] text-[#9ca3af]" style={MONO}>{dateStr}</span>
     </div>
   )
 }
@@ -297,7 +298,7 @@ function AccountDetailPanel({ account, holdings, accountsMeta, onClose }) {
           {/* Holdings */}
           {accHoldings.length > 0 && (
             <div className="px-5 py-4">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>
+              <p className="mb-3 text-[13px] font-bold uppercase tracking-[1px] text-[#101828]" style={MONO}>
                 Holdings ({accHoldings.length})
               </p>
               <div className="divide-y divide-[#d1d5db]">
@@ -340,7 +341,7 @@ function AccountDetailPanel({ account, holdings, accountsMeta, onClose }) {
 
           {accHoldings.length === 0 && (
             <div className="flex items-center justify-center py-12">
-              <p className="text-[13px] text-[#6a7282]" style={MONO}>No holdings data available</p>
+              <p className="text-[16px] text-[#6a7282]" style={MONO}>No holdings data available</p>
             </div>
           )}
         </div>
@@ -353,7 +354,7 @@ export function InvestmentsPage() {
   const { isOpen } = useMarketClock()
   const [chartRange, setChartRange] = useState('1W')
   const [selectedDate, setSelectedDate] = useState(null)
-  const [moversRange, setMoversRange] = useState('1W')
+  const [moversRange, setMoversRange] = useState('1D')
   const [highlightedTicker, setHighlightedTicker] = useState(null)
   const [showAllAccounts, setShowAllAccounts] = useState(false)
   const [selectedAccountId, setSelectedAccountId] = useState(null)
@@ -494,7 +495,7 @@ export function InvestmentsPage() {
   const isLoading = holdingsLoading
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8] pl-[220px]">
+    <div className="min-h-screen bg-[#f8f8f8]" style={{ paddingLeft: 'var(--sidebar-w)' }}>
       <AppHeader />
 
       <AccountDetailPanel
@@ -514,7 +515,7 @@ export function InvestmentsPage() {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[#9ca3af] px-5 py-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>Snapshot</p>
+                <p className="text-[13px] font-bold uppercase tracking-[1px] text-[#101828]" style={MONO}>Snapshot</p>
                 <p className="mt-0.5 text-[15px] font-semibold text-[#101828]" style={MONO}>
                   {new Date(selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
                 </p>
@@ -533,19 +534,19 @@ export function InvestmentsPage() {
                 {[0,1,2,3,4,5].map(i => <Skeleton key={i} className="h-5 w-full" />)}
               </div>
             ) : !snapshotData || snapshotData.holdings?.length === 0 ? (
-              <p className="px-5 py-6 text-[13px] text-[#6a7282]" style={MONO}>No holdings data for this date.</p>
+              <p className="px-5 py-6 text-[16px] text-[#6a7282]" style={MONO}>No holdings data for this date.</p>
             ) : (
               <>
                 {/* Total value */}
                 <div className="border-b border-[#9ca3af] px-5 py-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>Total Value</p>
+                  <p className="text-[13px] font-bold uppercase tracking-[1px] text-[#101828]" style={MONO}>Total Value</p>
                   <p className="mt-1 text-[28px] font-bold tracking-tight text-[#101828]" style={MONO}>{fmt(snapshotData.total)}</p>
                 </div>
 
                 {/* Accounts */}
                 {snapshotData.accounts?.length > 0 && (
                   <div className="border-b border-[#9ca3af] px-5 py-4">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>Accounts</p>
+                    <p className="mb-3 text-[13px] font-bold uppercase tracking-[1px] text-[#101828]" style={MONO}>Accounts</p>
                     <div className="flex flex-col gap-2">
                       {snapshotData.accounts.map((acc, i) => (
                         <div key={i} className="flex items-center justify-between">
@@ -562,7 +563,7 @@ export function InvestmentsPage() {
 
                 {/* Holdings */}
                 <div className="px-5 py-4">
-                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[1.5px] text-[#6a7282]" style={MONO}>
+                  <p className="mb-3 text-[13px] font-bold uppercase tracking-[1px] text-[#101828]" style={MONO}>
                     Holdings ({snapshotData.holdings.length})
                   </p>
                   <div className="flex flex-col divide-y divide-[#d1d5db]">
@@ -605,9 +606,16 @@ export function InvestmentsPage() {
         </div>
       )}
 
+      {/* Page header */}
+      <div className="border-b border-[#9ca3af] bg-white px-4 py-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between">
+          <h1 className="text-[24px] font-semibold tracking-[-0.5px] text-[#18181b]" style={MONO}>Investments</h1>
+          <MarketStatusInline />
+        </div>
+      </div>
+
       <main className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1100px]">
-          <MarketStatusBar />
           <TopMoversRow movers={topMovers} isLoading={holdingsLoading || quotesLoading} isOpen={isOpen} />
           <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white">
 
@@ -702,7 +710,7 @@ export function InvestmentsPage() {
                         ))}
                       </div>
                     ) : accounts.length === 0 ? (
-                      <p className="text-[13px] text-[#6a7282]" style={MONO}>No accounts</p>
+                      <p className="text-[16px] text-[#6a7282]" style={MONO}>No accounts</p>
                     ) : (
                       <div className="divide-y divide-[#d1d5db]">
                         {(showAllAccounts ? accounts : accounts.slice(0, 5)).map((acc, i) => {
@@ -748,7 +756,7 @@ export function InvestmentsPage() {
                       <div className="h-[120px] w-[120px] animate-pulse rounded-full bg-[#f3f4f6]" />
                     </div>
                   ) : allocation.length === 0 ? (
-                    <p className="text-[13px] text-[#6a7282]" style={MONO}>—</p>
+                    <p className="text-[16px] text-[#6a7282]" style={MONO}>—</p>
                   ) : (
                     <AllocationDonut allocation={allocation} />
                   )}
@@ -790,7 +798,7 @@ export function InvestmentsPage() {
                     <div className="h-full w-full animate-pulse rounded bg-[#f3f4f6]" style={{ minHeight: 240 }} />
                   ) : chartPoints.length < 2 ? (
                     <div className="flex h-full w-full items-center justify-center">
-                      <p className="text-center text-[13px] text-[#6a7282]" style={MONO}>
+                      <p className="text-center text-[16px] text-[#6a7282]" style={MONO}>
                         Not enough history yet — check back after another day of data accumulates.
                       </p>
                     </div>
@@ -874,7 +882,7 @@ export function InvestmentsPage() {
                       ))}
                     </div>
                   ) : topHoldings.length === 0 ? (
-                    <p className="py-4 text-[13px] text-[#6a7282]" style={MONO}>No holdings</p>
+                    <p className="py-4 text-[16px] text-[#6a7282]" style={MONO}>No holdings</p>
                   ) : (
                     <div className="flex flex-col">
                       {topHoldings.map((h, i) => (
@@ -926,11 +934,11 @@ export function InvestmentsPage() {
   )
 }
 
-function MoversTooltip({ active, payload, label, highlightedTicker }) {
+function MoversTooltip({ active, payload, label, highlightedTicker, isIntraday }) {
   if (!active || !payload?.length) return null
-  const dateLabel = new Date(label + 'T00:00:00').toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
-  })
+  const dateLabel = isIntraday
+    ? new Date(label).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })
+    : new Date(label + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
   const items = highlightedTicker
     ? payload.filter(p => p.dataKey === highlightedTicker)
     : payload.slice().sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
@@ -949,8 +957,14 @@ function MoversTooltip({ active, payload, label, highlightedTicker }) {
 }
 
 function PortfolioMoversChart({ tickers, range, onRangeChange, highlightedTicker, onTickerClick, colorMap }) {
-  const { data, isLoading } = useTickerHistory(tickers, range)
+  const { isOpen } = useMarketClock()
+  const { data, isLoading } = useTickerHistory(
+    tickers,
+    range,
+    range === '1D' && isOpen ? { refetchInterval: 60_000, staleTime: 60_000 } : {},
+  )
   const series = data?.series ?? []
+  const isIntraday = data?.isIntraday ?? false
 
   // Build flat chart data: [{ date, TICKER: price, ... }]
   const chartData = useMemo(() => {
@@ -989,6 +1003,25 @@ function PortfolioMoversChart({ tickers, range, onRangeChange, highlightedTicker
         </div>
       </div>
 
+      {/* 1D session label */}
+      {range === '1D' && data?.tradingDate && (
+        <div className="flex items-center gap-2 border-b border-[#f3f4f6] px-6 py-1.5">
+          {isOpen ? (
+            <>
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
+              <span className="text-[10px] text-[#9ca3af]" style={MONO}>Live · updates every minute</span>
+            </>
+          ) : (
+            <span className="text-[10px] text-[#9ca3af]" style={MONO}>
+              {(() => {
+                const [y, m, d] = data.tradingDate.split('-')
+                return new Date(+y, +m - 1, +d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+              })()} session · market closed
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Chart */}
       <div className="px-2 py-4" style={{ height: 280 }}>
         {isLoading ? (
@@ -997,7 +1030,7 @@ function PortfolioMoversChart({ tickers, range, onRangeChange, highlightedTicker
           </div>
         ) : isEmpty ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-[13px] text-[#6a7282]" style={MONO}>No historical price data yet</p>
+            <p className="text-[16px] text-[#6a7282]" style={MONO}>No historical price data yet</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
@@ -1009,7 +1042,7 @@ function PortfolioMoversChart({ tickers, range, onRangeChange, highlightedTicker
                 tick={{ fontSize: 11, fill: '#9ca3af', fontFamily: 'JetBrains Mono,monospace' }}
                 axisLine={false}
                 tickLine={false}
-                minTickGap={40}
+                minTickGap={isIntraday ? 60 : 40}
               />
               <YAxis
                 tickFormatter={v => fmt(v)}
@@ -1019,7 +1052,7 @@ function PortfolioMoversChart({ tickers, range, onRangeChange, highlightedTicker
                 width={72}
               />
               <Tooltip
-                content={<MoversTooltip highlightedTicker={highlightedTicker} />}
+                content={<MoversTooltip highlightedTicker={highlightedTicker} isIntraday={isIntraday} />}
                 cursor={{ stroke: '#e5e7eb', strokeWidth: 1 }}
               />
               {series.map(s => {
@@ -1146,7 +1179,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                 </tr>
               ))
             ) : rows.length === 0 ? (
-              <tr><td colSpan={COLS.length} className="px-6 py-8 text-center text-[13px] text-[#6a7282]" style={MONO}>No holdings</td></tr>
+              <tr><td colSpan={COLS.length} className="px-6 py-8 text-center text-[16px] text-[#6a7282]" style={MONO}>No holdings</td></tr>
             ) : (
               rows.map((row, i) => {
                 const gainLoss = row.has_cost_basis ? row.value - row.cost_basis_total : null
@@ -1212,7 +1245,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                           )}
                         </>
                       ) : (
-                        <p className="text-[13px] text-[#9ca3af]">—</p>
+                        <p className="text-[16px] text-[#9ca3af]">—</p>
                       )}
                     </td>
 
@@ -1228,7 +1261,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                           )}
                         </>
                       ) : (
-                        <p className="text-[13px] text-[#9ca3af]">—</p>
+                        <p className="text-[16px] text-[#9ca3af]">—</p>
                       )}
                     </td>
 
@@ -1249,7 +1282,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                               </p>
                             </>
                           ) : (
-                            <p className="text-[13px] text-[#9ca3af]">—</p>
+                            <p className="text-[16px] text-[#9ca3af]">—</p>
                           )}
                         </td>
                       )
@@ -1272,7 +1305,7 @@ function HoldingsPerformanceTable({ holdings, isLoading, highlightedTicker, onTi
                               </p>
                             </>
                           ) : (
-                            <p className="text-[13px] text-[#9ca3af]">—</p>
+                            <p className="text-[16px] text-[#9ca3af]">—</p>
                           )}
                         </td>
                       )

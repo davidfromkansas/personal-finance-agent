@@ -23,6 +23,9 @@ function getPool() {
 
 export async function query(text, params) {
   const client = await getPool().connect()
+  client.on('error', (err) => {
+    console.error('[pg client] connection error:', err.message)
+  })
   try {
     return await client.query(text, params)
   } finally {
@@ -164,7 +167,7 @@ export async function getLogoUrlsByPlaidTransactionIds(userId, plaidTransactionI
 const reportedDateExpr = 'COALESCE(authorized_date, date)'
 const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number FROM transactions`
 
-export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, sort = 'recent', offset = 0 } = {}) {
+export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, search, sort = 'recent', offset = 0 } = {}) {
   // params shared by both queries — $1 = userId, $2+ = filter values only (no limit/offset)
   const conditions = ['user_id = $1']
   const params = [userId]
@@ -189,6 +192,11 @@ export async function getRecentTransactions(userId, limit = 25, { beforeDate, af
   if (categories?.length) {
     conditions.push(`personal_finance_category = ANY($${p++})`)
     params.push(categories)
+  }
+
+  if (search) {
+    conditions.push(`(merchant_name ILIKE $${p} OR name ILIKE $${p++})`)
+    params.push(`%${search}%`)
   }
 
   const orderBy = sort === 'oldest'      ? `${reportedDateExpr} ASC, created_at ASC`

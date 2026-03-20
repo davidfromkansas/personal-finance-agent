@@ -2,67 +2,76 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
+import { isDemoMode } from '../lib/demoMode.js'
 import Markdown from 'react-markdown'
 
-function NavigationArrowIcon({ className }) {
+function DashboardIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="10 10 36 36" width="16" height="16" className={className}>
-      <path d="M42 14 L14 28 L28 32 L32 42 Z" fill="currentColor" stroke="currentColor" strokeWidth="1" strokeLinejoin="round" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z" />
+      <path d="M9 21V12h6v9" />
     </svg>
   )
 }
 
-function DocumentIcon({ className }) {
+function TransactionsIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" className={className}>
-      <path d="M6 2h8l6 6v14a2 2 0 01-2 2H6a2 2 0 01-2-2V4a2 2 0 012-2z" stroke="currentColor" strokeWidth="2" fill="none" strokeLinejoin="round" />
-      <path d="M14 2v6h6" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M8 13h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M8 17h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+      <rect x="5" y="13" width="5" height="2" rx="1" fill="currentColor" stroke="none" />
     </svg>
   )
 }
 
-function CreditCardNavIcon({ className }) {
+function InvestmentsIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" className={className}>
-      <rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" strokeWidth="2" fill="none" />
-      <path d="M2 10h20" stroke="currentColor" strokeWidth="2" />
-      <rect x="5" y="13" width="5" height="2" rx="1" fill="currentColor" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+      <polyline points="16 7 22 7 22 13" />
     </svg>
   )
 }
 
-function LayersIcon({ className }) {
+function AccountsIcon() {
   return (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" className={className}>
-      <path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" />
-      <path d="M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-      <path d="M2 17l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L2 7l10 5 10-5-10-5z" />
+      <path d="M2 12l10 5 10-5" />
+      <path d="M2 17l10 5 10-5" />
+    </svg>
+  )
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  )
+}
+
+function SidebarToggleIcon({ collapsed }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+      {collapsed
+        ? <path d="M13 9l3 3-3 3" />
+        : <path d="M15 9l-3 3 3 3" />
+      }
     </svg>
   )
 }
 
 const NAV_ITEMS = [
-  { label: 'Dashboard', path: '/app', icon: NavigationArrowIcon },
-  { label: 'Transactions', path: '/app/transactions', icon: LayersIcon },
-  { label: 'Investments', path: '/app/investments', icon: DocumentIcon },
-  { label: 'Accounts', path: '/app/accounts', icon: CreditCardNavIcon },
+  { label: 'Dashboard', path: '/app', icon: DashboardIcon },
+  { label: 'Transactions', path: '/app/transactions', icon: TransactionsIcon },
+  { label: 'Investments', path: '/app/investments', icon: InvestmentsIcon },
+  { label: 'Accounts', path: '/app/accounts', icon: AccountsIcon },
 ]
-
-function Logo() {
-  return (
-    <svg width="32" height="32" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M32 8C22.06 8 14 16.06 14 26C14 32.14 17.09 37.55 21.82 40.73C23.19 41.65 24 43.19 24 44.83V48C24 49.1 24.9 50 26 50H38C39.1 50 40 49.1 40 48V44.83C40 43.19 40.81 41.65 42.18 40.73C46.91 37.55 50 32.14 50 26C50 16.06 41.94 8 32 8Z" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-      <line x1="27" y1="54" x2="37" y2="54" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-      <line x1="29" y1="58" x2="35" y2="58" stroke="white" strokeWidth="3" strokeLinecap="round"/>
-      <path d="M25 28L29 36L32 30L35 36L39 28" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-      <line x1="32" y1="2" x2="32" y2="5" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="12" y1="12" x2="14" y2="14" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-      <line x1="50" y1="12" x2="52" y2="14" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-    </svg>
-  )
-}
 
 const CHAT_MODES = ['Auto', 'Transactions', 'Investments', 'Accounts']
 
@@ -83,7 +92,6 @@ function ChatPanel({ open, onClose }) {
     const text = input.trim()
     if (!text || loading) return
 
-    // Build history from current messages before adding the new user message
     const history = messages
       .filter((m) => !m.isError && (m.role === 'user' || m.role === 'assistant'))
       .map((m) => ({ role: m.role, content: m.text }))
@@ -94,6 +102,20 @@ function ChatPanel({ open, onClose }) {
     setLoading(true)
 
     try {
+      if (isDemoMode()) {
+        const { getDemoAgentContext } = await import('../lib/demoData.js')
+        const demoContext = getDemoAgentContext()
+        const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
+        const res = await fetch(`${apiBase}/api/agent/chat-demo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: text, history, mode, demoContext }),
+        })
+        if (!res.ok) throw new Error('Demo chat request failed')
+        const { reply } = await res.json()
+        setMessages((prev) => [...prev, { role: 'assistant', text: reply }])
+        return
+      }
       const { reply } = await apiFetch('/api/agent/chat', {
         method: 'POST',
         body: { message: text, history, mode },
@@ -127,53 +149,42 @@ function ChatPanel({ open, onClose }) {
 
   return (
     <>
-      {/* Backdrop */}
       {open && (
-        <div
-          className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm"
-          onClick={onClose}
-        />
+        <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-sm" onClick={onClose} />
       )}
-
-      {/* Panel */}
       <div
-        className={`fixed left-0 top-0 z-50 flex h-full w-1/3 flex-col border-r border-[#d9d9d9] bg-white shadow-xl transition-transform duration-300 ease-in-out ${
-          open ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed right-0 top-0 z-50 flex h-full w-[585px] flex-col border-l border-white/15 bg-slate-900/95 backdrop-blur-xl shadow-2xl transition-transform duration-300 ease-in-out ${
+          open ? 'translate-x-0' : 'translate-x-full'
         }`}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-[#d9d9d9] px-5 py-4">
-          <span className="text-[16px] font-normal text-[#1e1e1e]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+        <div className="flex items-center justify-between border-b border-white/15 px-5 py-4">
+          <span className="text-[15px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Assistant
           </span>
           <button
             type="button"
             onClick={onClose}
-            className="text-[#999] hover:text-[#1e1e1e] transition-colors text-xl leading-none cursor-pointer"
+            className="text-white/40 hover:text-white transition-colors text-xl leading-none cursor-pointer"
           >
             ×
           </button>
         </div>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
           {messages.length === 0 && (
-            <p className="text-[14px] text-[#999]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            <p className="text-[13px] text-white/40" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               Ask me anything about your finances.
             </p>
           )}
           {messages.map((m, i) => (
-            <div
-              key={i}
-              className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
+            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-[14px] leading-relaxed ${
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-[13px] leading-relaxed ${
                   m.role === 'user'
-                    ? 'bg-[#1e1e1e] text-white'
+                    ? 'bg-white/20 text-white'
                     : m.isError
-                    ? 'bg-[#fff0f0] text-[#cc0000]'
-                    : 'bg-[#f5f5f5] text-[#1e1e1e]'
+                    ? 'bg-red-950/50 text-red-300'
+                    : 'bg-white/8 text-white/85'
                 }`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
@@ -182,9 +193,9 @@ function ChatPanel({ open, onClose }) {
                     components={{
                       p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                       strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                      table: ({ children }) => <table className="border-collapse text-[13px] my-1 w-full">{children}</table>,
-                      th: ({ children }) => <th className="border border-[#d9d9d9] px-2 py-1 text-left bg-[#ebebeb]">{children}</th>,
-                      td: ({ children }) => <td className="border border-[#d9d9d9] px-2 py-1">{children}</td>,
+                      table: ({ children }) => <table className="border-collapse text-[12px] my-1 w-full">{children}</table>,
+                      th: ({ children }) => <th className="border border-white/20 px-2 py-1 text-left bg-white/10">{children}</th>,
+                      td: ({ children }) => <td className="border border-white/15 px-2 py-1">{children}</td>,
                       ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
                       ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
                       li: ({ children }) => <li className="mb-1">{children}</li>,
@@ -198,10 +209,7 @@ function ChatPanel({ open, onClose }) {
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div
-                className="rounded-lg px-3 py-2 text-[18px] bg-[#f5f5f5] text-[#999]"
-                style={{ fontFamily: 'JetBrains Mono,monospace' }}
-              >
+              <div className="rounded-lg px-3 py-2 text-[18px] bg-white/8 text-white/40" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                 <span className="inline-flex gap-1">
                   <span className="animate-bounce" style={{ animationDelay: '0ms' }}>·</span>
                   <span className="animate-bounce" style={{ animationDelay: '150ms' }}>·</span>
@@ -213,9 +221,8 @@ function ChatPanel({ open, onClose }) {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
-        <div className="border-t border-[#d9d9d9] px-5 py-4">
-          <div className="rounded-xl border border-[#d9d9d9] bg-white focus-within:border-[#1e1e1e] transition-colors">
+        <div className="border-t border-white/15 px-5 py-4">
+          <div className="rounded-xl border border-white/20 bg-white/8 focus-within:border-white/40 transition-colors">
             <textarea
               ref={textareaRef}
               rows={1}
@@ -223,20 +230,18 @@ function ChatPanel({ open, onClose }) {
               onChange={handleInput}
               onKeyDown={handleKeyDown}
               placeholder="Message..."
-              className="w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[14px] text-[#1e1e1e] placeholder-[#999] outline-none overflow-hidden"
+              className="w-full resize-none bg-transparent px-4 pt-3 pb-1 text-[13px] text-white placeholder-white/30 outline-none overflow-hidden"
               style={{ fontFamily: 'JetBrains Mono,monospace' }}
             />
             <div className="flex items-center justify-between px-3 pb-3">
-              <div className="flex items-center gap-0.5 rounded-lg bg-[#f5f5f5] p-0.5">
+              <div className="flex items-center gap-0.5 rounded-lg bg-white/8 p-0.5">
                 {CHAT_MODES.map((m) => (
                   <button
                     key={m}
                     type="button"
                     onClick={() => setMode(m)}
                     className={`rounded-md px-2 py-1 text-[11px] leading-none transition-colors cursor-pointer ${
-                      mode === m
-                        ? 'bg-[#0066CC] text-white'
-                        : 'text-[#666] hover:text-[#1e1e1e]'
+                      mode === m ? 'bg-[#0066CC] text-white' : 'text-white/40 hover:text-white'
                     }`}
                     style={{ fontFamily: 'JetBrains Mono,monospace' }}
                   >
@@ -248,7 +253,7 @@ function ChatPanel({ open, onClose }) {
                 type="button"
                 onClick={handleSend}
                 disabled={loading}
-                className="rounded-lg bg-[#1e1e1e] px-3 py-1.5 text-[13px] text-white transition-opacity hover:opacity-80 cursor-pointer disabled:opacity-40 disabled:cursor-default"
+                className="rounded-lg bg-white/15 px-3 py-1.5 text-[12px] text-white transition-opacity hover:bg-white/25 cursor-pointer disabled:opacity-40 disabled:cursor-default"
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 Send
@@ -261,11 +266,39 @@ function ChatPanel({ open, onClose }) {
   )
 }
 
+const SIDEBAR_EXPANDED = 220
+const SIDEBAR_COLLAPSED = 64
+const ANIM_MS = 220
+
 export function AppHeader() {
   const navigate = useNavigate()
   const location = useLocation()
   const { logout } = useAuth()
+  const isCurrentlyCollapsed = document.documentElement.style.getPropertyValue('--sidebar-w') === `${SIDEBAR_COLLAPSED}px`
+  const collapsedRef = useRef(isCurrentlyCollapsed)
+  const [collapsed, setCollapsed] = useState(isCurrentlyCollapsed) // only for toggle icon
+  const [layout, setLayout] = useState(isCurrentlyCollapsed)       // only for label opacity
   const [chatOpen, setChatOpen] = useState(false)
+
+  function handleToggle() {
+    const next = !collapsedRef.current
+    collapsedRef.current = next
+    setCollapsed(next)
+
+    // One CSS variable change — @property on :root interpolates it natively.
+    // All consumers (sidebar width, page padding) animate in perfect sync,
+    // zero JS runs during the animation.
+    document.documentElement.style.setProperty(
+      '--sidebar-w',
+      next ? `${SIDEBAR_COLLAPSED}px` : `${SIDEBAR_EXPANDED}px`
+    )
+
+    if (next) {
+      setTimeout(() => setLayout(true), ANIM_MS)
+    } else {
+      setTimeout(() => setLayout(false), ANIM_MS)
+    }
+  }
 
   function handleLogout() {
     logout()
@@ -275,47 +308,121 @@ export function AppHeader() {
   return (
     <>
       <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
-      <header className="sticky top-0 z-30 border-b border-[#d9d9d9] bg-white">
-        <div className="flex w-full items-center justify-between px-5 py-4 sm:px-6">
+
+      {/* Floating agent trigger */}
+      <button
+        type="button"
+        onClick={() => setChatOpen(true)}
+        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#18181b] text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl cursor-pointer"
+        title="Open assistant"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+        </svg>
+      </button>
+
+      <aside
+        className="fixed left-0 top-0 z-30 flex h-full flex-col bg-[#f8f8f8] border-r border-black/8 overflow-hidden"
+        style={{ width: 'var(--sidebar-w)', willChange: 'width' }}
+      >
+        {/* Brand row — pill is absolute so it never crowds the toggle button */}
+        <div className="relative flex items-center justify-center px-2 pt-5 pb-2" style={{ minHeight: 44 }}>
+          <span
+            className="absolute left-3 rounded-full bg-black px-3.5 py-1.5 text-[13px] font-semibold text-white tracking-tight whitespace-nowrap"
+            style={{
+              fontFamily: 'JetBrains Mono,monospace',
+              opacity: layout ? 0 : 1,
+              transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+              pointerEvents: layout ? 'none' : 'auto',
+            }}
+          >
+            Abacus
+          </span>
           <button
             type="button"
-            onClick={() => setChatOpen((o) => !o)}
-            className="flex items-center justify-center rounded-full bg-[#0066CC] p-1.5 shadow-md transition-opacity hover:opacity-85 cursor-pointer"
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={handleToggle}
+            className="relative flex h-7 w-7 items-center justify-center rounded-lg text-black/25 hover:bg-black/6 hover:text-black/50 transition-colors cursor-pointer shrink-0"
           >
-            <Logo />
+            <SidebarToggleIcon collapsed={collapsed} />
           </button>
-          <div className="flex items-center gap-2.5">
-            {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
-              const isActive = path && location.pathname === path
-              return (
-                <button
-                  key={label}
-                  type="button"
-                  onClick={() => path && navigate(path)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-[16px] font-normal leading-none transition-colors ${
-                    isActive
-                      ? 'border-[#1e1e1e] bg-[#1e1e1e] text-white'
-                      : 'border-[#d9d9d9] bg-white text-[#1e1e1e] hover:bg-black/5'
-                  } ${!path ? 'opacity-50 cursor-default' : 'cursor-pointer'}`}
-                  style={{ fontFamily: 'JetBrains Mono,monospace' }}
-                >
-                  {Icon && <Icon />}
-                  {label}
-                </button>
-              )
-            })}
-            <div className="mx-1 h-8 w-px bg-[#d9d9d9]" />
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-lg bg-[#FF3B30] px-3 py-2.5 text-[16px] font-normal leading-none text-white transition-opacity hover:opacity-90 cursor-pointer"
-              style={{ fontFamily: 'JetBrains Mono,monospace' }}
-            >
-              Logout
-            </button>
-          </div>
         </div>
-      </header>
+
+        {/* Nav — icon always at fixed left position, label fades */}
+        <nav className="flex-1 px-2 py-4 space-y-0.5">
+          {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
+            const isActive = path && location.pathname === path
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => path && navigate(path)}
+                title={layout ? label : undefined}
+                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium transition-colors cursor-pointer ${
+                  isActive
+                    ? 'bg-black/8 text-[#111113]'
+                    : 'text-[#111113] hover:bg-black/5'
+                }`}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
+              >
+                <span className="shrink-0 text-[#111113] transition-colors">
+                  <Icon />
+                </span>
+                <span
+                  className="whitespace-nowrap overflow-hidden"
+                  style={{
+                    opacity: layout ? 0 : 1,
+                    transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {label}
+                </span>
+              </button>
+            )
+          })}
+        </nav>
+
+        {/* Bottom */}
+        <div className="px-3 pb-5 flex flex-col gap-1">
+          {/* Demo mode badge */}
+          {isDemoMode() && (
+            <div
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200"
+              style={{
+                opacity: layout ? 0 : 1,
+                transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+              }}
+            >
+              <span className="shrink-0 h-2 w-2 rounded-full bg-amber-400" />
+              <span className="text-[11px] font-semibold text-amber-700 whitespace-nowrap overflow-hidden" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                Demo mode
+              </span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium text-[#111113] hover:bg-black/5 transition-colors cursor-pointer"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            title={isDemoMode() && layout ? 'Exit Demo' : undefined}
+          >
+            <span className="shrink-0 text-[#111113]">
+              <LogoutIcon />
+            </span>
+            <span
+              className="whitespace-nowrap overflow-hidden"
+              style={{
+                opacity: layout ? 0 : 1,
+                transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+                pointerEvents: 'none',
+              }}
+            >
+              {isDemoMode() ? 'Exit Demo' : 'Logout'}
+            </span>
+          </button>
+        </div>
+      </aside>
     </>
   )
 }

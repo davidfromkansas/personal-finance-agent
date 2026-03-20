@@ -100,8 +100,8 @@ export function NetWorthChart({ embedded }) {
   }, [data, activeRange])
 
   return (
-    <div className={`relative bg-white/75 backdrop-blur-xl ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-white/30 shadow-[0_8px_32px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.6)]'}`}>
-      <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#0e7490] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className={`relative bg-white ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-[#9ca3af]'}`}>
+      <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#2B2B2B] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Net Worth
@@ -112,19 +112,13 @@ export function NetWorthChart({ embedded }) {
             </span>
             {!loading && change && (
               <span
-                className={`text-[14px] font-semibold ${isPositiveChange ? 'text-[#86efac]' : 'text-[#fca5a5]'}`}
+                className={`whitespace-nowrap text-[14px] font-semibold ${isPositiveChange ? 'text-[#86efac]' : 'text-[#fca5a5]'}`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {isPositiveChange ? '+' : ''}{formatCurrency(change.diff)} ({isPositiveChange ? '+' : ''}{change.pct.toFixed(1)}%)
               </span>
             )}
           </div>
-          {!loading && current && (
-            <div className="mt-1 flex gap-4 text-[12px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              <span className="text-[#86efac]">Assets: {formatCurrency(current.assets)}</span>
-              <span className="text-[#fca5a5]">Debts: {formatCurrency(current.debts)}</span>
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-2">

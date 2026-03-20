@@ -31,6 +31,8 @@ const SKIP_CODES = [
   'ITEM_LOGIN_REQUIRED',
 ]
 
+const RATE_LIMIT_CODES = ['RATE_LIMIT_EXCEEDED']
+
 function todayStr() {
   return new Date().toISOString().slice(0, 10)
 }
@@ -155,7 +157,11 @@ export async function snapshotInvestments(userId, { daysBack = 90 } = {}) {
         console.log(`[snapshotInvestments] skipped item ${item.item_id} (${item.institution_name}): ${code}`)
         continue
       }
-      console.error(`[snapshotInvestments] investmentsHoldingsGet failed for item ${item.item_id}:`, err.response?.data ?? err.message)
+      if (RATE_LIMIT_CODES.includes(code)) {
+        console.error(`[snapshotInvestments] RATE LIMITED by Plaid for item ${item.item_id} (${item.institution_name}) — snapshot skipped for this item`)
+      } else {
+        console.error(`[snapshotInvestments] investmentsHoldingsGet failed for item ${item.item_id} (${item.institution_name}): ${code ?? err.message}`)
+      }
     }
   }
 

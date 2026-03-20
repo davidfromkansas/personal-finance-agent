@@ -13,6 +13,7 @@ import { TransactionDetailPanel, bestLogoUrl } from '../components/TransactionDe
 import { useMutation } from '@tanstack/react-query'
 import { useConnections, invalidateAfterConnect } from '../hooks/usePlaidQueries'
 import queryClient from '../lib/queryClient'
+import { isDemoMode } from '../lib/demoMode.js'
 
 /**
  * Renders nothing — exists solely to own a fresh usePlaidLink instance.
@@ -399,8 +400,8 @@ export function TransactionList({ transactions, loading, title, subtitle, header
   return (
     <>
     <TransactionDetailPanel transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} />
-    <div className="flex h-full flex-col rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)]">
-      <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#18181b] px-5 py-3">
+    <div className="flex h-full flex-col rounded-[14px] border border-[#9ca3af] bg-white">
+      <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] px-5 py-3">
         <div>
           <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {title ?? 'Recent Transactions'}
@@ -567,16 +568,20 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
       <div className="flex shrink-0 gap-2">
         <button
           type="button"
-          onClick={() => onRefresh?.(connection)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 bg-white text-[#1e1e1e] hover:bg-black/5"
+          onClick={() => !isDemoMode() && onRefresh?.(connection)}
+          disabled={isDemoMode()}
+          title={isDemoMode() ? 'Not available in demo' : 'Refresh connection'}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 bg-white text-[#1e1e1e] hover:bg-black/5 disabled:opacity-40 disabled:cursor-not-allowed"
           aria-label="Refresh connection"
         >
           <RefreshCwIcon />
         </button>
         <button
           type="button"
-          onClick={() => onRemove?.(connection)}
-          className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 bg-white text-[#1e1e1e] hover:bg-red-50 hover:text-red-600"
+          onClick={() => !isDemoMode() && onRemove?.(connection)}
+          disabled={isDemoMode()}
+          title={isDemoMode() ? 'Not available in demo' : 'Remove connection'}
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-black/10 bg-white text-[#1e1e1e] hover:bg-red-50 hover:text-red-600 disabled:opacity-40 disabled:cursor-not-allowed"
           aria-label="Remove connection"
         >
           <Trash2Icon />
@@ -589,7 +594,7 @@ function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect 
 function UpcomingPaymentsCard() {
   const [showInfo, setShowInfo] = useState(false)
   return (
-    <div className="relative min-w-0 w-full lg:flex-[2] rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden flex flex-col h-[404px]">
+    <div className="relative min-w-0 w-full lg:flex-[2] rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden flex flex-col h-[404px]">
       {showInfo && (
         <div className="absolute inset-0 z-10 rounded-[14px] bg-white/97 px-6 py-5 overflow-y-auto" onClick={() => setShowInfo(false)}>
           <p className="text-[13px] font-semibold text-[#101828] mb-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>What's in this section</p>
@@ -618,8 +623,8 @@ function UpcomingPaymentsCard() {
           <p className="mt-3 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Click anywhere to dismiss</p>
         </div>
       )}
-      <div className="shrink-0 rounded-t-[14px] bg-[#b45309] px-5 py-3 flex items-center justify-between">
-        <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+      <div className="shrink-0 rounded-t-[14px] bg-[#2B2B2B] px-5 py-3 flex items-center justify-between">
+        <h2 className="whitespace-nowrap text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           Upcoming Payments
         </h2>
         <button
@@ -945,7 +950,7 @@ export function LoggedInPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f8f8] pl-[220px]" data-name="Logged-In Dashboard">
+    <div className="min-h-screen bg-[#f8f8f8]" style={{ paddingLeft: 'var(--sidebar-w)' }} data-name="Logged-In Dashboard">
       <AppHeader />
       {linkToken && (
         <PlaidLinkOpener
@@ -1053,7 +1058,7 @@ export function LoggedInPage() {
             </div>
             {/* Net Worth + Connections: 4 columns — sits directly below left block (top-aligned) */}
             <div className="col-span-8 flex min-w-0 flex-col lg:col-span-4">
-              <div className="rounded-[14px] bg-white shadow-[0_4px_20px_rgba(0,0,0,0.08)] overflow-hidden">
+              <div className="rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden">
               <NetWorthChart embedded />
               <div className="border-t border-[#9ca3af] px-6 pt-4 pb-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1067,9 +1072,10 @@ export function LoggedInPage() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleAddConnection()}
-                  disabled={exchanging || linkLoading}
-                  className="shrink-0 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => !isDemoMode() && handleAddConnection()}
+                  disabled={isDemoMode() || exchanging || linkLoading}
+                  title={isDemoMode() ? 'Not available in demo' : undefined}
+                  className="shrink-0 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-40"
                   style={{ fontFamily: 'JetBrains Mono,monospace' }}
                 >
                   <PlusIcon />
