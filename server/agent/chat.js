@@ -27,6 +27,24 @@ const MODE_ADDENDA = {
 
 const MAX_TOOL_ITERATIONS = 5
 
+export async function runDemoChat({ message, history, mode, demoContext }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const systemPrompt = `You are a helpful personal finance assistant embedded in a personal finance demo app. Today is ${today}.
+
+The user is exploring a demo with realistic fake data for a fictional user named Alex Rivera. Answer all questions based solely on the financial data provided below. Be specific, use real numbers from the data, and format dollars with $ and commas. Keep answers concise and friendly.
+
+${demoContext}${MODE_ADDENDA[mode] ?? ''}`
+
+  const response = await getClient().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    system: systemPrompt,
+    messages: [...history, { role: 'user', content: message }],
+  })
+
+  return response.content.find(b => b.type === 'text')?.text ?? 'Sorry, I could not generate a response.'
+}
+
 export async function runChat({ message, history, mode, userId }) {
   const today = new Date().toISOString().slice(0, 10)
   const systemPrompt = `Today's date is ${today}.\n\n` + BASE_SYSTEM_PROMPT + (MODE_ADDENDA[mode] ?? '')

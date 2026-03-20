@@ -1,0 +1,6 @@
+{
+  "signal": "SIGTERM",
+  "delay": 500,
+  "ignore": ["*.test.js", "node_modules/"],
+  "ext": "js,json"
+}

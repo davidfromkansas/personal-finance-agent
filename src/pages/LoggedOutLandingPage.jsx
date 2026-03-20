@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { GoogleLogo } from '../components/GoogleLogo'
+import { enterDemoMode } from '../lib/demoMode.js'
 
 export function LoggedOutLandingPage() {
   const { signInWithGoogle } = useAuth()
@@ -51,6 +52,13 @@ export function LoggedOutLandingPage() {
           >
             <GoogleLogo />
             {loading ? 'Signing in…' : 'Continue with Google'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { enterDemoMode(); window.location.replace('/app') }}
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-transparent border border-black/20 rounded-full text-black/60 font-medium text-lg hover:border-black/40 hover:text-black/80 transition-colors font-[Roboto,sans-serif] cursor-pointer"
+          >
+            Try Demo
           </button>
           <p className="text-center text-xs text-gray-500 font-[Roboto,sans-serif]">
             By continuing, you agree to our{' '}

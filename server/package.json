@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js"
+    "dev": "nodemon index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -16,5 +16,8 @@
     "pg": "^8.13.0",
     "plaid": "^32.0.0",
     "yahoo-finance2": "^3.13.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

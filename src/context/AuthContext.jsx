@@ -5,6 +5,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
 import { onAuthStateChanged, signInWithPopup as firebaseSignInWithPopup, signOut as firebaseSignOut } from 'firebase/auth'
 import { auth, googleAuthProvider } from '../lib/firebase'
+import { isDemoMode, exitDemoMode, DEMO_USER } from '../lib/demoMode.js'
 
 const AuthContext = createContext(null)
 
@@ -32,6 +33,12 @@ export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    // Demo mode: bypass Firebase entirely
+    if (isDemoMode()) {
+      setUser(DEMO_USER)
+      setReady(true)
+      return
+    }
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser({
@@ -66,6 +73,11 @@ export function AuthProvider({ children }) {
   }
 
   function logout() {
+    if (isDemoMode()) {
+      exitDemoMode()
+      window.location.replace('/')
+      return
+    }
     firebaseSignOut(auth)
   }
 
