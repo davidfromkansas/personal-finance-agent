@@ -54,8 +54,23 @@ app.get('/health', (req, res) => res.json({ ok: true }))
 app.post('/api/agent/chat-demo', async (req, res, next) => {
   try {
     const { message, history, mode, demoContext } = req.body
-    const reply = await runDemoChat({ message, history: history ?? [], mode: mode ?? 'Auto', demoContext })
-    res.json({ reply })
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    const emit = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
+
+    try {
+      for await (const chunk of runDemoChat({ message, history: history ?? [], mode: mode ?? 'Auto', demoContext })) {
+        emit({ type: 'text', text: chunk })
+      }
+    } catch (err) {
+      emit({ type: 'error', message: 'Something went wrong. Please try again.' })
+    }
+
+    emit({ type: 'done' })
+    res.end()
   } catch (err) {
     next(err)
   }

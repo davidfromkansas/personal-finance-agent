@@ -20,6 +20,7 @@ import {
   updateTransactionAccountNames,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
   upsertAccountBalanceSnapshot,
+  getInvestmentTransactionsByAccount,
 } from '../db.js'
 
 /* ── Unified per-item account cache with request deduplication ────── */
@@ -1002,6 +1003,19 @@ plaidRouter.get('/investments', async (req, res, next) => {
   } catch (err) {
     console.error('GET /investments error:', err)
     res.status(500).json({ error: 'Failed to load investments' })
+  }
+})
+
+/** GET /api/plaid/investment-transactions — trade history for a specific account */
+plaidRouter.get('/investment-transactions', async (req, res, next) => {
+  try {
+    const { account_id } = req.query
+    if (!account_id) return res.status(400).json({ error: 'account_id is required' })
+    const txns = await getInvestmentTransactionsByAccount(req.uid, account_id)
+    res.json({ transactions: txns })
+  } catch (err) {
+    console.error('GET /investment-transactions error:', err)
+    res.status(500).json({ error: 'Failed to load investment transactions' })
   }
 })
 

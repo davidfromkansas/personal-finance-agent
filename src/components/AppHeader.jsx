@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
 import { isDemoMode } from '../lib/demoMode.js'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts'
 
 function DashboardIcon() {
   return (
@@ -75,18 +77,115 @@ const NAV_ITEMS = [
 
 const CHAT_MODES = ['Auto', 'Transactions', 'Investments', 'Accounts']
 
+const TOOL_LABELS = {
+  get_spending_summary: 'Querying spending summary',
+  get_transactions: 'Reading transactions',
+  get_cash_flow: 'Fetching cash flow',
+  get_portfolio_summary: 'Querying portfolio',
+  get_holdings: 'Fetching holdings',
+  get_investment_history: 'Fetching investment history',
+  get_investment_accounts: 'Loading investment accounts',
+  get_holdings_history: 'Fetching holdings history',
+  get_accounts: 'Loading accounts',
+  get_monthly_spending_by_account: 'Fetching account spending',
+  display_data: 'Displaying chart',
+}
+
+const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
+
+function SpinnerIcon() {
+  return (
+    <svg className="animate-spin shrink-0 text-blue-400" width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <circle cx="5" cy="5" r="3.5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="16" strokeDashoffset="6" />
+    </svg>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg className="shrink-0 text-white/30" width="10" height="10" viewBox="0 0 10 10" fill="none">
+      <path d="M2 5l2.5 2.5L8 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function ActivitySummary({ steps }) {
+  const [expanded, setExpanded] = useState(false)
+  if (!steps || steps.length === 0) return null
+  return (
+    <div className="mb-2 text-[11px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+      <button
+        type="button"
+        onClick={() => setExpanded(e => !e)}
+        className="flex items-center gap-1 text-white/25 hover:text-white/45 transition-colors cursor-pointer"
+      >
+        <span>{steps.length} tool{steps.length !== 1 ? 's' : ''} used</span>
+        <span className={`transition-transform duration-150 ${expanded ? 'rotate-180' : ''}`} style={{ display: 'inline-block' }}>∨</span>
+      </button>
+      {expanded && (
+        <div className="mt-1.5 space-y-1 pl-2 border-l border-white/10">
+          {steps.map((s, i) => (
+            <div key={i} className="flex items-center gap-1.5 text-white/25">
+              <CheckIcon />
+              <span>{s.label}</span>
+              {s.count != null && <span className="text-white/15">· {s.count} rows</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const CHART_COLORS = ['#60a5fa', '#34d399', '#f472b6', '#fbbf24', '#a78bfa', '#fb923c']
+
+function ChartArtifact({ chart_type, title, data, x_key, y_keys, y_label }) {
+  if (!data || data.length === 0) return null
+
+  const axisStyle = { fill: 'rgba(255,255,255,0.35)', fontSize: 11, fontFamily: 'JetBrains Mono,monospace' }
+  const tooltipStyle = { backgroundColor: '#1e293b', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 8, fontSize: 11, fontFamily: 'JetBrains Mono,monospace' }
+  const gridStroke = 'rgba(255,255,255,0.07)'
+
+  return (
+    <div className="mt-2 mb-3 rounded-lg bg-white/5 border border-white/10 p-3">
+      {title && <p className="text-[11px] text-white/50 mb-2" style={{ fontFamily: 'JetBrains Mono,monospace' }}>{title}</p>}
+      <ResponsiveContainer width="100%" height={180}>
+        {chart_type === 'bar' ? (
+          <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+            <XAxis dataKey={x_key} tick={axisStyle} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+            <YAxis tick={axisStyle} axisLine={false} tickLine={false} tickFormatter={v => `$${v >= 1000 ? (v/1000).toFixed(1)+'k' : v}`} label={y_label ? { value: y_label, angle: -90, position: 'insideLeft', style: axisStyle } : undefined} />
+            <Tooltip contentStyle={tooltipStyle} cursor={{ fill: 'rgba(255,255,255,0.05)' }} formatter={v => [`$${parseFloat(v).toFixed(2)}`, '']} />
+            {y_keys.map((k, i) => <Bar key={k} dataKey={k} fill={CHART_COLORS[i % CHART_COLORS.length]} radius={[3, 3, 0, 0]} />)}
+          </BarChart>
+        ) : (
+          <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+            <XAxis dataKey={x_key} tick={axisStyle} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+            <YAxis tick={axisStyle} axisLine={false} tickLine={false} label={y_label ? { value: y_label, angle: -90, position: 'insideLeft', style: axisStyle } : undefined} />
+            <Tooltip contentStyle={tooltipStyle} />
+            {chart_type === 'multi_line' && y_keys.length > 1 && <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'JetBrains Mono,monospace', color: 'rgba(255,255,255,0.4)' }} />}
+            {y_keys.map((k, i) => <Line key={k} type="monotone" dataKey={k} stroke={CHART_COLORS[i % CHART_COLORS.length]} dot={false} strokeWidth={1.5} />)}
+          </LineChart>
+        )}
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function ChatPanel({ open, onClose }) {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [mode, setMode] = useState('Auto')
   const [loading, setLoading] = useState(false)
+  const [activitySteps, setActivitySteps] = useState([])
   const bottomRef = useRef(null)
   const textareaRef = useRef(null)
   const { getIdToken } = useAuth()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+  }, [messages, loading, activitySteps])
 
   async function handleSend() {
     const text = input.trim()
@@ -100,28 +199,76 @@ function ChatPanel({ open, onClose }) {
     setInput('')
     if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setLoading(true)
+    setActivitySteps([])
 
     try {
-      if (isDemoMode()) {
+      // Both real and demo endpoints use SSE streaming with the same event protocol
+      const isDemo = isDemoMode()
+      let fetchOptions
+
+      if (isDemo) {
         const { getDemoAgentContext } = await import('../lib/demoData.js')
         const demoContext = getDemoAgentContext()
-        const apiBase = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
-        const res = await fetch(`${apiBase}/api/agent/chat-demo`, {
-          method: 'POST',
+        fetchOptions = {
+          url: `${API_BASE}/api/agent/chat-demo`,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: text, history, mode, demoContext }),
-        })
-        if (!res.ok) throw new Error('Demo chat request failed')
-        const { reply } = await res.json()
-        setMessages((prev) => [...prev, { role: 'assistant', text: reply }])
-        return
+        }
+      } else {
+        const token = await getIdToken()
+        fetchOptions = {
+          url: `${API_BASE}/api/agent/chat`,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({ message: text, history, mode }),
+        }
       }
-      const { reply } = await apiFetch('/api/agent/chat', {
+
+      // SSE stream: tool activity events then streamed text tokens
+      const res = await fetch(fetchOptions.url, {
         method: 'POST',
-        body: { message: text, history, mode },
-        getToken: getIdToken,
+        headers: fetchOptions.headers,
+        body: fetchOptions.body,
       })
-      setMessages((prev) => [...prev, { role: 'assistant', text: reply }])
+      if (!res.ok) throw new Error('Chat request failed')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let replyText = ''
+      let finalSteps = []
+      let artifacts = []
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          let event
+          try { event = JSON.parse(line.slice(6)) } catch { continue }
+
+          if (event.type === 'tool_call') {
+            const step = { callId: event.callId, tool: event.tool, label: TOOL_LABELS[event.tool] ?? event.tool, status: 'active' }
+            finalSteps = [...finalSteps, step]
+            setActivitySteps([...finalSteps])
+          } else if (event.type === 'tool_done') {
+            finalSteps = finalSteps.map(s => s.callId === event.callId ? { ...s, status: 'done', count: event.count } : s)
+            setActivitySteps([...finalSteps])
+          } else if (event.type === 'artifact') {
+            artifacts = [...artifacts, event]
+          } else if (event.type === 'text') {
+            replyText += event.text
+          }
+        }
+      }
+
+      setMessages((prev) => [...prev, { role: 'assistant', text: replyText, activity: finalSteps, artifacts }])
     } catch (err) {
       console.error('[agent chat error]', err)
       setMessages((prev) => [
@@ -130,6 +277,7 @@ function ChatPanel({ open, onClose }) {
       ])
     } finally {
       setLoading(false)
+      setActivitySteps([])
     }
   }
 
@@ -189,33 +337,56 @@ function ChatPanel({ open, onClose }) {
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {m.role === 'user' || m.isError ? m.text : (
-                  <Markdown
-                    components={{
-                      p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                      table: ({ children }) => <table className="border-collapse text-[12px] my-1 w-full">{children}</table>,
-                      th: ({ children }) => <th className="border border-white/20 px-2 py-1 text-left bg-white/10">{children}</th>,
-                      td: ({ children }) => <td className="border border-white/15 px-2 py-1">{children}</td>,
-                      ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                      ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
-                      li: ({ children }) => <li className="mb-1">{children}</li>,
-                    }}
-                  >
-                    {m.text}
-                  </Markdown>
+                  <>
+                    <ActivitySummary steps={m.activity} />
+                    {m.artifacts?.map((a, i) => (
+                      <ChartArtifact key={i} {...a} />
+                    ))}
+                    <Markdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        table: ({ children }) => <table className="border-collapse text-[12px] my-1 w-full">{children}</table>,
+                        th: ({ children }) => <th className="border border-white/20 px-2 py-1 text-left bg-white/10">{children}</th>,
+                        td: ({ children }) => <td className="border border-white/15 px-2 py-1">{children}</td>,
+                        ul: ({ children }) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
+                        li: ({ children }) => <li className="mb-1">{children}</li>,
+                      }}
+                    >
+                      {m.text}
+                    </Markdown>
+                  </>
                 )}
               </div>
             </div>
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div className="rounded-lg px-3 py-2 text-[18px] bg-white/8 text-white/40" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                <span className="inline-flex gap-1">
-                  <span className="animate-bounce" style={{ animationDelay: '0ms' }}>·</span>
-                  <span className="animate-bounce" style={{ animationDelay: '150ms' }}>·</span>
-                  <span className="animate-bounce" style={{ animationDelay: '300ms' }}>·</span>
-                </span>
-              </div>
+              {activitySteps.length === 0 ? (
+                <div className="rounded-lg px-3 py-2 text-[18px] bg-white/8 text-white/40" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                  <span className="inline-flex gap-1">
+                    <span className="animate-bounce" style={{ animationDelay: '0ms' }}>·</span>
+                    <span className="animate-bounce" style={{ animationDelay: '150ms' }}>·</span>
+                    <span className="animate-bounce" style={{ animationDelay: '300ms' }}>·</span>
+                  </span>
+                </div>
+              ) : (
+                <div className="max-w-[85%] rounded-lg border border-white/10 bg-white/5 px-3 py-2 space-y-1.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                  {activitySteps.map((step, i) => (
+                    <div key={i} className="flex items-center gap-2 text-[11px]">
+                      {step.status === 'active' ? <SpinnerIcon /> : <CheckIcon />}
+                      <span className={step.status === 'active' ? 'text-white/70' : 'text-white/35'}>
+                        {step.label}
+                      </span>
+                      {step.count != null && (
+                        <span className="text-white/20 ml-1">· {step.count} rows</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div ref={bottomRef} />

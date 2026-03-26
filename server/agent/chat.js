@@ -1,97 +1,70 @@
 /**
- * Financial agent — core chat logic.
- * Calls Anthropic API with full conversation history and tool loop.
+ * Financial agent — core chat routing.
+ * Known modes route directly to the appropriate sub-agent (no orchestrator LLM call).
+ * Auto mode uses the orchestrator which decides which agent(s) to call.
  */
+import './agents/index.js'  // triggers all agent self-registrations
+import { streamSpendingAgent } from './agents/spendingAgent.js'
+import { streamPortfolioAgent } from './agents/portfolioAgent.js'
+import { runOrchestrator } from './agents/orchestrator.js'
 import Anthropic from '@anthropic-ai/sdk'
-import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
-import { dirname, join } from 'path'
-import { TOOL_DEFINITIONS, executeTool } from './tools.js'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const BASE_SYSTEM_PROMPT = readFileSync(join(__dirname, 'system-prompt.md'), 'utf8').trim()
-
-// Initialized lazily so dotenv has already loaded by the time it's first called
 let _client = null
 function getClient() {
   if (!_client) _client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
   return _client
 }
 
-const MODE_ADDENDA = {
-  Transactions: '\n\nFocus on spending, income, budgeting, and transaction history.',
-  Investments: '\n\nFocus on portfolio performance, holdings, asset allocation, and investment strategy.',
-  Accounts: '\n\nFocus on account balances, net worth, and account overview.',
-  Auto: '',
+const MODE_TO_AGENT = {
+  Transactions: streamSpendingAgent,
+  Investments: streamPortfolioAgent,
 }
 
-const MAX_TOOL_ITERATIONS = 5
+async function* fallbackStream(text) { yield text }
 
-export async function runDemoChat({ message, history, mode, demoContext }) {
+/**
+ * Main entry point. Returns an async generator that yields text chunks.
+ * The route handler iterates this and emits each chunk as a SSE text event.
+ * emit() is called by sub-agents for tool_call/tool_done activity events.
+ */
+export async function* runChat({ message, history, mode, userId, emit }) {
+  const recentHistory = history.slice(-4)
+
+  if (MODE_TO_AGENT[mode]) {
+    yield* MODE_TO_AGENT[mode]({ message, history: recentHistory, userId, emit })
+    return
+  }
+
+  if (mode !== 'Auto') {
+    yield* fallbackStream("That feature isn't available yet. You can ask me about your spending or investments.")
+    return
+  }
+
+  yield* runOrchestrator({ message, history: recentHistory, userId, emit })
+}
+
+/**
+ * Demo chat — single API call, no tools, no auth.
+ * Returns an async generator for SSE streaming consistency with the real endpoint.
+ */
+export async function* runDemoChat({ message, history, mode, demoContext }) {
   const today = new Date().toISOString().slice(0, 10)
   const systemPrompt = `You are a helpful personal finance assistant embedded in a personal finance demo app. Today is ${today}.
 
 The user is exploring a demo with realistic fake data for a fictional user named Alex Rivera. Answer all questions based solely on the financial data provided below. Be specific, use real numbers from the data, and format dollars with $ and commas. Keep answers concise and friendly.
 
-${demoContext}${MODE_ADDENDA[mode] ?? ''}`
+${demoContext}`
 
-  const response = await getClient().messages.create({
+  const stream = getClient().messages.stream({
     model: 'claude-sonnet-4-6',
     max_tokens: 2048,
     system: systemPrompt,
     messages: [...history, { role: 'user', content: message }],
   })
 
-  return response.content.find(b => b.type === 'text')?.text ?? 'Sorry, I could not generate a response.'
-}
-
-export async function runChat({ message, history, mode, userId }) {
-  const today = new Date().toISOString().slice(0, 10)
-  const systemPrompt = `Today's date is ${today}.\n\n` + BASE_SYSTEM_PROMPT + (MODE_ADDENDA[mode] ?? '')
-
-  const messages = [
-    ...history,
-    { role: 'user', content: message },
-  ]
-
-  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const response = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 8192,
-      system: systemPrompt,
-      tools: TOOL_DEFINITIONS,
-      messages,
-    })
-
-    if (response.stop_reason === 'end_turn') {
-      return response.content.find(b => b.type === 'text')?.text ?? ''
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      yield event.delta.text
     }
-
-    if (response.stop_reason !== 'tool_use') {
-      return response.content.find(b => b.type === 'text')?.text ?? ''
-    }
-
-    // Execute all tool calls and collect results
-    messages.push({ role: 'assistant', content: response.content })
-
-    const toolResults = []
-    for (const block of response.content) {
-      if (block.type !== 'tool_use') continue
-      let result
-      try {
-        result = await executeTool(block.name, block.input, userId)
-      } catch (err) {
-        result = { error: err.message }
-      }
-      toolResults.push({
-        type: 'tool_result',
-        tool_use_id: block.id,
-        content: JSON.stringify(result),
-      })
-    }
-
-    messages.push({ role: 'user', content: toolResults })
   }
-
-  return 'I ran into an issue processing your request. Please try again.'
 }

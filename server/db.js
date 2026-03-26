@@ -333,6 +333,26 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds) {
   return rows
 }
 
+/** Monthly spending totals for a single account. Same exclusions as other spending queries. */
+export async function getMonthlySpendingByAccount(userId, accountId, monthsBack = 12) {
+  const n = Math.min(Math.max(monthsBack, 1), 36)
+  const { rows } = await query(
+    `SELECT to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') AS month,
+            SUM(amount) AS total
+     FROM transactions
+     WHERE user_id = $1
+       AND account_id = $2
+       AND amount > 0
+       AND COALESCE(authorized_date, date) >= (date_trunc('month', CURRENT_DATE) - ($3 - 1) * INTERVAL '1 month')::date
+       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($4))
+       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($5))
+     GROUP BY date_trunc('month', COALESCE(authorized_date, date))
+     ORDER BY month ASC`,
+    [userId, accountId, n, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  )
+  return rows.map((r) => ({ month: r.month, total: parseFloat(r.total) || 0 }))
+}
+
 // Inter-account transfers excluded from cash flow to avoid double-counting
 // (e.g. savings → checking shows as both inflow and outflow).
 const CASH_FLOW_EXCLUDED_CATEGORIES = ['TRANSFER_IN', 'TRANSFER_OUT']
@@ -438,6 +458,31 @@ export async function upsertSecurity(securityId, ticker, name, type, currency) {
   )
 }
 
+/** Fetch investment transactions for a specific account, ordered newest first. */
+export async function getInvestmentTransactionsByAccount(userId, accountId, limit = 200) {
+  const { rows } = await query(
+    `SELECT date::text AS date, type, subtype, ticker, security_name, security_type, quantity, price, amount, fees, currency
+     FROM investment_transactions
+     WHERE user_id = $1 AND account_id = $2
+     ORDER BY date DESC
+     LIMIT $3`,
+    [userId, accountId, limit]
+  )
+  return rows.map((r) => ({
+    date: r.date,
+    type: r.type,
+    subtype: r.subtype,
+    ticker: r.ticker,
+    security_name: r.security_name,
+    security_type: r.security_type,
+    quantity: r.quantity != null ? parseFloat(r.quantity) : null,
+    price: r.price != null ? parseFloat(r.price) : null,
+    amount: r.amount != null ? parseFloat(r.amount) : null,
+    fees: r.fees != null ? parseFloat(r.fees) : null,
+    currency: r.currency,
+  }))
+}
+
 /** Insert investment transactions; skip duplicates (idempotent). */
 export async function upsertInvestmentTransactions(txns) {
   for (const t of txns) {
@@ -452,6 +497,20 @@ export async function upsertInvestmentTransactions(txns) {
 }
 
 // ── Investment snapshot reads ──────────────────────────────────────────────
+
+/** Distinct investment accounts from holdings snapshots — used by the portfolio agent to resolve institution/account references.
+ *  Joins to plaid_items to exclude orphaned snapshots from deleted items. */
+export async function getInvestmentAccounts(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT hs.account_id, hs.account_name, hs.institution
+     FROM holdings_snapshots hs
+     INNER JOIN plaid_items pi ON pi.item_id = hs.item_id AND pi.user_id = hs.user_id
+     WHERE hs.user_id = $1 AND hs.account_name IS NOT NULL
+     ORDER BY hs.institution, hs.account_name`,
+    [userId]
+  )
+  return rows
+}
 
 /** Read portfolio_snapshots for the chart. Returns only dates that exist — no fill. */
 export async function getPortfolioHistory(userId, sinceDate) {
@@ -481,16 +540,18 @@ export async function getPortfolioAccountHistory(userId, sinceDate, accountIds) 
 /** Daily price history per ticker — used by the Portfolio Movers chart. */
 export async function getHoldingsHistory(userId, sinceDate) {
   const { rows } = await query(
-    `SELECT date, ticker, MIN(security_name) AS security_name, MIN(security_type) AS security_type, MAX(price) AS price
+    `SELECT date, ticker, account_id, account_name, MIN(security_name) AS security_name, MIN(security_type) AS security_type, MAX(price) AS price
      FROM holdings_snapshots
      WHERE user_id = $1 AND date >= $2 AND price IS NOT NULL AND price > 0 AND ticker IS NOT NULL
-     GROUP BY date, ticker
-     ORDER BY ticker, date`,
+     GROUP BY date, ticker, account_id, account_name
+     ORDER BY ticker, account_id, date`,
     [userId, sinceDate]
   )
   return rows.map((r) => ({
     date: r.date,
     ticker: r.ticker,
+    account_id: r.account_id,
+    account_name: r.account_name,
     security_name: r.security_name,
     security_type: r.security_type,
     price: parseFloat(r.price),

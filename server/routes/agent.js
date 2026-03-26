@@ -1,6 +1,12 @@
 /**
  * Agent routes — POST /api/agent/chat
  * Auth applied by the parent router in index.js (req.uid is available).
+ *
+ * SSE event protocol:
+ *   { type: 'tool_call', tool, callId }   — sub-agent starting a SQL tool
+ *   { type: 'tool_done', callId, count }  — SQL tool returned
+ *   { type: 'text', text }                — final answer token (one or more)
+ *   { type: 'done' }                      — stream complete
  */
 import { Router } from 'express'
 import { runChat } from '../agent/chat.js'
@@ -20,8 +26,22 @@ agentRouter.post('/chat', async (req, res, next) => {
       .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
       .map(m => ({ role: m.role, content: m.content }))
 
-    const reply = await runChat({ message, history: cleanHistory, mode, userId: req.uid })
-    res.json({ reply })
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    const emit = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
+
+    try {
+      for await (const chunk of runChat({ message, history: cleanHistory, mode, userId: req.uid, emit })) {
+        emit({ type: 'text', text: chunk })
+      }
+    } catch (err) {
+      emit({ type: 'error', message: 'Something went wrong. Please try again.' })
+    }
+
+    emit({ type: 'done' })
+    res.end()
   } catch (err) {
     next(err)
   }

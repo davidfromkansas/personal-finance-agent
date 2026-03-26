@@ -4,6 +4,40 @@ User-facing changes, most recent first.
 
 ---
 
+# AI assistant: multi-agent architecture, charts, and investment analysis — Shipped: March 26, 2026
+
+## Orchestrator-workers architecture
+
+The AI assistant has been rebuilt from a single-model endpoint into a multi-agent system. A central orchestrator receives every question and routes it to the appropriate specialist agent — a spending agent for transactions and cash flow, a portfolio agent for investments and holdings. For questions that span both domains (e.g. "how am I doing financially?"), the orchestrator calls both agents in parallel and synthesises a single coherent answer.
+
+Routing is direct: if you're in Transactions or Investments mode, your message goes straight to the right agent without an orchestrator round-trip. Auto mode uses the orchestrator to decide.
+
+## Charts and visualisations in the chat
+
+The assistant can now render interactive charts inline in the conversation. Ask for a chart and you'll get a Recharts component alongside the text answer — not a table or a description of the data.
+
+Supported visualisations:
+- **Bar chart** — spending by category
+- **Line chart** — portfolio value or single-account spending over time
+- **Multi-line chart** — comparing multiple accounts or holdings (e.g. VOO vs PLTR % return)
+
+## Investment analysis tools
+
+The portfolio agent now has two additional tools:
+
+- **Per-ticker performance** — ask how a specific holding (e.g. PLTR) has performed over a date range. The agent retrieves daily price history per ticker per account and computes % return and estimated dollar gain/loss from cost basis, with a caveat if your position size may have changed during the period.
+- **Account-filtered portfolio history** — ask about a specific institution (e.g. "my Schwab portfolio") and the agent resolves the correct accounts, then charts performance for those accounts only rather than your full portfolio.
+
+## Markdown tables render correctly in chat
+
+The chat panel now renders markdown tables as proper HTML tables instead of raw pipe characters. Bold text, bullet lists, and other markdown formatting also render correctly throughout the conversation.
+
+## Data quality: stale investment snapshots cleaned up
+
+A previous re-link of a Charles Schwab connection left orphaned rows in the holdings and portfolio snapshots tables. These have been deleted. The account lookup query used by the portfolio agent now filters to active connections only, so this cannot recur.
+
+---
+
 # Investments account detail, net worth explainer, and UI polish — Shipped: March 19, 2026
 
 ## Investments: click an account to see full detail
