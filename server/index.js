@@ -57,6 +57,8 @@ app.use(cors({
     // Allow same-origin requests (e.g. cli-auth.html fetching /api/cli-auth/exchange)
     if (origin === PORT_ORIGIN) return cb(null, true)
     if (allowedOrigins.includes(origin)) return cb(null, true)
+    // Allow Claude.ai and any subdomain — needed for MCP connector and OAuth flow
+    if (origin === 'https://claude.ai' || origin.endsWith('.claude.ai')) return cb(null, true)
     cb(new Error(`CORS: origin ${origin} not allowed`))
   },
   credentials: true,
