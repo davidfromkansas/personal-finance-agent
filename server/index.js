@@ -1,7 +1,9 @@
 /**
  * Backend entry point. Express app serving:
  * - /api/plaid/webhook (raw body; no auth — verified by Plaid JWT + body hash)
- * - /api/plaid/* (auth required; Firebase ID token → req.uid)
+ * - /api/plaid/* (auth required; Firebase ID token or CLI token → req.uid)
+ * - /api/cli-auth/* (CLI auth flow — start/firebase-config/exchange are pre-auth)
+ * - POST /mcp (MCP server — auth required; CLI or Firebase token)
  * - Static SPA from dist/ (index.html for /app, logged-out-landing-page.html for /)
  * Loads server/.env; CORS and auth middleware applied to API routes.
  */
@@ -18,6 +20,8 @@ import { plaidRouter, plaidWebhookHandler } from './routes/plaid.js'
 import { agentRouter } from './routes/agent.js'
 import { runDemoChat } from './agent/chat.js'
 import { cronRouter } from './routes/cron.js'
+import cliAuthRouter from './routes/cliAuth.js'
+import { mcpHandler } from './mcp/server.js'
 import { snapshotInvestments } from './jobs/snapshotInvestments.js'
 import { snapshotBalances } from './jobs/snapshotBalances.js'
 import { getAllUserIdsWithItems } from './db.js'
@@ -43,7 +47,19 @@ console.log('Config:', JSON.stringify({
 const app = express()
 const PORT = process.env.PORT || 3001
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:5173', credentials: true }))
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(s => s.trim())
+const PORT_ORIGIN = `http://localhost:${process.env.PORT || 3001}`
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow server-side requests (no origin) — needed for MCP clients like Claude Desktop and ChatGPT
+    if (!origin) return cb(null, true)
+    // Allow same-origin requests (e.g. cli-auth.html fetching /api/cli-auth/exchange)
+    if (origin === PORT_ORIGIN) return cb(null, true)
+    if (allowedOrigins.includes(origin)) return cb(null, true)
+    cb(new Error(`CORS: origin ${origin} not allowed`))
+  },
+  credentials: true,
+}))
 
 // Webhook must receive raw body for Plaid signature verification. Register before express.json() so body stays a Buffer.
 app.post('/api/plaid/webhook', express.raw({ type: 'application/json' }), plaidWebhookHandler)
@@ -80,6 +96,13 @@ app.post('/api/agent/chat-demo', async (req, res, next) => {
 app.use('/api/plaid', authMiddleware, plaidRouter)
 app.use('/api/agent', authMiddleware, agentRouter)
 app.use('/api/cron', cronRouter)
+app.use('/api/cli-auth', cliAuthRouter)
+app.post('/mcp', authMiddleware, mcpHandler)
+
+// Serve cli-auth.html directly from public/ — works in dev mode without a Vite build
+app.get('/cli-auth.html', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'cli-auth.html'))
+})
 
 const distPath = path.join(__dirname, '..', 'dist')
 if (fs.existsSync(distPath)) {

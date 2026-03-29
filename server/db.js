@@ -496,6 +496,31 @@ export async function upsertInvestmentTransactions(txns) {
   }
 }
 
+// ── CLI tokens ────────────────────────────────────────────────────────────
+
+export async function createCliToken(userId, tokenHash, name, expiresAt) {
+  await query(
+    `INSERT INTO cli_tokens (user_id, token_hash, name, expires_at) VALUES ($1, $2, $3, $4)`,
+    [userId, tokenHash, name ?? null, expiresAt]
+  )
+}
+
+export async function getCliTokenByHash(tokenHash) {
+  const { rows } = await query(
+    `SELECT id, user_id, expires_at FROM cli_tokens WHERE token_hash = $1`,
+    [tokenHash]
+  )
+  return rows[0] ?? null
+}
+
+export async function touchCliToken(id) {
+  await query(`UPDATE cli_tokens SET last_used_at = NOW() WHERE id = $1`, [id])
+}
+
+export async function revokeAllCliTokens(userId) {
+  await query(`DELETE FROM cli_tokens WHERE user_id = $1`, [userId])
+}
+
 // ── Investment snapshot reads ──────────────────────────────────────────────
 
 /** Distinct investment accounts from holdings snapshots — used by the portfolio agent to resolve institution/account references.

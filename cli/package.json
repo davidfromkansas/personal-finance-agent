@@ -1,0 +1,13 @@
+{
+  "name": "@crumbs/cli",
+  "version": "1.0.0",
+  "description": "CLI for querying your Crumbs financial data",
+  "type": "module",
+  "bin": {
+    "copilot": "./index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "open": "^10.1.0"
+  }
+}
