@@ -72,6 +72,13 @@ app.use(express.urlencoded({ extended: false })) // for OAuth token endpoint (ap
 
 app.get('/health', (req, res) => res.json({ ok: true }))
 
+// Temporary request logger — helps debug Claude.ai connector flow
+app.use((req, res, next) => {
+  const origin = req.get('origin') ?? req.get('referer') ?? 'no-origin'
+  console.log(`[req] ${req.method} ${req.path} — origin: ${origin}`)
+  next()
+})
+
 app.post('/api/agent/chat-demo', async (req, res, next) => {
   try {
     const { message, history, mode, demoContext } = req.body
