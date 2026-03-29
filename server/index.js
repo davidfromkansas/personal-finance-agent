@@ -102,7 +102,7 @@ app.use('/api/agent', authMiddleware, agentRouter)
 app.use('/api/cron', cronRouter)
 app.use('/api/cli-auth', cliAuthRouter)
 app.use('/oauth', oauthRouter)
-app.post('/mcp', authMiddleware, mcpHandler)
+app.all('/mcp', authMiddleware, mcpHandler)
 
 // OAuth / MCP discovery endpoints (RFC 8414 + MCP spec)
 app.get('/.well-known/oauth-authorization-server', (req, res) => {
