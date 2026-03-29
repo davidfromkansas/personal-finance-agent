@@ -88,7 +88,7 @@
         const firebaseIdToken = await result.user.getIdToken()
 
         setStatus('', 'Connecting...')
-        const res = await fetch('/oauth/authorize/complete', {
+        const res = await fetch('/authorize/complete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ firebaseIdToken, sessionId }),

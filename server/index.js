@@ -108,7 +108,8 @@ app.use('/api/plaid', authMiddleware, plaidRouter)
 app.use('/api/agent', authMiddleware, agentRouter)
 app.use('/api/cron', cronRouter)
 app.use('/api/cli-auth', cliAuthRouter)
-app.use('/oauth', oauthRouter)
+app.use('/oauth', oauthRouter) // CLI-facing paths (/oauth/authorize, etc.)
+app.use('/', oauthRouter)    // Claude.ai strips path prefix and hits /register, /authorize, /token directly
 app.all('/mcp', authMiddleware, mcpHandler)
 
 // OAuth / MCP discovery endpoints (RFC 8414 + MCP spec)
@@ -117,9 +118,9 @@ app.get('/.well-known/oauth-authorization-server', (req, res) => {
   const base = `${proto}://${req.get('host')}`
   res.json({
     issuer: base,
-    authorization_endpoint: `${base}/oauth/authorize`,
-    token_endpoint: `${base}/oauth/token`,
-    registration_endpoint: `${base}/oauth/register`,
+    authorization_endpoint: `${base}/authorize`,
+    token_endpoint: `${base}/token`,
+    registration_endpoint: `${base}/register`,
     response_types_supported: ['code'],
     grant_types_supported: ['authorization_code'],
     code_challenge_methods_supported: ['S256'],
