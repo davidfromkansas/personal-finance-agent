@@ -36,12 +36,16 @@ setInterval(() => {
 // (security comes from PKCE), but we need to support registration so Claude.ai
 // can connect without the user having to pre-configure a Client ID.
 router.post('/register', (req, res) => {
+  const { redirect_uris, grant_types, response_types, scope, client_name, token_endpoint_auth_method } = req.body ?? {}
   res.status(201).json({
     client_id: crypto.randomUUID(),
     client_id_issued_at: Math.floor(Date.now() / 1000),
-    token_endpoint_auth_method: 'none',
-    grant_types: ['authorization_code'],
-    response_types: ['code'],
+    client_name: client_name ?? 'Claude',
+    redirect_uris: redirect_uris ?? [],
+    grant_types: grant_types ?? ['authorization_code'],
+    response_types: response_types ?? ['code'],
+    scope: scope ?? '',
+    token_endpoint_auth_method: token_endpoint_auth_method ?? 'none',
   })
 })
 
