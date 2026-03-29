@@ -6,6 +6,7 @@
 import './agents/index.js'  // triggers all agent self-registrations
 import { streamSpendingAgent } from './agents/spendingAgent.js'
 import { streamPortfolioAgent } from './agents/portfolioAgent.js'
+import { streamAccountsAgent } from './agents/accountsAgent.js'
 import { runOrchestrator } from './agents/orchestrator.js'
 import Anthropic from '@anthropic-ai/sdk'
 
@@ -18,6 +19,7 @@ function getClient() {
 const MODE_TO_AGENT = {
   Transactions: streamSpendingAgent,
   Investments: streamPortfolioAgent,
+  Accounts: streamAccountsAgent,
 }
 
 async function* fallbackStream(text) { yield text }

@@ -186,6 +186,16 @@ export function useQuotes(tickers) {
   })
 }
 
+export function useInvestmentTransactions(accountId) {
+  const { getIdToken } = useAuth()
+  return useQuery({
+    queryKey: ['investment-transactions', accountId],
+    queryFn: () => apiFetch(`/api/plaid/investment-transactions?account_id=${accountId}`, { getToken: getIdToken }),
+    enabled: !!accountId,
+    staleTime: STALE.charts,
+  })
+}
+
 export function usePortfolioSnapshot(date) {
   const { getIdToken } = useAuth()
   return useQuery({

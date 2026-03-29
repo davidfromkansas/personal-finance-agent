@@ -19,6 +19,7 @@ import { agentRouter } from './routes/agent.js'
 import { runDemoChat } from './agent/chat.js'
 import { cronRouter } from './routes/cron.js'
 import { snapshotInvestments } from './jobs/snapshotInvestments.js'
+import { snapshotBalances } from './jobs/snapshotBalances.js'
 import { getAllUserIdsWithItems } from './db.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -118,25 +119,41 @@ function shutdown(signal) {
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGINT', () => shutdown('SIGINT'))
 
-// Daily investment snapshot — runs every 5 min in dev/testing, change to '0 22 * * *' for production
+// Daily snapshot — runs every 5 min in dev/testing, change to '0 22 * * *' for production
 const CRON_SCHEDULE = process.env.SNAPSHOT_CRON ?? '*/5 * * * *'
 cron.schedule(CRON_SCHEDULE, async () => {
-  console.log('[cron] starting daily investment snapshot')
   const start = Date.now()
   const userIds = await getAllUserIdsWithItems().catch((err) => {
     console.error('[cron] failed to fetch user IDs:', err.message)
     return []
   })
-  let ok = 0, failed = 0
+
+  // Investment snapshots (holdings + portfolio values)
+  console.log('[cron] starting investment snapshot')
+  let invOk = 0, invFailed = 0
   for (const userId of userIds) {
     try {
       await snapshotInvestments(userId)
-      ok++
+      invOk++
     } catch (err) {
       console.error(`[cron] snapshotInvestments failed for user ${userId}:`, err.message)
-      failed++
+      invFailed++
     }
   }
-  console.log(`[cron] investment snapshot done — ${ok} ok, ${failed} failed, ${((Date.now() - start) / 1000).toFixed(1)}s`)
+  console.log(`[cron] investment snapshot done — ${invOk} ok, ${invFailed} failed`)
+
+  // Balance snapshots (depository/credit/loan accounts)
+  console.log('[cron] starting balance snapshot')
+  let balOk = 0, balFailed = 0
+  for (const userId of userIds) {
+    try {
+      await snapshotBalances(userId)
+      balOk++
+    } catch (err) {
+      console.error(`[cron] snapshotBalances failed for user ${userId}:`, err.message)
+      balFailed++
+    }
+  }
+  console.log(`[cron] balance snapshot done — ${balOk} ok, ${balFailed} failed, ${((Date.now() - start) / 1000).toFixed(1)}s total`)
 })
 

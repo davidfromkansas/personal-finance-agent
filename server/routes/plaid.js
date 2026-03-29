@@ -19,7 +19,7 @@ import {
   getMonthlyCashFlow, getCashFlowTransactions,
   updateTransactionAccountNames,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
-  upsertAccountBalanceSnapshot,
+  upsertAccountBalanceSnapshot, getAccountBalanceHistory, getLatestAccountBalances, getLatestInvestmentAccountBalances,
   getInvestmentTransactionsByAccount,
 } from '../db.js'
 
@@ -1124,7 +1124,7 @@ plaidRouter.get('/investment-history', async (req, res, next) => {
   }
 })
 
-/** GET /api/plaid/net-worth-history — historical net worth via back-calculation */
+/** GET /api/plaid/net-worth-history — historical net worth from daily balance snapshots */
 plaidRouter.get('/net-worth-history', async (req, res, next) => {
   try {
     const VALID_RANGES = ['1W', '1M', '3M', 'YTD', '1Y', 'ALL']
@@ -1138,90 +1138,103 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
     const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
     const todayStr = toDateStr(today)
 
-    let sinceDate
+    let afterDate
     if (range === '1W') {
-      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setDate(d.getDate() - 7); afterDate = toDateStr(d)
     } else if (range === '1M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 1); afterDate = toDateStr(d)
     } else if (range === '3M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 3); afterDate = toDateStr(d)
     } else if (range === 'YTD') {
-      sinceDate = `${today.getFullYear()}-01-01`
+      afterDate = `${today.getFullYear()}-01-01`
     } else if (range === '1Y') {
-      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); afterDate = toDateStr(d)
     } else {
-      const earliest = await getEarliestTransactionDate(req.uid)
-      sinceDate = earliest || toDateStr(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()))
-    }
-
-    const [allAccounts, txns] = await Promise.all([
-      getAllUserAccounts(req.uid),
-      getTransactionsForNetWorth(req.uid, sinceDate),
-    ])
-
-    if (allAccounts.length === 0) {
-      return res.json({ range, current: { assets: 0, debts: 0, net_worth: 0 }, history: [] })
+      afterDate = null // ALL — no lower bound
     }
 
     const ASSET_TYPES = new Set(['depository', 'investment'])
     const DEBT_TYPES = new Set(['credit', 'loan'])
-    const BACK_CALC_TYPES = new Set(['depository', 'credit', 'loan'])
 
-    const txnsByAccount = {}
-    for (const t of txns) {
-      if (!txnsByAccount[t.account_id]) txnsByAccount[t.account_id] = []
-      txnsByAccount[t.account_id].push({ date: t.date.slice(0, 10), amount: parseFloat(t.amount) })
+    // Fetch balance history for depository/credit/loan from snapshots,
+    // and investment account values from portfolio_account_snapshots
+    const [balanceRows, investmentRows] = await Promise.all([
+      getAccountBalanceHistory(req.uid, { afterDate: afterDate ?? undefined }),
+      getLatestInvestmentAccountBalances(req.uid),
+    ])
+
+    if (balanceRows.length === 0 && investmentRows.length === 0) {
+      return res.json({ range, accounts: [], current: { assets: 0, debts: 0, net_worth: 0 }, history: [] })
     }
 
-    const startD = new Date(sinceDate + 'T00:00:00')
-    const endD = new Date(todayStr + 'T00:00:00')
-    const dayStrings = []
-    for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
-      dayStrings.push(toDateStr(d))
-    }
-
-    const accountDailyBalances = {}
-    for (const acc of allAccounts) {
-      const canBackCalc = BACK_CALC_TYPES.has(acc.type)
-      const accTxns = txnsByAccount[acc.account_id] || []
-
-      if (!canBackCalc || accTxns.length === 0) {
-        accountDailyBalances[acc.account_id] = { type: acc.type, balances: {} }
-        for (const day of dayStrings) {
-          accountDailyBalances[acc.account_id].balances[day] = acc.current
-        }
-        continue
-      }
-
-      const txnSumByDate = {}
-      for (const t of accTxns) {
-        txnSumByDate[t.date] = (txnSumByDate[t.date] || 0) + t.amount
-      }
-
-      const balances = {}
-      let cumulativeAfter = 0
-      for (let i = dayStrings.length - 1; i >= 0; i--) {
-        const day = dayStrings[i]
-        balances[day] = acc.current + cumulativeAfter
-        if (txnSumByDate[day]) {
-          cumulativeAfter += txnSumByDate[day]
+    // Build per-account metadata for the dropdown filter
+    const accountMetaMap = {}
+    for (const row of balanceRows) {
+      if (!accountMetaMap[row.account_id]) {
+        accountMetaMap[row.account_id] = {
+          account_id: row.account_id,
+          name: row.account_name,
+          type: row.type,
+          subtype: row.subtype,
+          institution_name: row.institution_name,
         }
       }
-
-      accountDailyBalances[acc.account_id] = { type: acc.type, balances }
+    }
+    for (const row of investmentRows) {
+      if (!accountMetaMap[row.account_id]) {
+        accountMetaMap[row.account_id] = {
+          account_id: row.account_id,
+          name: row.account_name,
+          type: 'investment',
+          subtype: null,
+          institution_name: row.institution_name,
+        }
+      }
     }
 
-    const history = dayStrings.map((day) => {
+    // Group balance history by date then account
+    const byDate = {}
+    for (const row of balanceRows) {
+      const d = row.date instanceof Date ? toDateStr(row.date) : String(row.date).slice(0, 10)
+      if (!byDate[d]) byDate[d] = {}
+      byDate[d][row.account_id] = { current: parseFloat(row.current ?? 0), type: row.type }
+    }
+
+    // Inject latest investment values on every snapshot date (they don't change daily in this table)
+    // Investment values use their latest snapshot value carried forward to all dates
+    const investmentByAccount = {}
+    for (const row of investmentRows) {
+      investmentByAccount[row.account_id] = {
+        current: parseFloat(row.current ?? 0),
+        institution_name: row.institution_name,
+        account_name: row.account_name,
+      }
+    }
+
+    // Build per-account investment history from portfolio_account_snapshots if range requires it
+    // For now, carry the latest value across all dates (investment snapshots not yet joined by date)
+    const allDates = Object.keys(byDate).sort()
+
+    const history = allDates.map((day) => {
       let assets = 0
       let debts = 0
+      const by_account = {}
 
-      for (const acc of allAccounts) {
-        const bal = accountDailyBalances[acc.account_id]?.balances[day] ?? 0
-        if (ASSET_TYPES.has(acc.type)) {
-          assets += bal
-        } else if (DEBT_TYPES.has(acc.type)) {
-          debts += Math.abs(bal)
+      // Non-investment accounts from balance snapshots
+      for (const [accountId, { current, type }] of Object.entries(byDate[day])) {
+        if (ASSET_TYPES.has(type)) {
+          assets += current
+          by_account[accountId] = Math.round(current * 100) / 100
+        } else if (DEBT_TYPES.has(type)) {
+          debts += Math.abs(current)
+          by_account[accountId] = Math.round(-Math.abs(current) * 100) / 100
         }
+      }
+
+      // Investment accounts: carry latest snapshot value
+      for (const [accountId, { current }] of Object.entries(investmentByAccount)) {
+        assets += current
+        by_account[accountId] = Math.round(current * 100) / 100
       }
 
       return {
@@ -1229,18 +1242,25 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
         assets: Math.round(assets * 100) / 100,
         debts: Math.round(debts * 100) / 100,
         net_worth: Math.round((assets - debts) * 100) / 100,
+        by_account,
       }
     })
 
-    const currentAssets = allAccounts
-      .filter((a) => ASSET_TYPES.has(a.type))
-      .reduce((s, a) => s + a.current, 0)
-    const currentDebts = allAccounts
-      .filter((a) => DEBT_TYPES.has(a.type))
-      .reduce((s, a) => s + Math.abs(a.current), 0)
+    // Current totals: latest snapshot row per account
+    const latestBalances = await getLatestAccountBalances(req.uid)
+    let currentAssets = 0, currentDebts = 0
+    for (const acc of latestBalances) {
+      const val = parseFloat(acc.current ?? 0)
+      if (ASSET_TYPES.has(acc.type)) currentAssets += val
+      else if (DEBT_TYPES.has(acc.type)) currentDebts += Math.abs(val)
+    }
+    for (const { current } of Object.values(investmentByAccount)) {
+      currentAssets += current
+    }
 
     res.json({
       range,
+      accounts: Object.values(accountMetaMap),
       current: {
         assets: Math.round(currentAssets * 100) / 100,
         debts: Math.round(currentDebts * 100) / 100,

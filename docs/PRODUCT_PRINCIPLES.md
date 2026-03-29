@@ -66,6 +66,21 @@ Applied examples:
 
 ---
 
+## 7. Codebase and docs are the source of truth — never speculate
+
+When answering questions about how the system behaves, always consult the codebase or documentation first. Never assume or speculate about behavior based on common patterns elsewhere — the actual implementation may differ.
+
+If the answer isn't clear from reading the code or docs, ask rather than guess. A wrong assumption stated confidently is worse than an honest "I need to check."
+
+When code changes, docs and plans must be updated to reflect the new behavior. Stale documentation is treated as a bug.
+
+Applied examples:
+- Do not assume cascade delete behavior — read `db.js` to confirm what actually gets deleted
+- Do not assume Plaid API behavior — check the route handler or Plaid docs
+- If a plan describes system behavior, verify it against the actual code before relying on it
+
+---
+
 ## 5. No catastrophic failures — degrade gracefully
 
 > "In principle we shouldn't have edge cases that result in all-out failure."

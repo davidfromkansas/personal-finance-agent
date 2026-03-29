@@ -4,3 +4,4 @@
  */
 import './spendingAgent.js'
 import './portfolioAgent.js'
+import './accountsAgent.js'

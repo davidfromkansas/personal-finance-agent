@@ -653,11 +653,12 @@ export async function upsertAccountBalanceSnapshot(userId, itemId, institutionNa
 }
 
 /** Get balance history for all accounts belonging to a user, ordered by date ascending. */
-export async function getAccountBalanceHistory(userId, { afterDate, beforeDate } = {}) {
+export async function getAccountBalanceHistory(userId, { afterDate, beforeDate, accountId } = {}) {
   const conditions = ['user_id = $1']
   const params = [userId]
   if (afterDate) { params.push(afterDate); conditions.push(`date >= $${params.length}`) }
   if (beforeDate) { params.push(beforeDate); conditions.push(`date <= $${params.length}`) }
+  if (accountId) { params.push(accountId); conditions.push(`account_id = $${params.length}`) }
   const { rows } = await query(
     `SELECT date, account_id, account_name, institution_name, type, subtype,
             current, available, credit_limit, currency
@@ -667,6 +668,34 @@ export async function getAccountBalanceHistory(userId, { afterDate, beforeDate }
     params
   )
   return rows
+}
+
+/** Returns the most recent balance snapshot per account for a user (depository/credit/loan). */
+export async function getLatestAccountBalances(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (account_id)
+       account_id, account_name, institution_name, type, subtype,
+       current, available, credit_limit, currency, date AS as_of_date
+     FROM account_balance_snapshots
+     WHERE user_id = $1
+     ORDER BY account_id, date DESC`,
+    [userId]
+  )
+  return rows
+}
+
+/** Returns the most recent portfolio value per investment account for a user. */
+export async function getLatestInvestmentAccountBalances(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (account_id)
+       account_id, account_name, institution AS institution_name, value AS current, date AS as_of_date
+     FROM portfolio_account_snapshots
+     INNER JOIN plaid_items pi ON pi.item_id = portfolio_account_snapshots.item_id AND pi.user_id = portfolio_account_snapshots.user_id
+     WHERE portfolio_account_snapshots.user_id = $1
+     ORDER BY account_id, date DESC`,
+    [userId]
+  )
+  return rows.map(r => ({ ...r, type: 'investment', subtype: null, available: null, credit_limit: null, currency: 'USD' }))
 }
 
 export async function getAllUserIdsWithItems() {

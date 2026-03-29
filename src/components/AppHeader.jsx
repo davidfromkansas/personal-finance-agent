@@ -89,6 +89,10 @@ const TOOL_LABELS = {
   get_accounts: 'Loading accounts',
   get_monthly_spending_by_account: 'Fetching account spending',
   display_data: 'Displaying chart',
+  get_current_balances: 'Fetching balances',
+  get_net_worth: 'Calculating net worth',
+  get_balance_history: 'Fetching balance history',
+  get_connected_accounts: 'Loading connected accounts',
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')

@@ -4,6 +4,36 @@ User-facing changes, most recent first.
 
 ---
 
+# Accounts agent, balance snapshots, and trade history — Shipped: March 29, 2026
+
+## AI assistant: Accounts mode
+
+The AI assistant now has an Accounts agent — a specialist for questions about account balances, net worth, credit, and linked institutions. Switch the chat to Accounts mode to ask:
+
+- "What are my current balances?"
+- "What's my net worth?"
+- "How much available credit do I have?"
+- "How has my savings balance changed over the last 3 months?"
+- "Which accounts do I have linked?"
+
+The agent tries to return live balance data (from the most recent account fetch), with a fallback to the latest daily snapshot if needed. Net worth combines live depository/credit/loan balances with investment totals computed from actual holdings — the same source used by the portfolio agent — for maximum accuracy.
+
+In Auto mode, the orchestrator now knows about the accounts agent and will route balance and net worth questions to it automatically.
+
+## Net worth chart: switched to snapshot-based data
+
+The net worth chart on the Accounts page now uses daily balance snapshots instead of back-calculating from transaction history. This gives a more accurate picture — investment account values are now computed from actual holdings rather than being flat-lined at the current balance. The chart shows data from the date snapshots started being collected; new users will see "no data for this range" until the first snapshot runs.
+
+## Daily balance snapshots (cron)
+
+Account balances are now snapshotted nightly by the cron job alongside investment snapshots, ensuring the Accounts agent and net worth chart have consistent daily data even on days when you don't open the app. Balances are also still snapshotted whenever you load your accounts (whichever is more recent wins).
+
+## Investments: trade history in account detail panel
+
+The account detail panel on the Investments page now shows a Trade History section listing recent investment transactions (buys, sells, dividends, etc.) for that account.
+
+---
+
 # AI assistant: multi-agent architecture, charts, and investment analysis — Shipped: March 26, 2026
 
 ## Orchestrator-workers architecture

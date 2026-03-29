@@ -110,7 +110,7 @@ Frontend sends: { message, history, mode: "Auto" | "Transactions" | "Investments
 | `"Transactions"` | Spending agent | Direct, no LLM call |
 | `"Investments"` | Portfolio agent | Direct, no LLM call |
 | `"Auto"` | Orchestrator (Sonnet) decides | Figures out which agent(s) to call directly |
-| `"Accounts"` | Graceful fallback | Not yet built — returns friendly message |
+| `"Accounts"` | Accounts agent | Direct, no LLM call — **planned, not yet built** |
 | Any other future mode | Graceful fallback | Same until agent is built |
 
 ---
@@ -573,6 +573,219 @@ app.post('/api/agent/chat-demo', async (req, res, next) => {
     next(err)
   }
 })
+
+---
+
+## Accounts Agent (Planned)
+
+Handles questions about account balances, net worth, credit utilization, and connected institutions. Fills the gap between the spending agent (transactions) and portfolio agent (investment performance) — it covers the financial snapshot: what you have right now, and how it's changed.
+
+### Scope
+
+| In scope | Out of scope |
+|----------|-------------|
+| Current balances across all account types | Individual transactions (→ spending agent) |
+| Net worth (assets − liabilities) | Investment holdings and performance (→ portfolio agent) |
+| Balance trends over time | Cash flow and spending patterns (→ spending agent) |
+| Available credit and credit utilization | Stock prices and portfolio returns (→ portfolio agent) |
+| Connected institutions and account metadata | |
+
+### Data sources and design decisions
+
+**Two data sources for net worth:**
+- **Depository, credit, loan accounts** — `account_balance_snapshots` (written by cron + on user activity)
+- **Investment accounts** — `portfolio_account_snapshots` (written by investment cron, computed from actual holdings per security — more accurate than Plaid's `accountsGet` single total)
+
+Investment accounts are excluded from `get_current_balances` and `get_balance_history` — those tools cover depository/credit/loan only. Investment totals are pulled from `portfolio_account_snapshots` only when computing net worth.
+
+**Live balance path for `get_current_balances`:**
+The agent attempts to return live data by pulling from the in-memory balance cache (5-min TTL, same cache used by the Accounts page). If the cache is stale or unavailable, it falls back to the latest `account_balance_snapshots` row and notes the `as_of_date`. This applies to depository/credit/loan accounts only — investment totals always come from `portfolio_account_snapshots`.
+
+**Balance snapshot strategy:**
+Snapshots are written in two places:
+1. `snapshotBalancesInBackground` in `_callPlaid` — triggered when user loads the Accounts page (live, most accurate for active users)
+2. Cron job (to be added) — nightly coverage for users who don't open the app
+
+The cron balance job covers only items with `transactions` in `products_granted`. Investment-only items are excluded (their values come from the investment cron via `portfolio_account_snapshots`).
+
+Disconnect cleanup is already handled — `deletePlaidItem` in `db.js` deletes `account_balance_snapshots` rows for the disconnected item. Connect is covered automatically since the cron iterates `getPlaidItemsByUserId` which always reflects the current item list.
+
+The `account_balance_snapshots` table has a `UNIQUE (user_id, account_id, date)` constraint, so writing twice on the same day (user visits + cron) upserts in place — no duplicates.
+
+**Net worth chart migration (Option C):**
+The existing `/net-worth-history` endpoint back-calculates historical balances from transactions + current live balance. This approach flat-lines investment accounts (no transactions to walk back through) and diverges from actual balance history. The plan is to migrate the Accounts page net worth chart to use `account_balance_snapshots` + `portfolio_account_snapshots` instead — a single consistent source of truth for both the chart and the agent. Back-calculation may be revisited as a separate project. New users with no snapshot history will see "no data for this range" (same behavior as the portfolio chart today).
+
+**`getAccountBalanceHistory` filter:**
+Add optional `account_id` parameter. Backwards compatible — existing callers omit it and hit the same code path. Follows the same pattern as `getRecentTransactions` optional `accountIds`.
+
+### New DB functions needed
+
+```js
+/** Returns the most recent balance snapshot per non-investment account for a user. */
+export async function getLatestAccountBalances(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (account_id)
+       account_id, account_name, institution_name, type, subtype,
+       current, available, credit_limit, currency, date AS as_of_date
+     FROM account_balance_snapshots
+     WHERE user_id = $1
+     ORDER BY account_id, date DESC`,
+    [userId]
+  )
+  return rows
+}
+
+/** Returns the most recent portfolio value per investment account for a user. */
+export async function getLatestInvestmentAccountBalances(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (account_id)
+       account_id, account_name, institution, value AS current, date AS as_of_date
+     FROM portfolio_account_snapshots
+     WHERE user_id = $1
+     ORDER BY account_id, date DESC`,
+    [userId]
+  )
+  return rows.map(r => ({ ...r, type: 'investment', subtype: null, available: null, credit_limit: null, currency: 'USD' }))
+}
+```
+
+`getAccountBalanceHistory` also needs an optional `account_id` filter added.
+
+### Tools
+
+```
+get_current_balances
+  Primary tool. Attempts to return live balances using the in-memory cache (5-min TTL).
+  Falls back to latest account_balance_snapshots if cache is unavailable, noting the as_of_date.
+  Covers depository, credit, and loan accounts only. Investment totals come from get_net_worth.
+  Use for: "what are my balances?", "how much credit is available?", resolving account names to IDs.
+  Returns: [{ account_id, account_name, institution_name, type, subtype,
+               current, available, credit_limit, currency, as_of_date, is_live: bool }]
+  - type: "depository" | "credit" | "loan" | "other"
+  - available: usable funds (depository) or remaining credit (credit accounts)
+  - credit_limit: only set for credit accounts; null otherwise
+  - is_live: true if from cache, false if from snapshot fallback
+  - Edge case: returns [] if no data exists yet — direct user to check back tomorrow
+  Input: none
+
+get_net_worth
+  Returns current net worth: depository/credit/loan balances + latest investment account values.
+  Depository/credit/loan: from live cache (same as get_current_balances).
+  Investment accounts: from portfolio_account_snapshots (computed from actual holdings — more accurate).
+  Returns: { net_worth, assets, liabilities, by_account: [{ account_name, institution_name, type, current }] }
+  Use for: "what's my net worth?", "what are my total assets vs debts?"
+  Input: none
+
+get_balance_history
+  Returns daily balance snapshots over a date range for depository/credit/loan accounts.
+  Use for: trends, net worth over time, chart requests.
+  Optionally filter to a single account_id — call get_current_balances first to resolve names.
+  Returns: [{ date, account_id, account_name, institution_name, type, subtype, current, available }]
+  ordered by date ascending.
+  Edge case: returns [] if no snapshot history exists yet (data only goes back to when cron started running).
+  Input: { since_date: "YYYY-MM-DD", account_id?: string }
+
+get_connected_accounts
+  Returns the user's linked Plaid items and which product categories they provide.
+  Use for: "what accounts do I have linked?", "is my Chase account connected?"
+  Returns: [{ institution_name, products_granted: string[], linked_at }]
+  products_granted values: "transactions", "investments"
+  Input: none
+```
+
+### System prompt
+
+````
+You are the accounts analyst for Crumbs Money. You answer questions about the user's account balances, net worth, credit, and linked institutions using your tools.
+
+## Visualizations — read this first
+When the user asks for a chart, graph, or visual trend: fetch the data, then output a visualization block.
+
+Format:
+```visualization
+{"display_type":"line","title":"...","data":[...],"x_key":"...","y_keys":["..."],"y_label":"..."}
+```
+
+- **Account balance over time**: get_balance_history → display_type "line", x_key "date", y_keys ["current"], y_label "$ balance"
+- **Balance breakdown by account**: get_current_balances → display_type "bar", x_key "account_name", y_keys ["current"], y_label "$ balance"
+
+Output the visualization block first, then 2–3 sentences of insight. Do not mention charts or rendering in your prose.
+
+## Your tools
+- **get_current_balances** — live balances for depository, credit, and loan accounts. Use first for any question about current balances or available credit. Also use to resolve account names to IDs before calling get_balance_history.
+- **get_net_worth** — current net worth combining all account types. Use when asked about net worth, total assets, or total liabilities.
+- **get_balance_history** — daily balance snapshots over a date range (depository/credit/loan only). Use when asked how a balance has changed over time.
+- **get_connected_accounts** — linked institutions and what products they provide. Use when asked which accounts are linked or whether a specific bank is connected.
+
+Always call a tool before answering. Never guess or fabricate figures.
+
+## Data conventions
+- Balances from get_current_balances: live data from cache (at most 5 minutes old). If is_live is false, note the as_of_date.
+- Investment account values in get_net_worth: from daily portfolio snapshots (computed from actual holdings), not a live Plaid balance.
+- Net worth: assets (depository + investment) minus liabilities (credit + loan). Always show the breakdown alongside the net figure.
+- Balance history: snapshot-based, captured once daily. Only goes back to when daily snapshots started — if the range returns no data, say so and suggest a shorter range.
+- Credit utilization: current ÷ credit_limit × 100. Note this as a data point only — do not frame as advice.
+- Available balance: for depository = usable funds (may differ from current due to holds). For credit = remaining credit.
+- Foreign currency: do not sum across currencies. Flag each separately.
+- Amounts: format as dollars (e.g. $12,450.00). Percentages as e.g. 24.3%.
+- Date ranges: "this year" = Jan 1 through today. "Last month" = full prior calendar month.
+
+## Format
+- Lead with the direct answer. Add one sentence of context from the user's own data if it adds value.
+- Use markdown bullet points for account lists — never markdown tables.
+- Keep responses concise. Every sentence should add value.
+- Tone: neutral, direct, no jargon. Do not offer financial advice or recommendations.
+
+## Account clarification
+When the user refers to a specific institution or account name:
+1. Call get_current_balances to see what's linked.
+2. If exactly one match, proceed.
+3. If multiple matches (e.g. two Chase accounts), ask: "I found a few that could match — which one did you mean?" and list by name. Wait for reply.
+4. If no match, say so clearly.
+
+## Missing data
+- No balance data yet (account just linked or cron hasn't run): "Your account is linked but we haven't captured a balance snapshot yet — this happens once daily. Check back tomorrow."
+- No accounts linked: return dataAvailable: false.
+- Balance history returns empty for a range: "No snapshot history for that period — data only goes back to [earliest date if known]. Try a shorter range."
+
+## Scope
+You only handle account balances, net worth, credit, and connected institutions. If asked about specific transactions or spending patterns, respond:
+"I can't help with that here — switch to the Transactions tab to ask about your spending."
+If asked about investment performance, holdings, or stock prices, respond:
+"I can't help with that here — switch to the Investments tab to ask about your portfolio."
+Do not attempt to answer out-of-scope questions.
+````
+
+### Registration and wiring
+
+```js
+registerAgent({
+  name: 'accounts',
+  description: `Reports on account balances, net worth, credit, and linked institutions.
+Use for questions about: current balances, net worth (assets vs liabilities), available credit,
+credit utilization, which banks are connected, how balances have changed over time.
+Do NOT use for spending/transaction questions or investment performance questions.`,
+  handler: askAccountsAgent,
+})
+```
+
+**Changes to existing files when implementing:**
+
+| File | Change |
+|------|--------|
+| `server/db.js` | Add `getLatestAccountBalances`, `getLatestInvestmentAccountBalances`; add `account_id` filter to `getAccountBalanceHistory` |
+| `server/jobs/snapshotBalances.js` | New file — cron job for nightly balance snapshots (transaction-product items only) |
+| `server/index.js` | Add `snapshotBalances` to cron schedule alongside `snapshotInvestments` |
+| `server/agent/agents/accountsAgent.js` | New file — agent with 4 tools, live cache path, portfolio snapshot join for net worth |
+| `server/agent/agents/index.js` | Add `import './accountsAgent.js'` |
+| `server/agent/chat.js` | Add `Accounts: streamAccountsAgent` to `MODE_TO_AGENT` |
+| `server/agent/agents/orchestrator.js` | Update system prompt: mention accounts agent as third specialist |
+| `server/routes/plaid.js` | Migrate `/net-worth-history` to use `account_balance_snapshots` + `portfolio_account_snapshots` instead of back-calculation |
+| `src/components/AppHeader.jsx` | Add `TOOL_LABELS` for `get_current_balances`, `get_net_worth`, `get_balance_history`, `get_connected_accounts` |
+
+**Update orchestrator system prompt capability boundaries:**
+Replace "You have a spending agent and a portfolio agent" with:
+> "You have a spending agent (transactions and cash flow), a portfolio agent (investment holdings and performance), and an accounts agent (current balances, net worth, and credit). Do not attempt to give financial advice..."
 
 ---
 

@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { useMarketClock } from '../hooks/useMarketClock'
 import { AppHeader } from '../components/AppHeader'
-import { useInvestments, usePortfolioHistory, usePortfolioSnapshot, useTickerHistory, useQuotes, useAccounts } from '../hooks/usePlaidQueries'
+import { useInvestments, usePortfolioHistory, usePortfolioSnapshot, useTickerHistory, useQuotes, useAccounts, useInvestmentTransactions } from '../hooks/usePlaidQueries'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
   LineChart, Line, PieChart, Pie, Cell,
@@ -227,6 +227,8 @@ function AccountDetailPanel({ account, holdings, accountsMeta, onClose }) {
   const accHoldings = (holdings ?? []).filter(h => h.account_id === account?.account_id)
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
 
+  const { data: tradeData, isLoading: tradesLoading } = useInvestmentTransactions(account?.account_id)
+
   const meta = (accountsMeta ?? []).find(a => a.account_id === account?.account_id)
 
   const totalValue = accHoldings.reduce((s, h) => s + (h.value ?? 0), 0)
@@ -344,6 +346,61 @@ function AccountDetailPanel({ account, holdings, accountsMeta, onClose }) {
               <p className="text-[16px] text-[#6a7282]" style={MONO}>No holdings data available</p>
             </div>
           )}
+
+          {/* Trade History */}
+          <div className="border-t border-[#f3f4f6] px-5 py-4">
+            <p className="mb-3 text-[13px] font-bold uppercase tracking-[1px] text-[#101828]" style={MONO}>
+              Trade History
+            </p>
+            {tradesLoading ? (
+              <div className="flex flex-col gap-3">
+                {[0, 1, 2].map(i => (
+                  <div key={i} className="flex flex-col gap-1.5">
+                    <div className="h-3 w-32 animate-pulse rounded bg-[#e5e7eb]" />
+                    <div className="h-3 w-48 animate-pulse rounded bg-[#f3f4f6]" />
+                  </div>
+                ))}
+              </div>
+            ) : (tradeData?.transactions ?? []).length === 0 ? (
+              <p className="text-[13px] text-[#9ca3af]" style={MONO}>No trade history available</p>
+            ) : (
+              <div className="divide-y divide-[#f3f4f6]">
+                {(tradeData.transactions).map((t, i) => (
+                  <div key={i} className="py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          {t.ticker && <span className="text-[12px] font-semibold text-[#101828]" style={MONO}>{t.ticker}</span>}
+                          <span className="rounded px-1 py-0.5 text-[10px] font-medium uppercase tracking-[0.5px]"
+                            style={{
+                              background: t.type === 'buy' ? '#dcfce7' : t.type === 'sell' ? '#fee2e2' : '#f3f4f6',
+                              color: t.type === 'buy' ? '#15803d' : t.type === 'sell' ? '#b91c1c' : '#4a5565',
+                              fontFamily: 'JetBrains Mono,monospace',
+                            }}>
+                            {t.subtype || t.type || '—'}
+                          </span>
+                        </div>
+                        {t.security_name && !t.ticker && (
+                          <p className="mt-0.5 truncate text-[11px] text-[#6a7282]" style={MONO}>{t.security_name}</p>
+                        )}
+                        <p className="mt-0.5 text-[11px] text-[#9ca3af]" style={MONO}>{t.date}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {t.amount != null && (
+                          <p className="text-[12px] font-semibold text-[#101828]" style={MONO}>{fmt(Math.abs(t.amount))}</p>
+                        )}
+                        {t.quantity != null && t.price != null && (
+                          <p className="text-[11px] text-[#9ca3af]" style={MONO}>
+                            {Math.abs(t.quantity).toFixed(4)} @ {fmt(t.price)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>
