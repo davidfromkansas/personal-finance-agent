@@ -21,6 +21,7 @@ import { agentRouter } from './routes/agent.js'
 import { runDemoChat } from './agent/chat.js'
 import { cronRouter } from './routes/cron.js'
 import cliAuthRouter from './routes/cliAuth.js'
+import oauthRouter from './routes/oauth.js'
 import { mcpHandler } from './mcp/server.js'
 import { snapshotInvestments } from './jobs/snapshotInvestments.js'
 import { snapshotBalances } from './jobs/snapshotBalances.js'
@@ -65,6 +66,7 @@ app.use(cors({
 app.post('/api/plaid/webhook', express.raw({ type: 'application/json' }), plaidWebhookHandler)
 
 app.use(express.json())
+app.use(express.urlencoded({ extended: false })) // for OAuth token endpoint (application/x-www-form-urlencoded)
 
 app.get('/health', (req, res) => res.json({ ok: true }))
 
@@ -97,11 +99,41 @@ app.use('/api/plaid', authMiddleware, plaidRouter)
 app.use('/api/agent', authMiddleware, agentRouter)
 app.use('/api/cron', cronRouter)
 app.use('/api/cli-auth', cliAuthRouter)
+app.use('/oauth', oauthRouter)
 app.post('/mcp', authMiddleware, mcpHandler)
 
-// Serve cli-auth.html directly from public/ — works in dev mode without a Vite build
+// OAuth / MCP discovery endpoints (RFC 8414 + MCP spec)
+app.get('/.well-known/oauth-authorization-server', (req, res) => {
+  const proto = req.get('x-forwarded-proto') ?? req.protocol
+  const base = `${proto}://${req.get('host')}`
+  res.json({
+    issuer: base,
+    authorization_endpoint: `${base}/oauth/authorize`,
+    token_endpoint: `${base}/oauth/token`,
+    registration_endpoint: `${base}/oauth/register`,
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code'],
+    code_challenge_methods_supported: ['S256'],
+    token_endpoint_auth_methods_supported: ['none'],
+  })
+})
+
+app.get('/.well-known/oauth-protected-resource', (req, res) => {
+  const proto = req.get('x-forwarded-proto') ?? req.protocol
+  const base = `${proto}://${req.get('host')}`
+  res.json({
+    resource: base,
+    authorization_servers: [base],
+    bearer_methods_supported: ['header'],
+  })
+})
+
+// Serve static auth pages from public/ — works in dev mode without a Vite build
 app.get('/cli-auth.html', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'cli-auth.html'))
+})
+app.get('/oauth-authorize.html', (req, res) => {
+  res.sendFile(path.join(__dirname, '..', 'public', 'oauth-authorize.html'))
 })
 
 const distPath = path.join(__dirname, '..', 'dist')

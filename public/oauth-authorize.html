@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect to Crumbs</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'JetBrains Mono', monospace, system-ui;
+      background: #f8f8f8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: white;
+      border: 1px solid #d1d5dc;
+      border-radius: 14px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+    h1 { font-size: 18px; font-weight: 600; color: #101828; margin-bottom: 8px; }
+    p  { font-size: 13px; color: #6a7282; margin-bottom: 24px; line-height: 1.5; }
+    button {
+      background: #101828;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      width: 100%;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { margin-top: 16px; font-size: 13px; }
+    .success { color: #16a34a; }
+    .error   { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Connect to Crumbs</h1>
+    <p id="subtitle">Sign in with Google to give Claude access to your financial data.</p>
+    <button id="btn" onclick="signIn()">Sign in with Google</button>
+    <p class="status" id="status"></p>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js'
+    import { getAuth, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js'
+
+    const params = new URLSearchParams(window.location.search)
+    const sessionId = params.get('session_id')
+
+    if (!sessionId) {
+      document.getElementById('subtitle').textContent = 'Missing session. Please try connecting again from Claude.'
+      document.getElementById('btn').disabled = true
+    }
+
+    let auth
+
+    async function init() {
+      try {
+        const res = await fetch('/api/cli-auth/firebase-config')
+        if (!res.ok) throw new Error('Could not load config')
+        const config = await res.json()
+        const app = initializeApp(config)
+        auth = getAuth(app)
+      } catch (err) {
+        setStatus('error', 'Failed to load configuration. Please try again.')
+        document.getElementById('btn').disabled = true
+      }
+    }
+
+    window.signIn = async function () {
+      if (!auth) return
+      const btn = document.getElementById('btn')
+      btn.disabled = true
+      setStatus('', 'Signing in...')
+      try {
+        const provider = new GoogleAuthProvider()
+        const result = await signInWithPopup(auth, provider)
+        const firebaseIdToken = await result.user.getIdToken()
+
+        setStatus('', 'Connecting...')
+        const res = await fetch('/oauth/authorize/complete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ firebaseIdToken, sessionId }),
+        })
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          throw new Error(err.error ?? 'Authorization failed')
+        }
+        const { redirect_to } = await res.json()
+
+        setStatus('success', 'Connected! Redirecting back to Claude...')
+        document.getElementById('subtitle').textContent = 'You\'re connected. You can close this tab if it doesn\'t close automatically.'
+        btn.style.display = 'none'
+
+        // Redirect back to Claude.ai with the authorization code
+        window.location.href = redirect_to
+      } catch (err) {
+        console.error(err)
+        setStatus('error', err.message || 'Something went wrong. Please try again.')
+        btn.disabled = false
+      }
+    }
+
+    function setStatus(type, msg) {
+      const el = document.getElementById('status')
+      el.className = 'status ' + type
+      el.textContent = msg
+    }
+
+    init()
+  </script>
+</body>
+</html>

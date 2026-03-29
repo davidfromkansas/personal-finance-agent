@@ -41,12 +41,22 @@ export async function verifyIdToken(idToken) {
   return decoded.uid
 }
 
+// WWW-Authenticate header value for MCP OAuth discovery.
+// Claude.ai and other MCP clients use this to find the OAuth server.
+function wwwAuthenticate(req) {
+  const host = req.get('host')
+  const proto = req.get('x-forwarded-proto') ?? req.protocol
+  const base = `${proto}://${host}`
+  return `Bearer realm="Crumbs", resource_metadata="${base}/.well-known/oauth-protected-resource"`
+}
+
 /** Express middleware: require Authorization: Bearer <token>, set req.uid.
  *  Accepts either a Firebase ID token or a long-lived CLI token (starts with "cli_"). */
 export function authMiddleware(req, res, next) {
   const auth = req.headers.authorization
   const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null
   if (!token) {
+    res.setHeader('WWW-Authenticate', wwwAuthenticate(req))
     return res.status(401).json({ error: 'Missing or invalid Authorization header' })
   }
 
