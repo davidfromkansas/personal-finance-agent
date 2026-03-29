@@ -75,7 +75,11 @@ app.get('/health', (req, res) => res.json({ ok: true }))
 // Temporary request logger — helps debug Claude.ai connector flow
 app.use((req, res, next) => {
   const origin = req.get('origin') ?? req.get('referer') ?? 'no-origin'
-  console.log(`[req] ${req.method} ${req.path} — origin: ${origin}`)
+  const oldEnd = res.end.bind(res)
+  res.end = function (...args) {
+    console.log(`[req] ${req.method} ${req.path} → ${res.statusCode} — origin: ${origin} body: ${JSON.stringify(req.body ?? null)}`)
+    return oldEnd(...args)
+  }
   next()
 })
 
