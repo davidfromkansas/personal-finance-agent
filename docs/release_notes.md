@@ -4,6 +4,37 @@ User-facing changes, most recent first.
 
 ---
 
+# Claude connector and CLI — Shipped: March 29, 2026
+
+## Ask Claude about your finances from anywhere
+
+Crumbs now connects to Claude as an MCP (Model Context Protocol) server. Once connected, you can ask Claude questions about your finances directly in Claude Desktop, Claude.ai (web and mobile), and a new terminal CLI — without opening the Crumbs app.
+
+**Claude Desktop / Claude.ai web + mobile**
+Add Crumbs as a connector in Claude.ai Settings → Connectors. Sign in with the same Google account you use for Crumbs. Claude will have access to all your financial data and can answer questions, build charts, and reason across your accounts in the same conversation window you already use.
+
+**Terminal CLI**
+Install the CLI and run `copilot` to open an interactive session, or `copilot "question"` for a one-off answer. The CLI remembers your login and maintains conversation history within a session so follow-up questions work naturally.
+
+## Available tools
+
+Claude has access to 10 read-only tools scoped to your account:
+
+- **get_accounts** — balances across all linked bank, credit, loan, and investment accounts
+- **get_net_worth** — current net worth snapshot (investments + liquid − liabilities)
+- **get_net_worth_history** — daily portfolio value over time for charting trends
+- **get_spending_summary** — spending by category for any date range
+- **get_transactions** — individual transactions with date, category, and merchant filters
+- **get_cash_flow** — monthly inflows, outflows, and net for up to 24 months
+- **get_recurring_transactions** — upcoming bills and subscriptions detected by Plaid
+- **get_portfolio** — current investment holdings across all brokerage and retirement accounts
+- **get_investment_transactions** — trade history (buys, sells, dividends) for a specific account
+- **ask_question** — delegates complex multi-step questions to the full AI orchestrator
+
+All data is read-only. Claude cannot move money, modify accounts, or take any action.
+
+---
+
 # Accounts agent, balance snapshots, and trade history — Shipped: March 29, 2026
 
 ## AI assistant: Accounts mode
