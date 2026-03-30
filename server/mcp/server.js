@@ -25,10 +25,10 @@ import {
   getLatestPortfolioValue,
   getLatestHoldingsSnapshot,
   getInvestmentTransactionsByAccount,
-  getRecentTransactions,
 } from '../db.js'
 import {
   getAgentSpendingSummary,
+  getAgentTransactions,
   getAgentCashFlow,
 } from '../agent/queries.js'
 import { runChat } from '../agent/chat.js'
@@ -83,20 +83,14 @@ function createServer(userId) {
   // ── get_spending_summary ──────────────────────────────────────────────────
   server.tool(
     'get_spending_summary',
-    'Get spending broken down by category for a given time period (week, month, or year).',
-    { period: z.enum(['week', 'month', 'year']).describe('Time period to summarise') },
-    async ({ period }) => {
-      const now = new Date()
-      const beforeDate = now.toISOString().slice(0, 10)
-      let afterDate
-      if (period === 'week') {
-        const d = new Date(now); d.setDate(d.getDate() - 7); afterDate = d.toISOString().slice(0, 10)
-      } else if (period === 'month') {
-        const d = new Date(now); d.setMonth(d.getMonth() - 1); afterDate = d.toISOString().slice(0, 10)
-      } else {
-        const d = new Date(now); d.setFullYear(d.getFullYear() - 1); afterDate = d.toISOString().slice(0, 10)
-      }
-      const data = await getAgentSpendingSummary(userId, afterDate, beforeDate, null)
+    'Get spending broken down by category for a date range. Prefer this over get_transactions for totals and trends — it aggregates efficiently with no row limits. Supply after_date/before_date for any custom range (e.g. past 5 months).',
+    {
+      after_date:  z.string().describe('Start date YYYY-MM-DD (inclusive)'),
+      before_date: z.string().describe('End date YYYY-MM-DD (inclusive)'),
+      category:    z.string().optional().describe('Filter to a single Plaid category'),
+    },
+    async ({ after_date, before_date, category }) => {
+      const data = await getAgentSpendingSummary(userId, after_date, before_date, category ?? null)
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
     }
   )
@@ -104,20 +98,19 @@ function createServer(userId) {
   // ── get_transactions ──────────────────────────────────────────────────────
   server.tool(
     'get_transactions',
-    'Get recent transactions with optional date range, category, and keyword filters.',
+    'Get transactions for a date range. Always supply after_date and before_date to avoid unbounded queries. Use get_spending_summary for category totals instead of fetching all transactions.',
     {
-      after_date:  z.string().optional().describe('Start date YYYY-MM-DD (inclusive)'),
-      before_date: z.string().optional().describe('End date YYYY-MM-DD (inclusive)'),
-      categories:  z.array(z.string()).optional().describe('Plaid personal finance categories to filter by'),
-      search:      z.string().optional().describe('Keyword to search merchant names'),
-      limit:       z.number().int().min(1).max(200).optional().describe('Max results (default 50)'),
+      after_date:   z.string().describe('Start date YYYY-MM-DD (inclusive) — required'),
+      before_date:  z.string().describe('End date YYYY-MM-DD (inclusive) — required'),
+      category:     z.string().optional().describe('Plaid personal finance category to filter by'),
+      spending_only: z.boolean().optional().describe('Exclude income and transfers (default false)'),
     },
-    async ({ after_date, before_date, categories, search, limit }) => {
-      const { transactions } = await getRecentTransactions(userId, limit ?? 50, {
+    async ({ after_date, before_date, category, spending_only }) => {
+      const transactions = await getAgentTransactions(userId, {
         afterDate: after_date,
         beforeDate: before_date,
-        categories: categories ?? [],
-        search,
+        category,
+        spendingOnly: spending_only ?? false,
       })
       return { content: [{ type: 'text', text: JSON.stringify({ transactions }, null, 2) }] }
     }
