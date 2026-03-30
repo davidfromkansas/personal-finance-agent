@@ -97,6 +97,7 @@ try {
 console.log('Crumbs — ask anything about your finances. Type "exit" to quit.\n')
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+const history = [] // conversation history for the current session
 
 rl.on('line', async (line) => {
   const input = line.trim()
@@ -109,8 +110,10 @@ rl.on('line', async (line) => {
 
   rl.pause()
   try {
-    const answer = await askQuestion(client, input)
+    const answer = await askQuestion(client, input, history)
     console.log('\n' + answer + '\n')
+    history.push({ role: 'user', content: input })
+    history.push({ role: 'assistant', content: answer })
   } catch (err) {
     console.error('Error:', err.message)
   }

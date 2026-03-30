@@ -20,7 +20,9 @@ export async function createMcpClient(serverUrl, token) {
   return client
 }
 
-export async function askQuestion(client, question) {
-  const result = await client.callTool({ name: 'ask_question', arguments: { question } })
+export async function askQuestion(client, question, history = []) {
+  const args = { question }
+  if (history.length > 0) args.conversation_history = history.slice(-6)
+  const result = await client.callTool({ name: 'ask_question', arguments: args })
   return result.content?.[0]?.text ?? ''
 }
