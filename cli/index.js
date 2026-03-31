@@ -340,6 +340,31 @@ async function connectAccount(serverUrl) {
   })
 }
 
+async function printConnectionStatus(serverUrl, token) {
+  try {
+    const res = await fetch(new URL('/api/plaid/connections', serverUrl), {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const { connections } = await res.json()
+    if (!connections?.length) {
+      console.log(yellow('⚠  No accounts connected.'))
+      console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
+      return
+    }
+    hasConnectedAccounts = true
+    console.log(`${green('✓')} ${bold(String(connections.length))} connection${connections.length !== 1 ? 's' : ''} linked — data is syncing in the background.\n`)
+    for (const c of connections) {
+      console.log(`  ${bold(c.institution_name ?? 'Unknown')} ${dim(`· ${c.accounts?.length ?? 0} account${(c.accounts?.length ?? 0) !== 1 ? 's' : ''}${c.last_synced_at ? ` · synced ${new Date(c.last_synced_at).toLocaleTimeString()}` : ''}`)  }`)
+    }
+    console.log()
+  } catch {
+    // Fall back silently — don't block the user
+    hasConnectedAccounts = true
+    console.log(green('✓ Account connected! Type accounts to see your balances.\n'))
+  }
+}
+
 async function printAccountStatus(client) {
   try {
     const raw = await callTool(client, 'get_accounts', {})
@@ -570,8 +595,7 @@ rl.on('line', async (line) => {
     stopAbacusAnim()
     const success = await connectAccount(serverUrl)
     if (success) {
-      await new Promise(r => setTimeout(r, 2000)) // wait for initial sync
-      await printAccountStatus(client)
+      await printConnectionStatus(serverUrl, config.token)
     }
     startAbacusAnim()
     rl.prompt()
