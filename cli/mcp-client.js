@@ -35,7 +35,7 @@ export async function createMcpClient(serverUrl, token) {
  * Calls onAgentStart/onAgentDone in real-time as orchestrator sub-agents fire.
  * Returns the full answer text when complete.
  */
-export async function askQuestion(serverUrl, token, question, history = [], { onAgentStart, onAgentDone, onToolCall } = {}) {
+export async function askQuestion(serverUrl, token, question, history = [], { onAgentStart, onAgentDone, onToolCall, signal } = {}) {
   const url = new URL('/api/agent/chat', serverUrl)
   const res = await fetch(url, {
     method: 'POST',
@@ -44,6 +44,7 @@ export async function askQuestion(serverUrl, token, question, history = [], { on
       'Authorization': `Bearer ${token}`,
     },
     body: JSON.stringify({ message: question, history: history.slice(-6), mode: 'Auto' }),
+    signal,
   })
 
   if (!res.ok) {

@@ -86,7 +86,7 @@ function createActivityDisplay() {
     }
     if (activities.length) lines.push('')
     const f = SPINNER_FRAMES[frame % SPINNER_FRAMES.length]
-    lines.push(`${cyan(f)} ${dim(spinnerLabel + '...')}`)
+    lines.push(`${cyan(f)} ${dim(spinnerLabel + '...')}  ${dim('(esc to interrupt)')}`)
     frame++
     process.stdout.write(lines.join('\n'))
     renderedLines = lines.length
@@ -579,45 +579,75 @@ const SLASH_COMMANDS = [
 ]
 
 let slashMenuVisible = false
+let slashMenuIndex = 0
+let slashMenuMatches = []
 
 function hideSlashMenu() {
   if (!slashMenuVisible) return
-  _origWrite('\x1b7')    // save cursor at prompt
-  _origWrite('\x1b[1B')  // move down 1 into menu area
-  _origWrite('\x1b[J')   // clear everything below
-  _origWrite('\x1b8')    // restore cursor to prompt
+  _origWrite('\r\x1b[1B\x1b[J\x1b[1A') // col0 → down1 → clearEnd → up1
   rl._refreshLine?.()
   slashMenuVisible = false
-  slashMenuLines = 0
 }
 
-function showSlashMenu(line) {
-  const matches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(line))
+function showSlashMenu(line, selectedIndex = 0) {
+  const matches = line ? SLASH_COMMANDS.filter(c => c.cmd.startsWith(line)) : SLASH_COMMANDS
+  slashMenuMatches = matches
   hideSlashMenu()
   if (matches.length === 0) return
 
   const maxCmd = Math.max(...matches.map(m => m.cmd.length))
-  const rows = matches.map(m => {
-    const typed = line.length
-    const cmdHighlighted = cyan(m.cmd.slice(0, typed)) + m.cmd.slice(typed)
-    return `  ${cmdHighlighted.padEnd(maxCmd + (cyan('').length * 2) + 2)}  ${dim(m.desc)}`
+  const rows = matches.map((m, i) => {
+    const isSelected = i === selectedIndex
+    const cmd  = isSelected ? bold(cyan(m.cmd.padEnd(maxCmd + 2))) : dim(m.cmd.padEnd(maxCmd + 2))
+    const desc = isSelected ? bold(cyan(m.desc))                   : dim(m.desc)
+    return `  ${cmd}  ${desc}`
   })
 
-  _origWrite('\x1b7')                       // save cursor
-  _origWrite('\n' + rows.join('\n'))
-  _origWrite('\x1b8')                       // restore cursor
-  rl._refreshLine?.()
+  const n = rows.length
+  _origWrite('\n' + rows.join('\n'))  // render menu below prompt
+  _origWrite(`\x1b[${n}A\r`)         // move cursor back up to prompt line col0
   slashMenuVisible = true
 }
 
+// Prepend so this runs BEFORE readline — cursor still on prompt line when we act.
+process.stdin.prependListener('keypress', (_str, key) => {
+  if (!slashMenuVisible) return
+
+  if (key?.name === 'escape') {
+    hideSlashMenu()
+    startAbacusAnim()
+    return
+  }
+
+  if (key?.name === 'up' || key?.name === 'down') {
+    // Prevent readline from using arrow keys for history while menu is open
+    const dir = key.name === 'up' ? -1 : 1
+    slashMenuIndex = (slashMenuIndex + dir + slashMenuMatches.length) % slashMenuMatches.length
+    showSlashMenu(rl.line ?? '', slashMenuIndex)
+    return
+  }
+
+  if (key?.name === 'return') {
+    const selected = slashMenuMatches[slashMenuIndex]
+    hideSlashMenu()
+    if (selected) {
+      // Clear current input and write the selected command (without /)
+      rl.write(null, { ctrl: true, name: 'u' })  // clear line
+      rl.write(selected.cmd.slice(1))             // write command without /
+      rl.write(null, { ctrl: false, name: 'return' }) // submit
+    }
+  }
+})
+
 process.stdin.on('keypress', () => {
-  // Read rl.line after readline has updated its buffer
   setImmediate(() => {
-    if (currentDisplay) return  // query in progress — ignore
+    if (currentDisplay) return
     const line = rl.line ?? ''
     if (line.startsWith('/')) {
+      slashMenuMatches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(line))
+      slashMenuIndex = 0
       stopAbacusAnim()
-      showSlashMenu(line)
+      showSlashMenu(line, 0)
     } else {
       if (slashMenuVisible) {
         hideSlashMenu()
@@ -701,12 +731,23 @@ rl.on('line', async (line) => {
   currentDisplay = createActivityDisplay()
   currentDisplay.start()
   addLines(1) // start() writes \n
+  const abortController = new AbortController()
+  let interrupted = false
+  const onEscKey = (_ch, key) => {
+    if (key?.name === 'escape' && currentDisplay) {
+      interrupted = true
+      abortController.abort()
+    }
+  }
+  process.stdin.on('keypress', onEscKey)
   try {
     const answer = await askQuestion(serverUrl, config.token, input, history, {
       onAgentStart: (agent, question) => currentDisplay?.agentStart(agent, question),
       onAgentDone:  (agent, toolCount, duration) => currentDisplay?.agentDone(agent, toolCount, duration),
       onToolCall:   (agent, tool) => currentDisplay?.toolCall(agent, tool),
+      signal: abortController.signal,
     })
+    process.stdin.removeListener('keypress', onEscKey)
     const activities = currentDisplay.stop()
     currentDisplay = null
     if (activities.length) {
@@ -727,10 +768,16 @@ rl.on('line', async (line) => {
     history.push({ role: 'user', content: input })
     history.push({ role: 'assistant', content: answer })
   } catch (err) {
+    process.stdin.removeListener('keypress', onEscKey)
     currentDisplay?.stop()
     currentDisplay = null
-    console.log(red('Error: ' + err.message))
-    addLines(1)
+    if (interrupted) {
+      console.log(dim('Interrupted.\n'))
+      addLines(2)
+    } else {
+      console.log(red('Error: ' + err.message))
+      addLines(1)
+    }
   }
   startAbacusAnim()
   rl.resume()
