@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect Account — Abacus</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'JetBrains Mono', monospace, system-ui;
+      background: #f8f8f8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: white;
+      border: 1px solid #d1d5dc;
+      border-radius: 14px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+    }
+    h1 { font-size: 18px; font-weight: 600; color: #101828; margin-bottom: 8px; }
+    p  { font-size: 13px; color: #6a7282; margin-bottom: 24px; line-height: 1.5; }
+    button {
+      background: #101828;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-size: 14px;
+      font-family: inherit;
+      cursor: pointer;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary {
+      background: transparent;
+      color: #6a7282;
+      border: 1px solid #d1d5dc;
+    }
+    .status { margin-top: 16px; font-size: 13px; }
+    .success { color: #16a34a; }
+    .error   { color: #dc2626; }
+  </style>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+</head>
+<body>
+  <div class="card">
+    <h1>Connect a bank account</h1>
+    <p id="subtitle">Sign in to link your bank or investment account to Abacus.</p>
+    <button id="btn" onclick="start()">Sign in with Google</button>
+    <p class="status" id="status"></p>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js'
+    import { getAuth, signInWithPopup, signOut, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js'
+
+    const params = new URLSearchParams(window.location.search)
+    const port = params.get('port')
+    const mode = params.get('mode') // 'investments' or undefined
+
+    if (!port) {
+      document.getElementById('subtitle').textContent = 'Missing port parameter. Please run `abacus connect` again.'
+      document.getElementById('btn').disabled = true
+    }
+
+    let auth, idToken
+
+    async function init() {
+      try {
+        const res = await fetch('/api/cli-auth/firebase-config')
+        if (!res.ok) throw new Error('Could not load config')
+        const config = await res.json()
+        const app = initializeApp(config)
+        auth = getAuth(app)
+      } catch (err) {
+        setStatus('error', 'Failed to load configuration. Please try again.')
+        document.getElementById('btn').disabled = true
+      }
+    }
+
+    window.start = async function () {
+      if (!auth) return
+      const btn = document.getElementById('btn')
+      btn.disabled = true
+      setStatus('', 'Signing in...')
+      try {
+        await signOut(auth)
+        const provider = new GoogleAuthProvider()
+        provider.setCustomParameters({ prompt: 'select_account' })
+        const result = await signInWithPopup(auth, provider)
+        idToken = await result.user.getIdToken()
+        await openPlaidLink()
+      } catch (err) {
+        console.error(err)
+        setStatus('error', 'Sign-in failed. Please try again.')
+        btn.disabled = false
+      }
+    }
+
+    async function openPlaidLink() {
+      setStatus('', 'Opening Plaid...')
+      try {
+        const body = mode === 'investments' ? { link_mode: 'investments' } : {}
+        const res = await fetch('/api/plaid/link-token', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${idToken}`,
+          },
+          body: JSON.stringify(body),
+        })
+        if (!res.ok) throw new Error('Could not get link token')
+        const { link_token } = await res.json()
+
+        const handler = Plaid.create({
+          token: link_token,
+          onSuccess: async (public_token, metadata) => {
+            setStatus('', 'Connecting account...')
+            try {
+              const exRes = await fetch('/api/plaid/exchange-token', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({
+                  public_token,
+                  institution_name: metadata?.institution?.name ?? null,
+                }),
+              })
+              if (!exRes.ok) throw new Error('Exchange failed')
+
+              // Notify CLI
+              await fetch(`http://localhost:${port}/callback?status=success`).catch(() => {})
+
+              document.getElementById('btn').style.display = 'none'
+              document.getElementById('subtitle').textContent = 'Account connected! Switch back to your terminal.'
+              setStatus('success', '✓ Done — you can close this tab.')
+            } catch (err) {
+              setStatus('error', 'Failed to save connection. Please try again.')
+              document.getElementById('btn').disabled = false
+            }
+          },
+          onExit: (err) => {
+            if (err) setStatus('error', 'Connection cancelled.')
+            else setStatus('', '')
+            document.getElementById('btn').disabled = false
+          },
+          onEvent: () => {},
+        })
+
+        setStatus('', '')
+        handler.open()
+      } catch (err) {
+        setStatus('error', 'Could not start Plaid. Please try again.')
+        document.getElementById('btn').disabled = false
+      }
+    }
+
+    function setStatus(type, msg) {
+      const el = document.getElementById('status')
+      el.className = 'status ' + type
+      el.textContent = msg
+    }
+
+    init()
+  </script>
+</body>
+</html>

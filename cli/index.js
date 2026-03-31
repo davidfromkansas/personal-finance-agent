@@ -10,6 +10,7 @@
  *   abacus logout --all        Delete local token + revoke all tokens server-side
  */
 import readline from 'readline'
+import http from 'http'
 import { readConfig, deleteConfig, getServerUrl } from './config.js'
 import { login } from './auth.js'
 import { createMcpClient, askQuestion, callTool } from './mcp-client.js'
@@ -235,6 +236,7 @@ function stopAbacusAnim() {
 const HELP_TEXT = `
 ${bold('Commands')}
   ${cyan('help')}           Show this message
+  ${cyan('connect')}        Link a bank or investment account
   ${cyan('accounts')}       Show all connected accounts and balances
   ${cyan('exit')} / ${cyan('quit')}   Exit the CLI
   ${cyan('logout')}         Log out and delete saved credentials
@@ -276,7 +278,67 @@ function formatBalance(amount, type) {
   return (type === 'credit' || type === 'loan') ? red(formatted) : formatted
 }
 
-let hasConnectedAccounts = true // optimistic; set to false if get_accounts returns empty
+let hasConnectedAccounts = false // pessimistic; set to true once get_accounts confirms accounts exist
+
+async function connectAccount(serverUrl) {
+  const port = Math.floor(Math.random() * (65535 - 3000) + 3000)
+  const connectUrl = `${serverUrl}/api/cli-auth/connect?port=${port}`
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      server.close()
+      console.log(yellow('\n⚠  Connection timed out. Run `connect` to try again.\n'))
+      resolve(false)
+    }, 300_000)
+
+    const onSigint = () => {
+      clearTimeout(timer)
+      server.close()
+      console.log('\nCancelled.')
+      process.exit(0)
+    }
+    process.once('SIGINT', onSigint)
+
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url, `http://localhost:${port}`)
+      if (url.pathname !== '/callback') { res.writeHead(404); res.end(); return }
+
+      res.writeHead(200, { 'Access-Control-Allow-Origin': '*' })
+      res.end('OK')
+
+      clearTimeout(timer)
+      process.removeListener('SIGINT', onSigint)
+      server.close()
+
+      const status = url.searchParams.get('status')
+      if (status === 'success') {
+        console.log(green('\n✓ Account connected! Refreshing...\n'))
+        resolve(true)
+      } else {
+        console.log(yellow('\n⚠  Connection failed. Run `connect` to try again.\n'))
+        resolve(false)
+      }
+    })
+
+    server.listen(port, '127.0.0.1', async () => {
+      console.log(dim('Opening browser to connect your account...'))
+      console.log(dim('Press Ctrl+C to cancel.\n'))
+      try {
+        const { default: open } = await import('open')
+        await open(connectUrl)
+      } catch {
+        console.log(`Could not open browser automatically. Visit:\n  ${connectUrl}\n`)
+      }
+    })
+
+    server.on('error', (err) => {
+      clearTimeout(timer)
+      process.removeListener('SIGINT', onSigint)
+      console.log(red('Error: ' + err.message))
+      resolve(false)
+    })
+  })
+}
 
 async function printAccountStatus(client) {
   try {
@@ -293,8 +355,8 @@ async function printAccountStatus(client) {
     ]
     if (all.length === 0) {
       hasConnectedAccounts = false
-      console.log(yellow('⚠  No accounts connected.\n'))
-      console.log(dim('   Link your first account at ') + bold('https://getabacus.xyz') + dim(' to get started.\n'))
+      console.log(yellow('⚠  No accounts connected.'))
+      console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
       return
     }
     hasConnectedAccounts = true
@@ -314,7 +376,9 @@ async function printAccountStatus(client) {
     console.log(bar('└', '┴', '┘'))
     console.log()
   } catch {
-    // Non-blocking — skip silently if it fails
+    hasConnectedAccounts = false
+    console.log(yellow('⚠  No accounts connected.'))
+    console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
   }
 }
 
@@ -494,9 +558,20 @@ rl.on('line', async (line) => {
     process.exit(0)
   }
 
-  if (input === 'accounts' || input === 'connect') {
+  if (input === 'accounts') {
     stopAbacusAnim()
     await printAccountStatus(client)
+    startAbacusAnim()
+    rl.prompt()
+    return
+  }
+
+  if (input === 'connect') {
+    stopAbacusAnim()
+    const success = await connectAccount(serverUrl)
+    if (success) {
+      await printAccountStatus(client)
+    }
     startAbacusAnim()
     rl.prompt()
     return
@@ -515,7 +590,7 @@ rl.on('line', async (line) => {
 
   if (!hasConnectedAccounts) {
     console.log(yellow('⚠  No accounts connected yet.'))
-    console.log(dim('   Link your first account at ') + bold('https://getabacus.xyz') + dim(' then come back.\n'))
+    console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
     startAbacusAnim()
     rl.prompt()
     return

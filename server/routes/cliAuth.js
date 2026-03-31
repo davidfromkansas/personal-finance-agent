@@ -25,6 +25,16 @@ router.get('/start', (req, res) => {
   res.redirect(`/cli-auth.html?port=${port}`)
 })
 
+/** Redirect browser to the account connection page */
+router.get('/connect', (req, res) => {
+  const port = parseInt(req.query.port, 10)
+  if (!port || port < 1024 || port > 65535) {
+    return res.status(400).send('Invalid port')
+  }
+  const mode = req.query.mode ? `&mode=${encodeURIComponent(req.query.mode)}` : ''
+  res.redirect(`/cli-connect.html?port=${port}${mode}`)
+})
+
 /** Public Firebase client config — safe to expose (these are not secrets) */
 router.get('/firebase-config', (req, res) => {
   const config = {

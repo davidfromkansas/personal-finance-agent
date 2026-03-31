@@ -33,6 +33,14 @@ export async function login() {
       reject(new Error('Login timed out. Please run `abacus login` and try again.'))
     }, TIMEOUT_MS)
 
+    const onSigint = () => {
+      clearTimeout(timer)
+      server.close()
+      console.log('\nLogin cancelled.')
+      process.exit(0)
+    }
+    process.once('SIGINT', onSigint)
+
     const server = http.createServer((req, res) => {
       const url = new URL(req.url, `http://localhost:${port}`)
       if (url.pathname !== '/callback') {
@@ -51,6 +59,7 @@ export async function login() {
       res.end('OK')
 
       clearTimeout(timer)
+      process.removeListener('SIGINT', onSigint)
       server.close()
 
       writeConfig({ token, serverUrl })
@@ -68,6 +77,7 @@ export async function login() {
 
     server.on('error', (err) => {
       clearTimeout(timer)
+      process.removeListener('SIGINT', onSigint)
       reject(err)
     })
   })
