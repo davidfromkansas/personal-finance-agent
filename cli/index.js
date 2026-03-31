@@ -313,11 +313,11 @@ async function connectAccount(serverUrl) {
       const status = url.searchParams.get('status')
       if (status === 'success') {
         console.log(green('\n✓ Account connected! Refreshing...\n'))
-        addLines(3)
+        addLines(3) // leading \n + message + trailing \n
         resolve(true)
       } else {
         console.log(yellow('\n⚠  Connection failed. Run `connect` to try again.\n'))
-        addLines(3)
+        addLines(3) // leading \n + message + trailing \n
         resolve(false)
       }
     })
@@ -385,9 +385,15 @@ async function printAccountStatus(client) {
       ...investment.map(a => ({ name: a.account_name ?? a.name, institution: a.institution_name ?? '—', type: 'investment', balance: formatBalance(a.current, 'investment') })),
     ]
     if (all.length === 0) {
-      hasConnectedAccounts = false
-      console.log(yellow('⚠  No accounts connected.'))
-      console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
+      // Only reset flag on startup (when it's still false) — never after accounts have been confirmed
+      if (!hasConnectedAccounts) {
+        console.log(yellow('⚠  No accounts connected.'))
+        console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
+        addLines(3)
+      } else {
+        console.log(dim('Accounts are still syncing — try again in a moment.\n'))
+        addLines(2)
+      }
       return
     }
     hasConnectedAccounts = true
@@ -406,10 +412,14 @@ async function printAccountStatus(client) {
     rows.forEach(r => console.log(rowLine(r, false)))
     console.log(bar('└', '┴', '┘'))
     console.log()
+    // header("\n" counts as 2) + 4 table border/header rows + data rows + trailing blank
+    addLines(2 + 4 + rows.length + 1)
   } catch {
-    hasConnectedAccounts = false
-    console.log(yellow('⚠  No accounts connected.'))
-    console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
+    if (!hasConnectedAccounts) {
+      console.log(yellow('⚠  No accounts connected.'))
+      console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
+      addLines(3)
+    }
   }
 }
 
@@ -569,13 +579,13 @@ const SLASH_COMMANDS = [
 ]
 
 let slashMenuVisible = false
-let slashMenuLines = 0
 
 function hideSlashMenu() {
   if (!slashMenuVisible) return
-  _origWrite('\x1b7')                          // save cursor
-  _origWrite(`\n\x1b[${slashMenuLines}A\x1b[J`) // move up into menu, clear to end
-  _origWrite('\x1b8')                          // restore cursor
+  _origWrite('\x1b7')    // save cursor at prompt
+  _origWrite('\x1b[1B')  // move down 1 into menu area
+  _origWrite('\x1b[J')   // clear everything below
+  _origWrite('\x1b8')    // restore cursor to prompt
   rl._refreshLine?.()
   slashMenuVisible = false
   slashMenuLines = 0
@@ -598,7 +608,6 @@ function showSlashMenu(line) {
   _origWrite('\x1b8')                       // restore cursor
   rl._refreshLine?.()
   slashMenuVisible = true
-  slashMenuLines = rows.length
 }
 
 process.stdin.on('keypress', () => {
