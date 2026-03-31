@@ -4,6 +4,7 @@ import {
 } from 'recharts'
 import { useInvestments, useAccounts, usePortfolioHistory, useQuotes, useTickerHistory } from '../hooks/usePlaidQueries'
 import { useMarketClock } from '../hooks/useMarketClock'
+import { usePlaidLinkContext } from '../context/PlaidLinkContext'
 
 
 const RANGES = [
@@ -166,6 +167,7 @@ function MoverCard({ quote }) {
 
 export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, ref) {
   const { isOpen } = useMarketClock()
+  const { openLink, linkLoading } = usePlaidLinkContext()
   const { data: investmentsData, isLoading: holdingsLoading, refetch: refetchInvestments } = useInvestments()
   const { data: accountsData, refetch: refetchAccounts } = useAccounts()
   const holdings = investmentsData?.holdings ?? []
@@ -498,10 +500,22 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
           <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
         </div>
       ) : !hasInvestmentData ? (
-        <div className="flex h-20 items-center justify-center px-6">
+        <div className="flex flex-col items-center justify-center gap-3 px-6 py-6">
           <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             Link an investment account to see your portfolio
           </span>
+          <button
+            type="button"
+            onClick={() => openLink('investments')}
+            disabled={linkLoading}
+            className="flex items-center gap-1.5 rounded-[8px] bg-[#111113] px-3.5 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-50"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            {linkLoading ? 'Opening…' : 'Connect investment account'}
+          </button>
         </div>
       ) : accounts.length === 0 ? null : (
         <>

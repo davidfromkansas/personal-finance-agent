@@ -19,10 +19,10 @@ export function PrivacyPolicyPage() {
         <div className="space-y-10 text-[15px] leading-relaxed text-gray-800">
           <section>
             <h2 className="text-xl font-medium text-black mb-3">
-              What is Crumbs Money?
+              What is Abacus?
             </h2>
             <p>
-              Crumbs Money is a read-only personal finance dashboard that lets
+              Abacus is a read-only personal finance dashboard that lets
               you view your bank accounts, credit cards, investments, and
               transactions in one place. We use{' '}
               <a
@@ -87,7 +87,7 @@ export function PrivacyPolicyPage() {
             </h2>
             <p>
               Your financial data is used for one purpose:{' '}
-              <strong>displaying it back to you</strong> in the Crumbs Money
+              <strong>displaying it back to you</strong> in the Abacus
               dashboard. We do not use your data for analytics, profiling,
               advertising, or model training. We do not sell or share your
               personal or financial data with any third party for marketing

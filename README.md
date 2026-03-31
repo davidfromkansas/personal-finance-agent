@@ -1,4 +1,4 @@
-# Crumbs Money
+# Abacus
 
 A personal finance dashboard that connects to your banks and investment accounts via Plaid. You can see spending, net worth, and portfolio in one place. Stack: React, Express, Firebase Auth, Postgres.
 
@@ -80,6 +80,110 @@ DB is Postgres with hand-written SQL in `server/db.js`; no ORM.
 ## Learnings
 
 **Credit card payments and spending** — Paying your credit card is moving money, not new spending. Plaid usually categorizes the checking-side payment as `TRANSFER_OUT` and the card-side credit as `TRANSFER_IN`; sometimes the payment is `LOAN_PAYMENTS`. Our spending logic excludes those categories (`NON_SPENDING_CATEGORIES` in `server/db.js`), so credit card payments do not inflate spending. If a payment ever showed up in spending, we’d add that category to the exclude list.
+
+---
+
+# Abacus MCP
+
+## What is Abacus MCP?
+
+Abacus MCP is a [Model Context Protocol](https://modelcontextprotocol.io) server that gives AI assistants like Claude direct, read-only access to your personal financial data. Instead of copying and pasting bank statements or manually describing your finances, you can ask Claude natural language questions and get precise answers drawn from your actual accounts, transactions, and investments in real time.
+
+Once connected, Claude can answer questions about your spending, net worth, portfolio performance, recurring bills, and cash flow — the same data powering the Abacus dashboard, available directly in your AI conversations.
+
+All data access is scoped to your account and read-only. Nothing is ever written to your accounts.
+
+---
+
+## Example Use Cases
+
+**Spending**
+- "How much did I spend on food and dining last month?"
+- "What are my top 5 spending categories this year?"
+- "Show me every transaction over $200 in March"
+- "How does my spending this month compare to last month?"
+- "How much have I spent on Uber in the past 3 months?"
+
+**Investments & Portfolio**
+- "What stocks do I currently own and how much is each position worth?"
+- "What is my largest holding?"
+- "How is my portfolio allocated across asset classes?"
+- "Show me my recent trades in my Fidelity account"
+- "How much dividend income did I receive this year?"
+
+**Net Worth**
+- "What is my current net worth?"
+- "How has my net worth changed over the past year?"
+- "What's the breakdown between my investments, cash, and debt?"
+- "Am I worth more or less than I was 6 months ago?"
+
+**Complex Questions**
+- "What is my savings rate over the past 6 months?"
+- "How much do I owe in total across all my credit cards and loans?"
+- "What subscriptions am I paying for that I might want to cancel?"
+- "If I'm spending at this pace, how long until I hit $100k saved?"
+- "What are my biggest recurring expenses and are any unusually high this month?"
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+1. **An Abacus account** — Sign up at [abacus-money.com](https://abacus-money.com) using Google sign-in.
+2. **Linked accounts** — Connect at least one bank, credit card, or investment account via Plaid from the dashboard. This is required before any MCP tools will return data.
+
+### Connect via Claude.ai (web or mobile)
+
+1. In Claude.ai, go to **Settings → Integrations → Add custom integration**
+2. Enter the MCP server URL: `https://personal-finance-agent-production.up.railway.app/mcp`
+3. Claude will redirect you to sign in with Google — use the same account as your Abacus account
+4. Once authorized, your financial tools will be available in any Claude.ai conversation
+
+### Connect via Claude Desktop
+
+1. Install [Claude Desktop](https://claude.ai/download)
+2. Install the MCP bridge: `npm install -g mcp-remote`
+3. Get your access token by running `copilot login` (CLI) or from your Abacus account settings
+4. Edit your Claude Desktop config at `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "abacus": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "https://personal-finance-agent-production.up.railway.app/mcp",
+        "--header",
+        "Authorization:Bearer YOUR_TOKEN_HERE"
+      ]
+    }
+  }
+}
+```
+
+5. Restart Claude Desktop — a hammer icon will appear in the chat input confirming the tools are loaded
+
+---
+
+## Available Tools
+
+The MCP server (mounted at `/mcp`) exposes financial data as tools for Claude Desktop, Claude.ai, and the CLI. All tools are read-only and scoped to the authenticated user.
+
+| Tool Name | Description | Data Used |
+|---|---|---|
+| `get_started` | Returns a guide explaining what financial data is available and example questions to ask. Triggered when a user asks "what can you do?" or seems unsure where to start. | Static — no DB call |
+| `get_accounts` | Returns current balances for all linked accounts — checking, savings, credit cards, loans, and investment accounts. | `account_balances` table (DB snapshot) |
+| `get_net_worth` | Returns current net worth as a single number: investment portfolio value + liquid assets − liabilities. | `account_balances` + `portfolio_snapshots` tables |
+| `get_net_worth_history` | Returns daily investment portfolio value over time, up to 5 years back. Used for charting wealth trends. | `portfolio_history` table |
+| `get_spending_summary` | Returns total spending broken down by category for any date range. Income, transfers, and credit card payments are automatically excluded. | `transactions` table |
+| `get_transactions` | Returns individual transactions for a date range with optional category filter. No row cap — bounded by date range. | `transactions` table |
+| `get_cash_flow` | Returns monthly inflows (income), outflows (spending), and net for each month. | `transactions` table |
+| `get_recurring_transactions` | Returns upcoming recurring bills and subscriptions detected by Plaid (Netflix, rent, utilities, etc.). | Live Plaid API (`transactionsRecurringGet`) |
+| `get_portfolio` | Returns current investment holdings across all linked brokerage, IRA, and 401k accounts — tickers, quantities, prices, values, cost basis. | `holdings` table |
+| `get_investment_transactions` | Returns trade history for a specific investment account — buys, sells, dividends, fees. Requires an `account_id` from `get_accounts`. | `investment_transactions` table |
+| `ask_question` | Delegates to the full AI orchestrator for complex multi-step questions that require combining multiple data sources. | All of the above |
 
 ---
 

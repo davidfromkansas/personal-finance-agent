@@ -1,16 +1,16 @@
 /**
- * Reads and writes CLI config at ~/.copilot/config.json
+ * Reads and writes CLI config at ~/.abacus/config.json
  * Config shape: { token: string, serverUrl: string }
  */
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 
-const CONFIG_DIR = path.join(os.homedir(), '.copilot')
+const CONFIG_DIR = path.join(os.homedir(), '.abacus')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
 
-// Default server URL — override with COPILOT_SERVER_URL env var
-const DEFAULT_SERVER_URL = process.env.COPILOT_SERVER_URL || 'https://personal-finance-agent-production.up.railway.app'
+// Default server URL — override with ABACUS_SERVER_URL env var
+const DEFAULT_SERVER_URL = process.env.ABACUS_SERVER_URL || 'https://personal-finance-agent-production.up.railway.app'
 
 export function readConfig() {
   try {

@@ -47,7 +47,7 @@ function wwwAuthenticate(req) {
   const host = req.get('host')
   const proto = req.get('x-forwarded-proto') ?? req.protocol
   const base = `${proto}://${host}`
-  return `Bearer realm="Crumbs", resource_metadata="${base}/.well-known/oauth-protected-resource"`
+  return `Bearer realm="Abacus", resource_metadata="${base}/.well-known/oauth-protected-resource"`
 }
 
 /** Express middleware: require Authorization: Bearer <token>, set req.uid.

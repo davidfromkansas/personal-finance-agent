@@ -22,7 +22,7 @@ export function TermsOfServicePage() {
               1. Acceptance of terms
             </h2>
             <p>
-              By accessing or using Crumbs Money ("the Service"), you agree to
+              By accessing or using Abacus ("the Service"), you agree to
               be bound by these Terms of Service and our{' '}
               <Link to="/privacy" className="underline">
                 Privacy Policy
@@ -36,7 +36,7 @@ export function TermsOfServicePage() {
               2. Description of service
             </h2>
             <p>
-              Crumbs Money is a read-only personal finance dashboard. The
+              Abacus is a read-only personal finance dashboard. The
               Service allows you to:
             </p>
             <ul className="list-disc pl-5 space-y-2 mt-2">
@@ -91,7 +91,7 @@ export function TermsOfServicePage() {
               5. Not financial advice
             </h2>
             <p>
-              Crumbs Money is an informational tool only. Nothing in the Service
+              Abacus is an informational tool only. Nothing in the Service
               constitutes financial, investment, tax, or legal advice. You
               should consult a qualified professional before making financial
               decisions. We are not responsible for any decisions you make based
@@ -169,7 +169,7 @@ export function TermsOfServicePage() {
               10. Limitation of liability
             </h2>
             <p>
-              To the maximum extent permitted by law, Crumbs Money and its
+              To the maximum extent permitted by law, Abacus and its
               operators shall not be liable for any indirect, incidental,
               special, consequential, or punitive damages, or any loss of
               profits, data, or goodwill, arising from or related to your use of

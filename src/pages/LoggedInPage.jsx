@@ -504,9 +504,9 @@ function ProductBadge({ label }) {
   )
 }
 
-function ConnectionRow({ connection, accounts, onRefresh, onRemove, onReconnect }) {
+function ConnectionRow({ connection, accounts, forceReconnect, onRefresh, onRemove, onReconnect }) {
   const isError = connection.status === 'error'
-  const needsReconnect = isError && connection.error_code === 'ITEM_LOGIN_REQUIRED'
+  const needsReconnect = forceReconnect || (isError && connection.error_code === 'ITEM_LOGIN_REQUIRED')
   const { balanceText } = getAccountSummary(accounts ?? connection.accounts)
   const displayName = connection.institution_name ?? connection.name ?? 'Unknown'
   const products = connection.products_granted ?? []
@@ -658,6 +658,7 @@ export function LoggedInPage() {
   const [linkToken, setLinkToken] = useState(null)
   const [linkMode, setLinkMode] = useState('add')
   const [addError, setAddError] = useState(null)
+  const [reconnectItemIds, setReconnectItemIds] = useState(new Set())
   const [duplicateInstitution, setDuplicateInstitution] = useState(null) // { institution_name, existing_item_id }
   const [exchanging, setExchanging] = useState(false)
   const [linkLoading, setLinkLoading] = useState(false)
@@ -748,6 +749,10 @@ export function LoggedInPage() {
         if (data.synced > 0) {
           fetchTransactions({ showLoading: false })
           invalidateAfterConnect()
+        } else if (data.total > 0 && data.synced < data.total) {
+          // Some items failed to sync (e.g. ITEM_LOGIN_REQUIRED) — refetch connections
+          // so error state written to DB is reflected in the UI immediately.
+          queryClient.invalidateQueries({ queryKey: ['connections'] })
         }
       })
       .catch((err) => console.error('Background sync failed:', err))
@@ -917,7 +922,8 @@ export function LoggedInPage() {
     onError: async (err, connection, context) => {
       if (context?.previous) queryClient.setQueryData(['connections'], context.previous)
       if (err.message === 'Login required') {
-        setAddError(`${connection.institution_name ?? 'Connection'} requires re-login. Click "Reconnect" to fix.`)
+        setReconnectItemIds(prev => new Set([...prev, connection.item_id]))
+        setAddError(null)
         await queryClient.refetchQueries({ queryKey: ['connections'] })
       } else {
         setAddError(err.message ?? 'Failed to refresh')
@@ -932,6 +938,7 @@ export function LoggedInPage() {
 
   async function handleReconnect(connection) {
     setAddError(null)
+    setReconnectItemIds(prev => { const s = new Set(prev); s.delete(connection.item_id); return s })
     try {
       const data = await apiFetch('/api/plaid/link-token/update', {
         method: 'POST',
@@ -1129,6 +1136,7 @@ export function LoggedInPage() {
                                   key={`${conn.id}-${category}-${singleAccount?.account_id ?? index}`}
                                   connection={conn}
                                   accounts={accountsForCategory}
+                                  forceReconnect={reconnectItemIds.has(conn.item_id)}
                                   onRefresh={handleRefresh}
                                   onRemove={handleDisconnect}
                                   onReconnect={handleReconnect}

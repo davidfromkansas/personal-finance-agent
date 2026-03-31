@@ -30,7 +30,20 @@ agentRouter.post('/chat', async (req, res, next) => {
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
 
-    const emit = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`)
+    const pendingAgents = new Map()
+    const emit = (event) => {
+      if (event.type === 'agent_start') {
+        pendingAgents.set(event.agent, { question: event.question, startTime: Date.now() })
+        res.write(`data: ${JSON.stringify(event)}\n\n`)
+      } else if (event.type === 'agent_done') {
+        const p = pendingAgents.get(event.agent)
+        const duration = p ? Date.now() - p.startTime : 0
+        res.write(`data: ${JSON.stringify({ ...event, duration })}\n\n`)
+        pendingAgents.delete(event.agent)
+      } else {
+        res.write(`data: ${JSON.stringify(event)}\n\n`)
+      }
+    }
 
     try {
       for await (const chunk of runChat({ message, history: cleanHistory, mode, userId: req.uid, emit })) {

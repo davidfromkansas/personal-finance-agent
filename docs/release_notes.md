@@ -4,6 +4,35 @@ User-facing changes, most recent first.
 
 ---
 
+# CLI polish, investment connect button, and reconnect fix — Shipped: March 31, 2026
+
+## Abacus CLI: branded terminal experience
+
+The `abacus` CLI now opens with a full branded experience:
+
+- **Animated banner** — block-letter ABACUS logo rendered side-by-side with an animated abacus (13 spindles, 7 bead rows). Beads animate while the terminal is idle and pause during queries.
+- **Real-time activity display** — while answering a question, the CLI shows which agent is working and what data it's fetching live (`↳ spending summary`, `↳ transactions`, etc.).
+- **Data source summary** — after each answer, shows the exact data sources called per agent and how long they took:
+  ```
+  ● Spending ("How much did I spend on Uber in January...")
+  │  ↳ spending summary
+  │  ↳ transactions
+  └ Called 2 data sources in 3.4s
+  ```
+- **Account status on launch** — shows your connected accounts and last synced time when you open the CLI.
+- **`help` command** — type `help` inside the REPL to see example questions and available commands.
+- **First-run welcome** — new users see starter questions after `abacus login`.
+
+## Investment Portfolio: connect button
+
+When no investment accounts are linked, the Investment Portfolio widget on the dashboard now shows a **Connect investment account** button that opens the Plaid investment flow directly — no need to navigate to the connections panel.
+
+## Reconnect button now appears automatically
+
+When a bank connection expires and requires re-authentication, the **Reconnect** button now appears automatically in the connections list without needing a page reload. Previously, the error state was stored in the database but not read back on page load, so the button only appeared after a manual refresh.
+
+---
+
 # Claude connector and CLI — Shipped: March 29, 2026
 
 ## Ask Claude about your finances from anywhere

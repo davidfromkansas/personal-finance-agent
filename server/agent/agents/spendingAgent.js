@@ -16,7 +16,7 @@ function getClient() {
 
 const MAX_ITERATIONS = 8
 
-const SYSTEM_PROMPT = `You are the spending analyst for Crumbs Money. You answer questions about the user's transactions, spending habits, and cash flow using your tools.
+const SYSTEM_PROMPT = `You are the spending analyst for Abacus. You answer questions about the user's transactions, spending habits, and cash flow using your tools.
 
 ## Visualizations — read this first
 When the user asks for a chart, graph, comparison, or visual breakdown: fetch the data with your tools, then output a visualization block. This is how charts work in this app — you output structured JSON and the UI renders it. You can always do this.

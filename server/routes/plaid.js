@@ -14,7 +14,7 @@ import { snapshotInvestments } from '../jobs/snapshotInvestments.js'
 const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] })
 import {
   getPlaidItemsByUserId, getPlaidItemByItemId, getPlaidItemByInstitutionId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
-  getSyncCursor, updateSyncCursor, clearSyncCursor, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
+  getSyncCursor, updateSyncCursor, clearSyncCursor, setItemErrorCode, clearItemErrorCode, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow, getCashFlowTransactions,
   updateTransactionAccountNames,
@@ -337,7 +337,7 @@ plaidRouter.post('/link-token', async (req, res, next) => {
 
     const linkParams = {
       user: { client_user_id: req.uid },
-      client_name: 'Crumbs Money',
+      client_name: 'Abacus',
       products: required,
       country_codes: ['US'],
       language: 'en',
@@ -499,8 +499,9 @@ plaidRouter.get('/connections', async (req, res, next) => {
 
     const connections = await Promise.all(
       items.map(async (row) => {
-        let status = 'connected'
-        let errorCode = null
+        // Seed from persisted error state — catches cases where sync failed in the background
+        let status = row.error_code ? 'error' : 'connected'
+        let errorCode = row.error_code ?? null
         let accounts = []
 
         try {
@@ -510,6 +511,7 @@ plaidRouter.get('/connections', async (req, res, next) => {
           if (code === 'ITEM_LOGIN_REQUIRED') {
             status = 'error'
             errorCode = code
+            setItemErrorCode(req.uid, row.item_id, code).catch(() => {})
           }
         }
 
@@ -828,14 +830,19 @@ plaidRouter.post('/sync', async (req, res, next) => {
           await syncTransactionsForItem(plaidClient, req.uid, row.item_id, row.access_token)
           itemCache.delete(row.item_id)
           inflight.delete(row.item_id)
+          if (row.error_code) await clearItemErrorCode(req.uid, row.item_id)
           synced++
         } catch (err) {
+          const code = err.response?.data?.error_code ?? null
           console.error(`Auto-sync failed for item ${row.item_id}:`, err.response?.data ?? err.message)
+          if (code === 'ITEM_LOGIN_REQUIRED') {
+            await setItemErrorCode(req.uid, row.item_id, code).catch(() => {})
+          }
         }
       })
     )
     console.log(`POST /sync — ${synced}/${items.length} items synced for user ${req.uid}${fullResync ? ' (full resync)' : ''}`)
-    res.json({ synced })
+    res.json({ synced, total: items.length })
   } catch (err) {
     console.error('POST /sync error:', err)
     res.status(500).json({ error: 'Sync failed' })
@@ -898,7 +905,7 @@ plaidRouter.post('/link-token/update', async (req, res, next) => {
     const plaidClient = getPlaidClient()
     const linkParams = {
       user: { client_user_id: req.uid },
-      client_name: 'Crumbs Money',
+      client_name: 'Abacus',
       access_token: item.access_token,
       country_codes: ['US'],
       language: 'en',

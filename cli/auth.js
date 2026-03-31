@@ -9,7 +9,7 @@
 import http from 'http'
 import { writeConfig, getServerUrl } from './config.js'
 
-const TIMEOUT_MS = 30_000
+const TIMEOUT_MS = 300_000 // 5 minutes — accommodates new Google account sign-up flow
 
 function getRandomPort() {
   return Math.floor(Math.random() * (65535 - 3000) + 3000)
@@ -30,7 +30,7 @@ export async function login() {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       server.close()
-      reject(new Error('Login timed out. Please run `copilot login` and try again.'))
+      reject(new Error('Login timed out. Please run `abacus login` and try again.'))
     }, TIMEOUT_MS)
 
     const server = http.createServer((req, res) => {
@@ -54,7 +54,7 @@ export async function login() {
       server.close()
 
       writeConfig({ token, serverUrl })
-      resolve()
+      resolve(true) // true = first run
     })
 
     server.listen(port, '127.0.0.1', async () => {

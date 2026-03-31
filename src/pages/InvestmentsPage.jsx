@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { useMarketClock } from '../hooks/useMarketClock'
 import { AppHeader } from '../components/AppHeader'
+import { ConnectAccountOverlay } from '../components/ConnectAccountOverlay'
 import { useInvestments, usePortfolioHistory, usePortfolioSnapshot, useTickerHistory, useQuotes, useAccounts, useInvestmentTransactions } from '../hooks/usePlaidQueries'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
@@ -550,6 +551,7 @@ export function InvestmentsPage() {
   }, [chartData, chartRange])
 
   const isLoading = holdingsLoading
+  const hasInvestmentAccounts = !isLoading && (accountsData?.accounts ?? []).some(a => a.type === 'investment')
 
   return (
     <div className="min-h-screen bg-[#f8f8f8]" style={{ paddingLeft: 'var(--sidebar-w)' }}>
@@ -673,6 +675,10 @@ export function InvestmentsPage() {
 
       <main className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1100px]">
+          {!isLoading && !hasInvestmentAccounts ? (
+            <ConnectAccountOverlay message="No investment accounts connected" linkMode="investments" />
+          ) : (
+          <>
           <TopMoversRow movers={topMovers} isLoading={holdingsLoading || quotesLoading} isOpen={isOpen} />
           <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white">
 
@@ -985,6 +991,8 @@ export function InvestmentsPage() {
             colorMap={colorMap}
           />
 
+          </>
+          )}
         </div>
       </main>
     </div>

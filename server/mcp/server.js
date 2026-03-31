@@ -43,11 +43,64 @@ const sessions = new Map()
 
 // ── Tool factory — creates a McpServer with all tools bound to userId ─────
 
+const NO_ACCOUNTS_MSG = `No bank or investment accounts are connected yet.
+
+To get started, visit https://abacus-money.com and sign in with the same Google account you used to authorize this connector. From there you can link your accounts via Plaid (takes about 2 minutes). Once linked, come back here and try again.`
+
+async function hasAccounts(userId) {
+  const items = await getPlaidItemsByUserId(userId)
+  return items.length > 0
+}
+
 function createServer(userId) {
   const server = new McpServer({
-    name: 'crumbs-financial',
+    name: 'abacus-financial',
     version: '1.0.0',
   })
+
+  // ── get_started ───────────────────────────────────────────────────────────
+  server.tool(
+    'get_started',
+    `Return a guide explaining what financial data is available and example questions to ask.
+Use this when the user asks "what can you do?", "help", "what tools do you have?", "where do I start?", or seems unsure how to begin.`,
+    async () => {
+      return {
+        content: [{
+          type: 'text',
+          text: `# Abacus Financial Assistant
+
+I have access to your linked bank, credit card, and investment accounts. Here's what you can ask me:
+
+**Accounts & Net Worth**
+- "What are my account balances?"
+- "What is my net worth?"
+- "How has my net worth changed over the past year?"
+
+**Spending**
+- "How much did I spend last month?"
+- "What are my biggest spending categories?"
+- "Show me my transactions at Uber this year"
+- "Compare my spending this month vs last month"
+
+**Cash Flow & Income**
+- "What's my monthly cash flow?"
+- "What is my savings rate?"
+- "How much did I earn last month?"
+
+**Investments**
+- "What's in my portfolio?"
+- "How are my investments performing?"
+- "Show me my recent trades in my Fidelity account"
+
+**Bills & Subscriptions**
+- "What subscriptions am I paying for?"
+- "What recurring bills are coming up?"
+
+If you haven't linked any accounts yet, visit https://abacus-money.com to get started.`,
+        }],
+      }
+    }
+  )
 
   // ── get_accounts ──────────────────────────────────────────────────────────
   server.tool(
@@ -57,6 +110,9 @@ Use this when the user asks about account balances, available credit, or wants a
 Each account includes: name, type, current balance, available balance (where applicable), and institution.
 Credit and loan balances are positive numbers representing what is owed.`,
     async () => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const [regular, investment] = await Promise.all([
         getLatestAccountBalances(userId),
         getLatestInvestmentAccountBalances(userId),
@@ -75,6 +131,9 @@ Net worth = investment portfolio value + liquid assets (checking/savings) − li
 Use this for "what is my net worth?" or "how much am I worth?" questions.
 For net worth over time or trends, use get_net_worth_history instead.`,
     async () => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const [investmentValue, accounts] = await Promise.all([
         getLatestPortfolioValue(userId),
         getLatestAccountBalances(userId),
@@ -102,6 +161,9 @@ For the current snapshot only, use get_net_worth instead.`,
       months_back: z.number().int().min(1).max(60).optional().describe('How many months of history to return (default 12, max 60)'),
     },
     async ({ months_back }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const since = new Date()
       since.setMonth(since.getMonth() - (months_back ?? 12))
       const history = await getPortfolioHistory(userId, since.toISOString().slice(0, 10))
@@ -123,6 +185,9 @@ Returns: { after_date, before_date, total, categories: [{ category, total, trans
       category:    z.string().optional().describe('Filter to a single Plaid primary category (e.g. FOOD_AND_DRINK, TRAVEL, SHOPPING)'),
     },
     async ({ after_date, before_date, category }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const data = await getAgentSpendingSummary(userId, after_date, before_date, category ?? null)
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
     }
@@ -143,6 +208,9 @@ Each transaction includes: merchant, amount (positive = expense, negative = inco
       spending_only: z.boolean().optional().describe('If true, exclude income and transfers (default false)'),
     },
     async ({ after_date, before_date, category, spending_only }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const transactions = await getAgentTransactions(userId, {
         afterDate: after_date,
         beforeDate: before_date,
@@ -164,6 +232,9 @@ For category-level spending breakdown within a period, use get_spending_summary 
       months_back: z.number().int().min(1).max(24).optional().describe('Number of months to return (default 12, max 24)'),
     },
     async ({ months_back }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const data = await getAgentCashFlow(userId, months_back ?? 12)
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
     }
@@ -178,6 +249,9 @@ Each item includes: merchant name, average amount, frequency (WEEKLY/MONTHLY/ANN
 Results come directly from Plaid's recurring detection — may not include brand-new subscriptions.`,
     async () => {
       const items = await getPlaidItemsByUserId(userId)
+      if (items.length === 0) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const plaidClient = getPlaidClient()
       const allPayments = []
 
@@ -224,6 +298,9 @@ Use this for questions like "what stocks do I own?", "what is my portfolio?", "h
 Each holding includes: ticker, security name, quantity, current price, total value, cost basis (where available), and account.
 For portfolio value over time, use get_net_worth_history. For trade history, use get_investment_transactions.`,
     async () => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const holdings = await getLatestHoldingsSnapshot(userId)
       return { content: [{ type: 'text', text: JSON.stringify({ holdings }, null, 2) }] }
     }
@@ -241,6 +318,9 @@ Each transaction includes: date, type (buy/sell/dividend/etc.), security name, t
       limit:      z.number().int().min(1).max(500).optional().describe('Max results (default 200)'),
     },
     async ({ account_id, limit }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const txns = await getInvestmentTransactionsByAccount(userId, account_id, limit ?? 200)
       return { content: [{ type: 'text', text: JSON.stringify({ transactions: txns }, null, 2) }] }
     }
@@ -261,16 +341,49 @@ Pass conversation_history to give the orchestrator context from the current conv
       })).optional().describe('Recent conversation turns for context (last 3-4 messages recommended)'),
     },
     async ({ question, conversation_history }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
       const history = (conversation_history ?? []).map(m => ({
         role: m.role,
         content: m.content,
       }))
+      // Collect per-agent activity and stream progress notifications to the MCP client
+      const agentActivities = []
+      const pendingAgents = new Map()
+      const emit = ({ type, agent, question: q, toolCount, duration }) => {
+        if (type === 'agent_start') {
+          pendingAgents.set(agent, { question: q })
+          server.sendLoggingMessage({
+            level: 'info',
+            logger: 'abacus',
+            data: { type: 'agent_start', agent, question: q },
+          }).catch(() => {})
+        } else if (type === 'agent_done') {
+          const pending = pendingAgents.get(agent)
+          agentActivities.push({ agent, question: pending?.question ?? '', toolCount, duration })
+          pendingAgents.delete(agent)
+          server.sendLoggingMessage({
+            level: 'info',
+            logger: 'abacus',
+            data: { type: 'agent_done', agent, toolCount, duration },
+          }).catch(() => {})
+        }
+      }
       const chunks = []
-      const stream = runChat({ message: question, history, mode: 'Auto', userId, emit: () => {} })
+      const stream = runChat({ message: question, history, mode: 'Auto', userId, emit })
       for await (const chunk of stream) {
         if (typeof chunk === 'string') chunks.push(chunk)
       }
-      return { content: [{ type: 'text', text: chunks.join('') }] }
+      // Prepend agent activity markers the CLI can parse and display
+      // Format: [ABACUS_AGENT:agentName|toolCount|durationMs|questionSnippet]
+      const prefix = agentActivities.length
+        ? agentActivities.map(a => {
+            const q = (a.question ?? '').replace(/[\|\]]/g, ' ').slice(0, 80)
+            return `[ABACUS_AGENT:${a.agent}|${a.toolCount}|${a.duration}|${q}]`
+          }).join('') + '\n'
+        : ''
+      return { content: [{ type: 'text', text: prefix + chunks.join('') }] }
     }
   )
 

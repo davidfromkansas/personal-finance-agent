@@ -1,11 +1,31 @@
 {
-  "name": "@crumbs/cli",
-  "version": "1.0.0",
-  "description": "CLI for querying your Crumbs financial data",
+  "name": "abacus-agent",
+  "version": "1.0.1",
+  "description": "Understand and analyze your personal wealth in the CLI",
   "type": "module",
   "bin": {
-    "copilot": "./index.js"
+    "abacus": "./index.js"
   },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "index.js",
+    "auth.js",
+    "config.js",
+    "format.js",
+    "mcp-client.js"
+  ],
+  "keywords": [
+    "finance",
+    "personal finance",
+    "wealth",
+    "cli",
+    "agent"
+  ],
+  "author": "davidfromkansas",
+  "license": "MIT",
+  "homepage": "https://abacus-money.com",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
     "open": "^10.1.0"

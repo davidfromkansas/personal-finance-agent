@@ -18,7 +18,7 @@ function getClient() {
 
 const MAX_ITERATIONS = 5
 
-const SYSTEM_PROMPT = `You are a personal finance assistant for Crumbs. You have access to the user's real financial data via specialist agents — one for spending and transactions, one for investments and portfolio.
+const SYSTEM_PROMPT = `You are a personal finance assistant for Abacus. You have access to the user's real financial data via specialist agents — one for spending and transactions, one for investments and portfolio.
 
 ## Tone
 Neutral and informational. Respond like a straightforward personal finance advisor: direct, no fluff, no filler. Every sentence should add value. Do not use phrases like "Great question!" or "I hope this helps."
@@ -40,6 +40,9 @@ Neutral and informational. Respond like a straightforward personal finance advis
 ## Ambiguity
 - If a question could reasonably mean different things (e.g. "how am I doing?" could mean spending, portfolio, or both), ask for clarification before answering. Keep the clarifying question short and specific.
 - If the intent is clear, do not ask for clarification — just answer.
+
+## Identity
+- This app is called Abacus. Never refer to it by any other name.
 
 ## Capability boundaries
 - You have a spending agent (transactions and cash flow), a portfolio agent (investment holdings and performance), and an accounts agent (current balances, net worth, and credit). Do not attempt to give financial advice, make predictions, or provide recommendations — those capabilities do not exist yet.
@@ -103,12 +106,29 @@ export async function* runOrchestrator({ message, history, userId, emit }) {
     const toolUseBlocks = response.content.filter(b => b.type === 'tool_use')
     const toolResults = await Promise.all(
       toolUseBlocks.map(async (block) => {
+        const agentName = block.name.replace(/^ask_/, '').replace(/_agent$/, '')
+        const startTime = Date.now()
+        let agentToolCount = 0
+
+        // Wrap emit so we can count data tools and tag events with agent name
+        const agentEmit = (event) => {
+          if (event.type === 'tool_call') {
+            agentToolCount++
+            emit?.({ ...event, agent: agentName })
+          } else {
+            emit?.(event)
+          }
+        }
+
+        emit?.({ type: 'agent_start', agent: agentName, question: block.input.question })
         let result
         try {
-          result = await executeAgentTool(block.name, block.input, userId, history, emit)
+          result = await executeAgentTool(block.name, block.input, userId, history, agentEmit)
         } catch (err) {
           result = { answer: `Error calling agent: ${err.message}`, dataAvailable: false, error: err.message }
         }
+        emit?.({ type: 'agent_done', agent: agentName, toolCount: agentToolCount, duration: Date.now() - startTime })
+
         return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify(result) }
       })
     )

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Connect to Crumbs</title>
+  <title>Connect to Abacus</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -44,7 +44,7 @@
 </head>
 <body>
   <div class="card">
-    <h1>Connect to Crumbs</h1>
+    <h1>Connect to Abacus</h1>
     <p id="subtitle">Sign in with Google to give Claude access to your financial data.</p>
     <button id="btn" onclick="signIn()">Sign in with Google</button>
     <p class="status" id="status"></p>
@@ -84,6 +84,7 @@
       setStatus('', 'Signing in...')
       try {
         const provider = new GoogleAuthProvider()
+        provider.setCustomParameters({ prompt: 'select_account' })
         const result = await signInWithPopup(auth, provider)
         const firebaseIdToken = await result.user.getIdToken()
 

@@ -44,7 +44,7 @@ export async function getPlaidItemByItemId(itemId) {
 
 export async function getPlaidItemsByUserId(userId) {
   const { rows } = await query(
-    `SELECT id, user_id, item_id, access_token, institution_name, institution_id, products_granted, last_synced_at, created_at, accounts_cache
+    `SELECT id, user_id, item_id, access_token, institution_name, institution_id, products_granted, last_synced_at, created_at, accounts_cache, error_code
      FROM plaid_items WHERE user_id = $1 ORDER BY created_at ASC`,
     [userId]
   )
@@ -107,6 +107,20 @@ export async function updateSyncCursor(userId, itemId, cursor) {
   await query(
     `UPDATE plaid_items SET sync_cursor = $3, last_synced_at = NOW() WHERE user_id = $1 AND item_id = $2`,
     [userId, itemId, cursor]
+  )
+}
+
+export async function setItemErrorCode(userId, itemId, errorCode) {
+  await query(
+    `UPDATE plaid_items SET error_code = $3 WHERE user_id = $1 AND item_id = $2`,
+    [userId, itemId, errorCode]
+  )
+}
+
+export async function clearItemErrorCode(userId, itemId) {
+  await query(
+    `UPDATE plaid_items SET error_code = NULL WHERE user_id = $1 AND item_id = $2`,
+    [userId, itemId]
   )
 }
 

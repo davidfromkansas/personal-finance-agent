@@ -5,6 +5,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { PlaidLinkProvider } from './context/PlaidLinkContext'
+import { OnboardingModal } from './components/OnboardingModal'
+import { useConnections } from './hooks/usePlaidQueries'
 import queryClient from './lib/queryClient'
 import { LoggedOutLandingPage } from './pages/LoggedOutLandingPage'
 import { LoggedInPage } from './pages/LoggedInPage'
@@ -13,6 +16,16 @@ import { InvestmentsPage } from './pages/InvestmentsPage'
 import { AccountsPage } from './pages/AccountsPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import { TermsOfServicePage } from './pages/TermsOfServicePage'
+
+function OnboardingGate({ children }) {
+  const { user, ready } = useAuth()
+  const { data: connectionsData, isLoading } = useConnections({ enabled: !!user })
+  const connections = connectionsData?.connections ?? []
+  const hasAccounts = connections.length > 0
+
+  if (ready && !!user && !isLoading && !hasAccounts) return <OnboardingModal />
+  return children
+}
 
 /** Redirects to / if not logged in; used for /app and sub-routes. */
 function ProtectedRoute({ children }) {
@@ -100,7 +113,11 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
-          <AppRoutes />
+          <PlaidLinkProvider>
+            <OnboardingGate>
+              <AppRoutes />
+            </OnboardingGate>
+          </PlaidLinkProvider>
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>

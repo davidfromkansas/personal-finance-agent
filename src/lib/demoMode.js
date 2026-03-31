@@ -11,13 +11,13 @@ export const DEMO_USER = {
 }
 
 export function isDemoMode() {
-  try { return sessionStorage.getItem('crumbs_demo') === '1' } catch { return false }
+  try { return sessionStorage.getItem('abacus_demo') === '1' } catch { return false }
 }
 
 export function enterDemoMode() {
-  try { sessionStorage.setItem('crumbs_demo', '1') } catch {}
+  try { sessionStorage.setItem('abacus_demo', '1') } catch {}
 }
 
 export function exitDemoMode() {
-  try { sessionStorage.removeItem('crumbs_demo') } catch {}
+  try { sessionStorage.removeItem('abacus_demo') } catch {}
 }

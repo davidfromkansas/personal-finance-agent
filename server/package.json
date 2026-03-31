@@ -1,5 +1,5 @@
 {
-  "name": "copilotv2-server",
+  "name": "abacus-server",
   "type": "module",
   "scripts": {
     "start": "node index.js",
