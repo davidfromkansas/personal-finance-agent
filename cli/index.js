@@ -570,6 +570,7 @@ rl.on('line', async (line) => {
     stopAbacusAnim()
     const success = await connectAccount(serverUrl)
     if (success) {
+      await new Promise(r => setTimeout(r, 2000)) // wait for initial sync
       await printAccountStatus(client)
     }
     startAbacusAnim()

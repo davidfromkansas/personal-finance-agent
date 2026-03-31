@@ -91,11 +91,15 @@
       btn.disabled = true
       setStatus('', 'Signing in...')
       try {
-        await signOut(auth)
-        const provider = new GoogleAuthProvider()
-        provider.setCustomParameters({ prompt: 'select_account' })
-        const result = await signInWithPopup(auth, provider)
-        idToken = await result.user.getIdToken()
+        // Use existing session if available, otherwise prompt sign-in
+        let user = auth.currentUser
+        if (!user) {
+          const provider = new GoogleAuthProvider()
+          const result = await signInWithPopup(auth, provider)
+          user = result.user
+        }
+        idToken = await user.getIdToken()
+        document.getElementById('subtitle').textContent = `Signed in as ${user.email}`
         await openPlaidLink()
       } catch (err) {
         console.error(err)
