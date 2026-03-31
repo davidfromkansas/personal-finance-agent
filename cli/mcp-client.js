@@ -46,7 +46,10 @@ export async function askQuestion(serverUrl, token, question, history = [], { on
     body: JSON.stringify({ message: question, history: history.slice(-6), mode: 'Auto' }),
   })
 
-  if (!res.ok) throw new Error(`Server error: ${res.status}`)
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Server error: ${res.status} ${body}`)
+  }
 
   // Track pending agent starts so we can pair with done events
   const pendingAgents = new Map()
@@ -66,7 +69,9 @@ export async function askQuestion(serverUrl, token, question, history = [], { on
       if (!line.startsWith('data: ')) continue
       let event
       try { event = JSON.parse(line.slice(6)) } catch { continue }
-      if (event.type === 'text') {
+      if (event.type === 'error') {
+        throw new Error(event.message ?? 'Something went wrong')
+      } else if (event.type === 'text') {
         answerChunks.push(event.text)
       } else if (event.type === 'tool_call' && event.agent) {
         onToolCall?.(event.agent, event.tool)

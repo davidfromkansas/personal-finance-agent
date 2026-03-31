@@ -276,6 +276,8 @@ function formatBalance(amount, type) {
   return (type === 'credit' || type === 'loan') ? red(formatted) : formatted
 }
 
+let hasConnectedAccounts = true // optimistic; set to false if get_accounts returns empty
+
 async function printAccountStatus(client) {
   try {
     const raw = await callTool(client, 'get_accounts', {})
@@ -290,9 +292,12 @@ async function printAccountStatus(client) {
       ...investment.map(a => ({ name: a.account_name ?? a.name, institution: a.institution_name ?? '—', type: 'investment', balance: formatBalance(a.current, 'investment') })),
     ]
     if (all.length === 0) {
-      console.log(yellow('⚠  No accounts connected. Visit https://abacus-money.com to get started.\n'))
+      hasConnectedAccounts = false
+      console.log(yellow('⚠  No accounts connected.\n'))
+      console.log(dim('   Link your first account at ') + bold('https://getabacus.xyz') + dim(' to get started.\n'))
       return
     }
+    hasConnectedAccounts = true
     console.log(`You have connected ${bold(String(all.length))} account${all.length !== 1 ? 's' : ''}:\n`)
     // Build a simple aligned table
     const cols = ['Account', 'Institution', 'Type', 'Balance']
@@ -489,7 +494,7 @@ rl.on('line', async (line) => {
     process.exit(0)
   }
 
-  if (input === 'accounts') {
+  if (input === 'accounts' || input === 'connect') {
     stopAbacusAnim()
     await printAccountStatus(client)
     startAbacusAnim()
@@ -507,6 +512,14 @@ rl.on('line', async (line) => {
   }
 
   stopAbacusAnim()
+
+  if (!hasConnectedAccounts) {
+    console.log(yellow('⚠  No accounts connected yet.'))
+    console.log(dim('   Link your first account at ') + bold('https://getabacus.xyz') + dim(' then come back.\n'))
+    startAbacusAnim()
+    rl.prompt()
+    return
+  }
   rl.pause()
   currentDisplay = createActivityDisplay()
   currentDisplay.start()

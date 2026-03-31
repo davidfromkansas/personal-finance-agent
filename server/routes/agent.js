@@ -50,7 +50,8 @@ agentRouter.post('/chat', async (req, res, next) => {
         emit({ type: 'text', text: chunk })
       }
     } catch (err) {
-      emit({ type: 'error', message: 'Something went wrong. Please try again.' })
+      console.error('[agent/chat error]', err)
+      emit({ type: 'error', message: err.message ?? 'Something went wrong. Please try again.' })
     }
 
     emit({ type: 'done' })
