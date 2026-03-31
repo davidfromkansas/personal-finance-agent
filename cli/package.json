@@ -1,6 +1,6 @@
 {
   "name": "abacus-agent",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Understand and analyze your personal wealth in the CLI",
   "type": "module",
   "bin": {

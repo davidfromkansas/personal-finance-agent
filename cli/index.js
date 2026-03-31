@@ -204,12 +204,12 @@ function renderBeadLine(row) {
 }
 // Total newlines printed from banner start — drives cursor positioning for animation.
 let linesFromBannerStart = 0
-function addLines(n) { linesFromBannerStart += n }
+let stdoutIntercepted = false // true while stdout.write is hooked; addLines is a no-op then (auto-counted)
+function addLines(n) { if (!stdoutIntercepted) linesFromBannerStart += n }
 // Bead rows at line offsets [2,3,5,6,7,8,9] from banner start.
 // Abacus frame starts at terminal column 37: 2-space indent + 29-char text + 5-space gap + │.
 const BEAD_ROW_POS = [2, 3, 5, 6, 7, 8, 9]
 const ABACUS_COL = 43
-let _rl = null // set after readline.createInterface — used to resync after cursor moves
 function drawAbacus() {
   const th = process.stdout.rows || 40
   process.stdout.write('\x1b7') // DEC save cursor (wider terminal support than \x1b[s)
@@ -221,7 +221,6 @@ function drawAbacus() {
     process.stdout.write(`\x1b[${up}B\x1b[1G`)
   }
   process.stdout.write('\x1b8') // DEC restore cursor
-  _rl?._refreshLine?.()         // resync readline's internal cursor tracking
 }
 let abacusTimerId = null
 function startAbacusAnim() {
@@ -535,7 +534,9 @@ const serverUrl = config.serverUrl || getServerUrl()
 
 // Intercept stdout.write to count newlines from banner start.
 // Gives the exact cursor distance needed for in-place abacus animation.
+// addLines() is a no-op while intercepted to prevent double-counting.
 const _origWrite = process.stdout.write.bind(process.stdout)
+stdoutIntercepted = true
 process.stdout.write = (d, e, cb) => {
   const s = typeof d === 'string' ? d : Buffer.isBuffer(d) ? d.toString('utf8') : ''
   linesFromBannerStart += (s.match(/\n/g) || []).length
@@ -563,9 +564,9 @@ console.log(dim('Type \'help\' for commands, \'exit\' to quit.\n'))
 
 // Restore normal stdout — all startup lines counted, animation ready.
 process.stdout.write = _origWrite
+stdoutIntercepted = false
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-_rl = rl
 const history = []
 
 // ── Slash command menu ────────────────────────────────────────────────────────
@@ -583,11 +584,16 @@ let slashMenuIndex = 0
 let slashMenuMatches = []
 let slashMenuTyped = '/'   // what the user has typed (e.g. '/', '/co')
 let restoringSlashLine = false
+let slashMenuSubmitting = false  // true while synthetic return is in-flight; suppresses spurious empty line event
+
+// ── Input prompt ─────────────────────────────────────────────────────────────
+function drawInputBox() {
+  rl.prompt()
+}
 
 function hideSlashMenu() {
   if (!slashMenuVisible) return
   _origWrite('\r\x1b[1B\x1b[J\x1b[1A') // col0 → down1 → clearEnd → up1
-  rl._refreshLine?.()
   slashMenuVisible = false
 }
 
@@ -613,6 +619,7 @@ function showSlashMenu(line, selectedIndex = 0) {
 
 // Prepend so this runs BEFORE readline — cursor still on prompt line when we act.
 process.stdin.prependListener('keypress', (_str, key) => {
+  if (restoringSlashLine) return
   if (!slashMenuVisible) return
 
   if (key?.name === 'escape') {
@@ -624,7 +631,16 @@ process.stdin.prependListener('keypress', (_str, key) => {
   if (key?.name === 'up' || key?.name === 'down') {
     const dir = key.name === 'up' ? -1 : 1
     slashMenuIndex = (slashMenuIndex + dir + slashMenuMatches.length) % slashMenuMatches.length
-    showSlashMenu(slashMenuTyped, slashMenuIndex)
+    // After readline processes history nav and changes rl.line, restore our typed line
+    setImmediate(() => {
+      if (rl.line !== slashMenuTyped) {
+        restoringSlashLine = true
+        rl.write(null, { ctrl: true, name: 'u' })
+        rl.write(slashMenuTyped)
+        restoringSlashLine = false
+      }
+      showSlashMenu(slashMenuTyped, slashMenuIndex)
+    })
     return
   }
 
@@ -632,10 +648,10 @@ process.stdin.prependListener('keypress', (_str, key) => {
     const selected = slashMenuMatches[slashMenuIndex]
     hideSlashMenu()
     if (selected) {
-      // Clear current input and write the selected command (without /)
-      rl.write(null, { ctrl: true, name: 'u' })  // clear line
-      rl.write(selected.cmd.slice(1))             // write command without /
-      rl.write(null, { ctrl: false, name: 'return' }) // submit
+      slashMenuSubmitting = true
+      rl.write(null, { ctrl: true, name: 'u' })
+      rl.write(selected.cmd.slice(1))
+      rl.write(null, { ctrl: false, name: 'return' })
     }
   }
 })
@@ -645,27 +661,22 @@ process.stdin.on('keypress', () => {
   setImmediate(() => {
     if (currentDisplay) return
     const line = rl.line ?? ''
-    if (slashMenuVisible && !line.startsWith('/')) {
-      // readline navigated history away from our slash input — restore it
-      restoringSlashLine = true
-      rl.write(null, { ctrl: true, name: 'u' })
-      rl.write(slashMenuTyped)
-      restoringSlashLine = false
-      showSlashMenu(slashMenuTyped, slashMenuIndex)
-      return
-    }
     if (line.startsWith('/')) {
-      slashMenuTyped = line
-      slashMenuMatches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(line))
-      slashMenuIndex = 0
+      const isNewInput = line !== slashMenuTyped
+      if (isNewInput) {
+        slashMenuTyped = line
+        slashMenuMatches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(line))
+        slashMenuIndex = 0
+      }
       stopAbacusAnim()
-      showSlashMenu(line, 0)
+      showSlashMenu(line, slashMenuIndex)
     } else {
       if (slashMenuVisible) {
         hideSlashMenu()
         startAbacusAnim()
       }
     }
+    if (slashMenuVisible) showSlashMenu(slashMenuTyped, slashMenuIndex)
   })
 })
 
@@ -675,7 +686,10 @@ rl.on('line', async (line) => {
   const input = line.trim().replace(/^\//, '')
   addLines(1) // readline moved to next line on Enter
 
-  if (!input) { rl.prompt(); return }
+  if (!input) {
+    if (slashMenuSubmitting) { slashMenuSubmitting = false; return }
+    drawInputBox(); return
+  }
 
   if (input === 'exit' || input === 'quit') {
     stopAbacusAnim()
@@ -706,7 +720,7 @@ rl.on('line', async (line) => {
     stopAbacusAnim()
     await printAccountStatus(client)
     startAbacusAnim()
-    rl.prompt()
+    drawInputBox()
     return
   }
 
@@ -717,7 +731,7 @@ rl.on('line', async (line) => {
       await printConnectionStatus(serverUrl, config.token)
     }
     startAbacusAnim()
-    rl.prompt()
+    drawInputBox()
     return
   }
 
@@ -726,7 +740,7 @@ rl.on('line', async (line) => {
     console.log(HELP_TEXT)
     addLines(1 + (HELP_TEXT.match(/\n/g) || []).length)
     startAbacusAnim()
-    rl.prompt()
+    drawInputBox()
     return
   }
 
@@ -736,7 +750,7 @@ rl.on('line', async (line) => {
     console.log(yellow('⚠  No accounts connected yet.'))
     console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
     startAbacusAnim()
-    rl.prompt()
+    drawInputBox()
     return
   }
   rl.pause()
@@ -794,7 +808,7 @@ rl.on('line', async (line) => {
   }
   startAbacusAnim()
   rl.resume()
-  rl.prompt()
+  drawInputBox()
 })
 
 rl.on('close', async () => {
@@ -804,5 +818,6 @@ rl.on('close', async () => {
 })
 
 rl.setPrompt(`${cyan('›')} `)
+
 startAbacusAnim()
-rl.prompt()
+drawInputBox()
