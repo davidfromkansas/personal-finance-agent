@@ -581,6 +581,8 @@ const SLASH_COMMANDS = [
 let slashMenuVisible = false
 let slashMenuIndex = 0
 let slashMenuMatches = []
+let slashMenuTyped = '/'   // what the user has typed (e.g. '/', '/co')
+let restoringSlashLine = false
 
 function hideSlashMenu() {
   if (!slashMenuVisible) return
@@ -620,10 +622,9 @@ process.stdin.prependListener('keypress', (_str, key) => {
   }
 
   if (key?.name === 'up' || key?.name === 'down') {
-    // Prevent readline from using arrow keys for history while menu is open
     const dir = key.name === 'up' ? -1 : 1
     slashMenuIndex = (slashMenuIndex + dir + slashMenuMatches.length) % slashMenuMatches.length
-    showSlashMenu(rl.line ?? '', slashMenuIndex)
+    showSlashMenu(slashMenuTyped, slashMenuIndex)
     return
   }
 
@@ -640,10 +641,21 @@ process.stdin.prependListener('keypress', (_str, key) => {
 })
 
 process.stdin.on('keypress', () => {
+  if (restoringSlashLine) return
   setImmediate(() => {
     if (currentDisplay) return
     const line = rl.line ?? ''
+    if (slashMenuVisible && !line.startsWith('/')) {
+      // readline navigated history away from our slash input — restore it
+      restoringSlashLine = true
+      rl.write(null, { ctrl: true, name: 'u' })
+      rl.write(slashMenuTyped)
+      restoringSlashLine = false
+      showSlashMenu(slashMenuTyped, slashMenuIndex)
+      return
+    }
     if (line.startsWith('/')) {
+      slashMenuTyped = line
       slashMenuMatches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(line))
       slashMenuIndex = 0
       stopAbacusAnim()
@@ -728,6 +740,7 @@ rl.on('line', async (line) => {
     return
   }
   rl.pause()
+  process.stdin.resume() // keep stdin flowing so keypress events still fire while rl is paused
   currentDisplay = createActivityDisplay()
   currentDisplay.start()
   addLines(1) // start() writes \n
