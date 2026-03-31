@@ -53,13 +53,13 @@
   <div class="card">
     <h1>Connect a bank account</h1>
     <p id="subtitle">Sign in to link your bank or investment account to Abacus.</p>
-    <button id="btn" onclick="start()">Sign in with Google</button>
+    <button id="btn" onclick="start()" disabled>Loading...</button>
     <p class="status" id="status"></p>
   </div>
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js'
-    import { getAuth, signInWithPopup, signOut, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js'
+    import { getAuth, signInWithPopup, onAuthStateChanged, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/11.0.0/firebase-auth.js'
 
     const params = new URLSearchParams(window.location.search)
     const port = params.get('port')
@@ -79,6 +79,19 @@
         const config = await res.json()
         const app = initializeApp(config)
         auth = getAuth(app)
+
+        // Wait for Firebase to restore session, then update UI accordingly
+        onAuthStateChanged(auth, (user) => {
+          const btn = document.getElementById('btn')
+          if (user) {
+            btn.textContent = 'Connect account'
+            document.getElementById('subtitle').textContent = `Signed in as ${user.email}`
+          } else {
+            btn.textContent = 'Sign in with Google'
+            document.getElementById('subtitle').textContent = 'Sign in to link your bank or investment account to Abacus.'
+          }
+          btn.disabled = false
+        })
       } catch (err) {
         setStatus('error', 'Failed to load configuration. Please try again.')
         document.getElementById('btn').disabled = true
@@ -89,17 +102,16 @@
       if (!auth) return
       const btn = document.getElementById('btn')
       btn.disabled = true
-      setStatus('', 'Signing in...')
+      setStatus('', 'Connecting...')
       try {
-        // Use existing session if available, otherwise prompt sign-in
         let user = auth.currentUser
         if (!user) {
+          setStatus('', 'Signing in...')
           const provider = new GoogleAuthProvider()
           const result = await signInWithPopup(auth, provider)
           user = result.user
         }
         idToken = await user.getIdToken()
-        document.getElementById('subtitle').textContent = `Signed in as ${user.email}`
         await openPlaidLink()
       } catch (err) {
         console.error(err)
