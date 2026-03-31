@@ -313,9 +313,11 @@ async function connectAccount(serverUrl) {
       const status = url.searchParams.get('status')
       if (status === 'success') {
         console.log(green('\n✓ Account connected! Refreshing...\n'))
+        addLines(3)
         resolve(true)
       } else {
         console.log(yellow('\n⚠  Connection failed. Run `connect` to try again.\n'))
+        addLines(3)
         resolve(false)
       }
     })
@@ -323,6 +325,7 @@ async function connectAccount(serverUrl) {
     server.listen(port, '127.0.0.1', async () => {
       console.log(dim('Opening browser to connect your account...'))
       console.log(dim('Press Ctrl+C to cancel.\n'))
+      addLines(3)
       try {
         const { default: open } = await import('open')
         await open(connectUrl)
@@ -350,6 +353,7 @@ async function printConnectionStatus(serverUrl, token) {
     if (!connections?.length) {
       console.log(yellow('⚠  No accounts connected.'))
       console.log(dim('   Type ') + bold('connect') + dim(' to link your first account.\n'))
+      addLines(3)
       return
     }
     hasConnectedAccounts = true
@@ -358,10 +362,12 @@ async function printConnectionStatus(serverUrl, token) {
       console.log(`  ${bold(c.institution_name ?? 'Unknown')} ${dim(`· ${c.accounts?.length ?? 0} account${(c.accounts?.length ?? 0) !== 1 ? 's' : ''}${c.last_synced_at ? ` · synced ${new Date(c.last_synced_at).toLocaleTimeString()}` : ''}`)  }`)
     }
     console.log()
+    addLines(2 + connections.length)
   } catch {
     // Fall back silently — don't block the user
     hasConnectedAccounts = true
     console.log(green('✓ Account connected! Type accounts to see your balances.\n'))
+    addLines(2)
   }
 }
 
@@ -552,8 +558,70 @@ const rl = readline.createInterface({ input: process.stdin, output: process.stdo
 _rl = rl
 const history = []
 
+// ── Slash command menu ────────────────────────────────────────────────────────
+const SLASH_COMMANDS = [
+  { cmd: '/help',     desc: 'Show commands and example queries' },
+  { cmd: '/connect',  desc: 'Link a bank or investment account' },
+  { cmd: '/accounts', desc: 'Show connected accounts and balances' },
+  { cmd: '/clear',    desc: 'Redraw banner and reset view' },
+  { cmd: '/logout',   desc: 'Log out and delete saved credentials' },
+  { cmd: '/exit',     desc: 'Exit the CLI' },
+]
+
+let slashMenuVisible = false
+let slashMenuLines = 0
+
+function hideSlashMenu() {
+  if (!slashMenuVisible) return
+  _origWrite('\x1b7')                          // save cursor
+  _origWrite(`\n\x1b[${slashMenuLines}A\x1b[J`) // move up into menu, clear to end
+  _origWrite('\x1b8')                          // restore cursor
+  rl._refreshLine?.()
+  slashMenuVisible = false
+  slashMenuLines = 0
+}
+
+function showSlashMenu(line) {
+  const matches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(line))
+  hideSlashMenu()
+  if (matches.length === 0) return
+
+  const maxCmd = Math.max(...matches.map(m => m.cmd.length))
+  const rows = matches.map(m => {
+    const typed = line.length
+    const cmdHighlighted = cyan(m.cmd.slice(0, typed)) + m.cmd.slice(typed)
+    return `  ${cmdHighlighted.padEnd(maxCmd + (cyan('').length * 2) + 2)}  ${dim(m.desc)}`
+  })
+
+  _origWrite('\x1b7')                       // save cursor
+  _origWrite('\n' + rows.join('\n'))
+  _origWrite('\x1b8')                       // restore cursor
+  rl._refreshLine?.()
+  slashMenuVisible = true
+  slashMenuLines = rows.length
+}
+
+process.stdin.on('keypress', () => {
+  // Read rl.line after readline has updated its buffer
+  setImmediate(() => {
+    if (currentDisplay) return  // query in progress — ignore
+    const line = rl.line ?? ''
+    if (line.startsWith('/')) {
+      stopAbacusAnim()
+      showSlashMenu(line)
+    } else {
+      if (slashMenuVisible) {
+        hideSlashMenu()
+        startAbacusAnim()
+      }
+    }
+  })
+})
+
 rl.on('line', async (line) => {
-  const input = line.trim()
+  hideSlashMenu()
+  // Strip leading / so /help, /connect etc. work the same as help, connect
+  const input = line.trim().replace(/^\//, '')
   addLines(1) // readline moved to next line on Enter
 
   if (!input) { rl.prompt(); return }
