@@ -75,7 +75,81 @@ Previously only showed count; now shows named sources.
 
 ---
 
-## Non-Goals
+## Tab Autocompletion
+
+Wire up readline's built-in `completer` option in `createInterface`. Three completion branches, checked in order:
+
+### 1. Commands
+If the line prefix matches a command keyword, complete to the full command.
+```
+he[TAB]  →  help
+co[TAB]  →  connect  (or list: connect, clear)
+ac[TAB]  →  accounts
+lo[TAB]  →  logout
+ex[TAB]  →  exit
+```
+Commands list: `help`, `connect`, `accounts`, `exit`, `quit`, `logout`, `clear`
+
+### 2. Query starters
+If the line doesn't match a command, filter a hardcoded list of query starters by prefix (case-insensitive):
+```js
+const QUERY_STARTERS = [
+  'How much did I spend last month?',
+  'How much did I spend this month?',
+  'How is my portfolio performing?',
+  'What are my account balances?',
+  'What subscriptions am I paying for?',
+  'What recurring bills are coming up?',
+  'Show me my transactions at ',
+  'Show me my biggest spending categories',
+  'Compare my spending this month vs last month',
+  // etc.
+]
+```
+One match → completes inline. Multiple → readline prints list below prompt automatically.
+
+### 3. Date phrase suffix
+If the line contains a spending/transaction keyword (`spend`, `transaction`, `paid`, `bought`, `charged`, `cost`) and ends with a space, offer date phrases appended to the current line:
+```js
+const DATE_PHRASES = [
+  'last month', 'this month', 'last week', 'this year',
+  'in January', ..., 'in December',
+  'in Q1', 'in Q2', 'in Q3', 'in Q4',
+  'last 3 months', 'last 6 months', 'yesterday',
+]
+// Return line + phrase as each completion so readline appends, not replaces
+return [DATE_PHRASES.map(d => line + d), line]
+```
+
+### Animation gotcha
+The abacus animation uses ANSI cursor save/restore which conflicts with readline's completion display. Call `stopAbacusAnim()` at the top of the completer and `startAbacusAnim()` after completion is shown.
+
+---
+
+## Slash Command Menu
+
+When the user types `/`, render a live-filtered command menu below the prompt — like Claude Code. Menu filters as they keep typing (`/co`, `/ac`). Enter submits whatever is typed; the line handler strips the `/` prefix and maps to the right command.
+
+```
+> /
+/help      Show commands and example queries
+/connect   Link a bank or investment account
+/accounts  Show connected accounts and balances
+/clear     Redraw banner and reset view
+/logout    Log out and delete saved credentials
+/exit      Exit the CLI
+```
+
+**Implementation:**
+- readline automatically calls `readline.emitKeypressEvents` on stdin; listen with `process.stdin.on('keypress', handler)` after `rl` is created
+- On each keypress, read `rl.line` to get current buffer
+- If it starts with `/`: `stopAbacusAnim()` + render filtered menu below prompt using ANSI cursor save/restore (`\x1b7` / `\x1b8`)
+- If it doesn't: hide menu + resume animation
+- Menu renders below the prompt line without affecting scroll — cursor stays on prompt line
+- In `rl.on('line')`: strip leading `/` from input before command matching (`/help` → `help`)
+- Typed prefix shown in cyan, description dim
+- Arrow key navigation is a stretch goal — not in scope for initial build
+
+**Non-Goals**
 - No new npm dependencies — everything via Node built-ins + ANSI codes
-- No interactive menus or arrow-key navigation (overkill for now)
 - No persistent command history across sessions (readline handles in-session history)
