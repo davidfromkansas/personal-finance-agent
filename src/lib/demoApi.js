@@ -124,7 +124,7 @@ export function getDemoResponse(pathname, search) {
   }
 
   // ── Mutations: return success for all write operations ───────────────────
-  return { success: true, synced: 0, link_token: null }
+  return { ok: true, success: true, synced: 0, link_token: null }
 }
 
 // ─── Transaction filtering + pagination ─────────────────────────────────────

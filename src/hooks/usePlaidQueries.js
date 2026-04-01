@@ -5,7 +5,7 @@
  *
  * Cache invalidation helpers are exported at the bottom for use in mutations.
  */
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
 import queryClient, { STALE } from '../lib/queryClient'
@@ -71,6 +71,7 @@ export function useTransactions(filters) {
       if (filterParams.before_date) params.set('before_date', filterParams.before_date)
       filterParams.account_ids.forEach(id => params.append('account_ids', id))
       filterParams.categories.forEach(cat => params.append('categories', cat))
+      filterParams.detailed_categories?.forEach(cat => params.append('detailed_categories', cat))
       if (filterParams.search) params.set('search', filterParams.search)
       return apiFetch(`/api/plaid/transactions?${params}`, { getToken: getIdToken })
     },
@@ -203,6 +204,39 @@ export function usePortfolioSnapshot(date) {
     queryFn: () => apiFetch(`/api/plaid/portfolio-snapshot?date=${date}`, { getToken: getIdToken }),
     enabled: !!date,
     staleTime: Infinity, // historical snapshots never change
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Mutations
+// ---------------------------------------------------------------------------
+
+export function useUpdateTransactionCategory() {
+  const { getIdToken } = useAuth()
+  return useMutation({
+    mutationFn: ({ plaidTransactionId, category, detailedCategory }) =>
+      apiFetch(`/api/plaid/transactions/${plaidTransactionId}/category`, {
+        method: 'PATCH',
+        body: { category, detailed_category: detailedCategory },
+        getToken: getIdToken,
+      }),
+    onSuccess: () => invalidateTransactionData(),
+  })
+}
+
+export function useUpdateTransactionRecurring() {
+  const { getIdToken } = useAuth()
+  return useMutation({
+    mutationFn: ({ plaidTransactionId, recurring }) =>
+      apiFetch(`/api/plaid/transactions/${plaidTransactionId}/recurring`, {
+        method: 'PATCH',
+        body: { recurring },
+        getToken: getIdToken,
+      }),
+    onSuccess: () => {
+      invalidateTransactionData()
+      queryClient.invalidateQueries({ queryKey: ['recurring'] })
+    },
   })
 }
 
