@@ -158,6 +158,42 @@ export async function updateTransactionAccountNames(userId, accountId, accountNa
   )
 }
 
+export async function updateTransactionCategory(userId, plaidTransactionId, category, detailedCategory) {
+  await query(
+    `UPDATE transactions SET personal_finance_category = $3, personal_finance_category_detailed = $4
+     WHERE user_id = $1 AND plaid_transaction_id = $2`,
+    [userId, plaidTransactionId, category, detailedCategory]
+  )
+}
+
+export async function updateTransactionRecurring(userId, plaidTransactionId, recurring) {
+  await query(
+    `UPDATE transactions SET recurring = $3
+     WHERE user_id = $1 AND plaid_transaction_id = $2`,
+    [userId, plaidTransactionId, recurring]
+  )
+}
+
+/**
+ * Returns subscription transactions that have a recurring frequency set.
+ * Used to augment the upcoming payments list with user-marked subscriptions.
+ */
+export async function getSubscriptionPayments(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (merchant_name, amount, recurring)
+       plaid_transaction_id, name, merchant_name, amount, date, recurring,
+       personal_finance_category, personal_finance_category_detailed,
+       logo_url, account_name
+     FROM transactions
+     WHERE user_id = $1
+       AND personal_finance_category = 'SUBSCRIPTION'
+       AND recurring IS NOT NULL
+     ORDER BY merchant_name, amount, recurring, date DESC`,
+    [userId]
+  )
+  return rows
+}
+
 export async function deleteTransactionsByPlaidIds(plaidTransactionIds) {
   if (!plaidTransactionIds.length) return
   await query(
@@ -179,9 +215,9 @@ export async function getLogoUrlsByPlaidTransactionIds(userId, plaidTransactionI
 }
 
 const reportedDateExpr = 'COALESCE(authorized_date, date)'
-const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number FROM transactions`
+const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number, recurring FROM transactions`
 
-export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, search, sort = 'recent', offset = 0 } = {}) {
+export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, detailedCategories, search, sort = 'recent', offset = 0 } = {}) {
   // params shared by both queries — $1 = userId, $2+ = filter values only (no limit/offset)
   const conditions = ['user_id = $1']
   const params = [userId]
@@ -206,6 +242,11 @@ export async function getRecentTransactions(userId, limit = 25, { beforeDate, af
   if (categories?.length) {
     conditions.push(`personal_finance_category = ANY($${p++})`)
     params.push(categories)
+  }
+
+  if (detailedCategories?.length) {
+    conditions.push(`personal_finance_category_detailed = ANY($${p++})`)
+    params.push(detailedCategories)
   }
 
   if (search) {

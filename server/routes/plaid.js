@@ -17,7 +17,7 @@ import {
   getSyncCursor, updateSyncCursor, clearSyncCursor, setItemErrorCode, clearItemErrorCode, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
   getMonthlyCashFlow, getCashFlowTransactions,
-  updateTransactionAccountNames,
+  updateTransactionAccountNames, updateTransactionCategory, updateTransactionRecurring, getSubscriptionPayments,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
   upsertAccountBalanceSnapshot, getAccountBalanceHistory, getLatestAccountBalances, getLatestInvestmentAccountBalances,
   getInvestmentTransactionsByAccount,
@@ -560,6 +560,37 @@ plaidRouter.get('/transactions/categories', async (req, res) => {
   }
 })
 
+/** PATCH /api/plaid/transactions/:plaidTransactionId/category — override category */
+plaidRouter.patch('/transactions/:plaidTransactionId/category', async (req, res) => {
+  try {
+    const { category, detailed_category } = req.body
+    if (!category || !detailed_category) {
+      return res.status(400).json({ error: 'category and detailed_category are required' })
+    }
+    await updateTransactionCategory(req.uid, req.params.plaidTransactionId, category, detailed_category)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('PATCH /transactions/:id/category error:', err)
+    res.status(500).json({ error: 'Failed to update category' })
+  }
+})
+
+/** PATCH /api/plaid/transactions/:plaidTransactionId/recurring — set recurrence frequency */
+plaidRouter.patch('/transactions/:plaidTransactionId/recurring', async (req, res) => {
+  try {
+    const VALID = ['WEEKLY', 'BIWEEKLY', 'SEMI_MONTHLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', 'ANNUALLY']
+    const { recurring } = req.body
+    if (recurring !== null && !VALID.includes(recurring)) {
+      return res.status(400).json({ error: `recurring must be one of: ${VALID.join(', ')} or null` })
+    }
+    await updateTransactionRecurring(req.uid, req.params.plaidTransactionId, recurring)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('PATCH /transactions/:id/recurring error:', err)
+    res.status(500).json({ error: 'Failed to update recurring' })
+  }
+})
+
 /** GET /api/plaid/transactions — recent transactions across all accounts */
 plaidRouter.get('/transactions', async (req, res, next) => {
   try {
@@ -576,6 +607,7 @@ plaidRouter.get('/transactions', async (req, res, next) => {
     // and comma-separated (?account_ids=a,b) for backwards compatibility
     const rawAccountIds = [].concat(req.query.account_ids ?? []).flatMap(v => v.split(',')).filter(Boolean)
     const rawCategories = [].concat(req.query.categories ?? []).flatMap(v => v.split(',')).filter(Boolean)
+    const rawDetailedCategories = [].concat(req.query.detailed_categories ?? []).flatMap(v => v.split(',')).filter(Boolean)
 
     const search = req.query.search?.trim() || null
 
@@ -586,6 +618,7 @@ plaidRouter.get('/transactions', async (req, res, next) => {
     else if (beforeDate) opts.beforeDate = beforeDate
     if (rawAccountIds.length) opts.accountIds = rawAccountIds
     if (rawCategories.length) opts.categories = rawCategories
+    if (rawDetailedCategories.length) opts.detailedCategories = rawDetailedCategories
     if (search) opts.search = search
 
     const { transactions, total } = await getRecentTransactions(req.uid, limit, opts)
@@ -687,14 +720,62 @@ plaidRouter.get('/recurring', async (req, res, next) => {
     }))
 
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-    const payments = itemResults.flat().filter((p) => p.predicted_next_date >= today)
-    payments.sort((a, b) => (a.predicted_next_date || '').localeCompare(b.predicted_next_date || ''))
-    const transactionIds = [...new Set(payments.map((p) => p.first_transaction_id).filter(Boolean))]
+    const plaidPayments = itemResults.flat().filter((p) => p.predicted_next_date >= today)
+
+    // Enrich Plaid payment logos
+    const transactionIds = [...new Set(plaidPayments.map((p) => p.first_transaction_id).filter(Boolean))]
     const logoMap = transactionIds.length ? await getLogoUrlsByPlaidTransactionIds(req.uid, transactionIds) : {}
-    for (const p of payments) {
+    for (const p of plaidPayments) {
       if (p.first_transaction_id && logoMap[p.first_transaction_id]) p.logo_url = logoMap[p.first_transaction_id]
       delete p.first_transaction_id
     }
+
+    // Add user-marked subscription payments from the database
+    const FREQUENCY_DAYS = { WEEKLY: 7, BIWEEKLY: 14, SEMI_MONTHLY: 15, MONTHLY: 30, QUARTERLY: 91, YEARLY: 365, ANNUALLY: 365 }
+    const subscriptionRows = await getSubscriptionPayments(req.uid)
+    const subscriptionPayments = []
+    for (const row of subscriptionRows) {
+      const freqDays = FREQUENCY_DAYS[row.recurring] ?? 30
+      // row.date may be a Date object or a string — normalize to YYYY-MM-DD string first
+      const dateStr = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10)
+      const lastDate = new Date(dateStr + 'T00:00:00')
+      // Project forward from last transaction date until we find the next future date
+      let nextDate = new Date(lastDate)
+      while (nextDate.toISOString().slice(0, 10) < today) {
+        nextDate.setDate(nextDate.getDate() + freqDays)
+      }
+      const predictedNext = nextDate.toISOString().slice(0, 10)
+      subscriptionPayments.push({
+        stream_id: `sub-${row.plaid_transaction_id}`,
+        merchant_name: row.merchant_name || row.name || 'Unknown',
+        description: row.name,
+        logo_url: row.logo_url ?? null,
+        frequency: row.recurring,
+        average_amount: Math.abs(row.amount),
+        last_amount: Math.abs(row.amount),
+        predicted_next_date: predictedNext,
+        first_date: dateStr,
+        last_date: dateStr,
+        category: null,
+        personal_finance_category_primary: 'SUBSCRIPTION',
+        status: 'ACTIVE',
+        source: 'subscription',
+      })
+    }
+
+    // Deduplicate: skip subscription entries that match a Plaid payment on amount, frequency, and category
+    const plaidKeys = new Set(plaidPayments.map((p) => {
+      const amt = Math.round((p.last_amount ?? p.average_amount ?? 0) * 100)
+      return `${amt}|${p.frequency}|${p.personal_finance_category_primary ?? ''}`
+    }))
+    const dedupedSubs = subscriptionPayments.filter((s) => {
+      const amt = Math.round((s.last_amount ?? 0) * 100)
+      const key = `${amt}|${s.frequency}|${s.personal_finance_category_primary ?? ''}`
+      return !plaidKeys.has(key)
+    })
+
+    const payments = [...plaidPayments, ...dedupedSubs]
+    payments.sort((a, b) => (a.predicted_next_date || '').localeCompare(b.predicted_next_date || ''))
     res.json({ payments })
   } catch (err) {
     console.error('GET /recurring error:', err)

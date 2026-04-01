@@ -6,6 +6,8 @@ const FREQUENCY_LABELS = {
   BIWEEKLY: 'Every 2 weeks',
   SEMI_MONTHLY: 'Twice a month',
   MONTHLY: 'Every month',
+  QUARTERLY: 'Every quarter',
+  YEARLY: 'Every year',
   ANNUALLY: 'Every year',
   UNKNOWN: 'Recurring',
 }
