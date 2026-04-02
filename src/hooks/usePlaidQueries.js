@@ -150,6 +150,60 @@ export function useCashFlowTransactions(month) {
   })
 }
 
+export function useCashFlowTransactionsByRange(startDate, endDate) {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ start_date: startDate, end_date: endDate })
+  return useQuery({
+    queryKey: ['cash-flow-transactions-range', startDate, endDate],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-transactions?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: !!startDate && !!endDate,
+  })
+}
+
+export function useCashFlowTimeSeries(startDate, endDate, granularity = 'month') {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ start_date: startDate, end_date: endDate, granularity })
+  return useQuery({
+    queryKey: ['cash-flow-time-series', startDate, endDate, granularity],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-time-series?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: !!startDate && !!endDate,
+  })
+}
+
+export function useCashFlowBreakdown(period, breakdown = 'category', accountIds = [], customRange = null) {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ period, breakdown })
+  if (accountIds.length) params.set('account_ids', accountIds.join(','))
+  if (period === 'custom' && customRange) {
+    params.set('start_date', customRange.startDate)
+    params.set('end_date', customRange.endDate)
+  }
+  return useQuery({
+    queryKey: ['cash-flow-breakdown', period, breakdown, accountIds, customRange],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-breakdown?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: period !== 'custom' || (!!customRange?.startDate && !!customRange?.endDate),
+  })
+}
+
+export function useCashFlowNodeTransactions(period, breakdown, flowType, categoryKey, accountIds = [], customRange = null) {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ period, breakdown, flow_type: flowType, category_key: categoryKey })
+  if (accountIds.length) params.set('account_ids', accountIds.join(','))
+  if (period === 'custom' && customRange) {
+    params.set('start_date', customRange.startDate)
+    params.set('end_date', customRange.endDate)
+  }
+  return useQuery({
+    queryKey: ['cash-flow-node-transactions', period, breakdown, flowType, categoryKey, accountIds, customRange],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-node-transactions?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: !!categoryKey && (period !== 'custom' || (!!customRange?.startDate && !!customRange?.endDate)),
+  })
+}
+
 export function usePortfolioHistory(range, accountIds, options = {}) {
   const { getIdToken } = useAuth()
   return useQuery({
@@ -256,6 +310,7 @@ export function invalidateTransactionData() {
     queryClient.invalidateQueries({ queryKey: ['spending'] }),
     queryClient.invalidateQueries({ queryKey: ['net-worth'] }),
     queryClient.invalidateQueries({ queryKey: ['cash-flow'] }),
+    queryClient.invalidateQueries({ queryKey: ['cash-flow-breakdown'] }),
     queryClient.invalidateQueries({ queryKey: ['recurring'] }),
     queryClient.invalidateQueries({ queryKey: ['transaction-categories'] }),
   ])

@@ -16,7 +16,7 @@ import {
   getPlaidItemsByUserId, getPlaidItemByItemId, getPlaidItemByInstitutionId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, setItemErrorCode, clearItemErrorCode, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
-  getMonthlyCashFlow, getCashFlowTransactions,
+  getMonthlyCashFlow, getCashFlowTimeSeries, getCashFlowTransactions, getCashFlowBreakdown, getCashFlowNodeTransactions,
   updateTransactionAccountNames, updateTransactionCategory, updateTransactionRecurring, getSubscriptionPayments,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
   upsertAccountBalanceSnapshot, getAccountBalanceHistory, getLatestAccountBalances, getLatestInvestmentAccountBalances,
@@ -795,18 +795,106 @@ plaidRouter.get('/cash-flow', async (req, res, next) => {
   }
 })
 
-/** GET /api/plaid/cash-flow-transactions?month=YYYY-MM — inflows and outflows for a single month */
+/** GET /api/plaid/cash-flow-time-series — cash flow grouped by day/week/month within a date range */
+plaidRouter.get('/cash-flow-time-series', async (req, res, next) => {
+  try {
+    const { start_date, end_date, granularity } = req.query
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date are required' })
+    if (granularity && !['day', 'week', 'month'].includes(granularity)) {
+      return res.status(400).json({ error: 'granularity must be day, week, or month' })
+    }
+    const rows = await getCashFlowTimeSeries(req.uid, start_date, end_date, granularity || 'month')
+    res.json({ buckets: rows })
+  } catch (err) {
+    console.error('GET /cash-flow-time-series error:', err)
+    res.status(500).json({ error: 'Failed to load cash flow time series' })
+  }
+})
+
+/** GET /api/plaid/cash-flow-transactions — inflows and outflows for a month or date range */
 plaidRouter.get('/cash-flow-transactions', async (req, res, next) => {
   try {
-    const { month } = req.query
+    const { month, start_date, end_date } = req.query
+    if (start_date && end_date) {
+      const result = await getCashFlowTransactions(req.uid, null, start_date, end_date)
+      return res.json(result)
+    }
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ error: 'month must be in YYYY-MM format' })
+      return res.status(400).json({ error: 'Provide month (YYYY-MM) or start_date + end_date (YYYY-MM-DD)' })
     }
     const result = await getCashFlowTransactions(req.uid, month)
     res.json(result)
   } catch (err) {
     console.error('GET /cash-flow-transactions error:', err)
     res.status(500).json({ error: 'Failed to load cash flow transactions' })
+  }
+})
+
+/** GET /api/plaid/cash-flow-breakdown — category-level cash flow for Sankey diagram */
+plaidRouter.get('/cash-flow-breakdown', async (req, res, next) => {
+  try {
+    const period = req.query.period
+    if (!period || !['week', 'month', 'quarter', 'ytd', 'year', 'custom'].includes(period)) {
+      return res.status(400).json({ error: 'period must be week, month, quarter, year, or custom' })
+    }
+    let customRange = null
+    if (period === 'custom') {
+      const { start_date, end_date } = req.query
+      if (!start_date || !end_date) return res.status(400).json({ error: 'custom period requires start_date and end_date' })
+      customRange = { startDate: start_date, endDate: end_date }
+    }
+    const breakdown = req.query.breakdown || 'category'
+    if (!['category', 'group', 'merchant'].includes(breakdown)) {
+      return res.status(400).json({ error: 'breakdown must be category, group, or merchant' })
+    }
+    const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
+    const rows = await getCashFlowBreakdown(req.uid, period, breakdown, accountIds, customRange)
+
+    const income = { total: 0, categories: [] }
+    const expenses = { total: 0, categories: [] }
+    for (const r of rows) {
+      const entry = { name: r.category_key, amount: r.total_amount }
+      if (r.flow_type === 'income') {
+        income.total += r.total_amount
+        income.categories.push(entry)
+      } else {
+        expenses.total += r.total_amount
+        expenses.categories.push(entry)
+      }
+    }
+
+    res.json({ period, breakdown, income, expenses })
+  } catch (err) {
+    console.error('GET /cash-flow-breakdown error:', err)
+    res.status(500).json({ error: 'Failed to load cash flow breakdown' })
+  }
+})
+
+/** GET /api/plaid/cash-flow-node-transactions — transactions for a Sankey node drill-down */
+plaidRouter.get('/cash-flow-node-transactions', async (req, res, next) => {
+  try {
+    const { period, breakdown, flow_type, category_key } = req.query
+    if (!period || !['week', 'month', 'quarter', 'ytd', 'year', 'custom'].includes(period)) {
+      return res.status(400).json({ error: 'period must be week, month, quarter, year, or custom' })
+    }
+    let customRange = null
+    if (period === 'custom') {
+      const { start_date, end_date } = req.query
+      if (!start_date || !end_date) return res.status(400).json({ error: 'custom period requires start_date and end_date' })
+      customRange = { startDate: start_date, endDate: end_date }
+    }
+    if (!flow_type || !['income', 'expense'].includes(flow_type)) {
+      return res.status(400).json({ error: 'flow_type must be income or expense' })
+    }
+    if (!category_key) {
+      return res.status(400).json({ error: 'category_key is required' })
+    }
+    const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
+    const rows = await getCashFlowNodeTransactions(req.uid, period, breakdown || 'category', flow_type, category_key, accountIds, customRange)
+    res.json({ transactions: rows })
+  } catch (err) {
+    console.error('GET /cash-flow-node-transactions error:', err)
+    res.status(500).json({ error: 'Failed to load transactions' })
   }
 })
 
