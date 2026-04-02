@@ -14,6 +14,7 @@ import { LoggedInPage } from './pages/LoggedInPage'
 import { TransactionsPage } from './pages/TransactionsPage'
 import { InvestmentsPage } from './pages/InvestmentsPage'
 import { AccountsPage } from './pages/AccountsPage'
+import { CashFlowPage } from './pages/CashFlowPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import { TermsOfServicePage } from './pages/TermsOfServicePage'
 
@@ -82,6 +83,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TransactionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/app/cash-flow"
+        element={
+          <ProtectedRoute>
+            <CashFlowPage />
           </ProtectedRoute>
         }
       />

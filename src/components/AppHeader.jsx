@@ -35,6 +35,14 @@ function InvestmentsIcon() {
   )
 }
 
+function CashFlowIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 12h4l3-9 4 18 3-9h4" />
+    </svg>
+  )
+}
+
 function AccountsIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -71,6 +79,7 @@ function SidebarToggleIcon({ collapsed }) {
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/app', icon: DashboardIcon },
   { label: 'Transactions', path: '/app/transactions', icon: TransactionsIcon },
+  { label: 'Cash Flow', path: '/app/cash-flow', icon: CashFlowIcon },
   { label: 'Investments', path: '/app/investments', icon: InvestmentsIcon },
   { label: 'Accounts', path: '/app/accounts', icon: AccountsIcon },
 ]

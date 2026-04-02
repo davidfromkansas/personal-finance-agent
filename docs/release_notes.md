@@ -4,6 +4,35 @@ User-facing changes, most recent first.
 
 ---
 
+# Cash Flow page, AI cash flow tools, and trend indicators — Shipped: April 2, 2026
+
+## Dedicated Cash Flow page
+
+A new Cash Flow page is available from the sidebar. It gives you two views of your money:
+
+- **Cash Flow Breakdown** — a Sankey diagram showing how money flows from income sources on the left to expense categories on the right. If you're saving money, a green "Savings" node appears on the right. You can break down by Category or Merchant using the toggle, and click any node to see the individual transactions behind it.
+- **Cash Flow Over Time** — a bar chart showing inflows, outflows, and net over time. The chart automatically picks the right granularity (daily for a week, weekly for a month, monthly for longer). Click any bar to see the transactions for that period, split into Inflows and Outflows columns with search and sort.
+
+The page has period selectors (Last Week, Last Month, Last 3 Months, Year to Date, Last Year, or a custom date range), an account filter, and a summary card showing Total Income, Total Expenses, Net Income, and Savings Rate.
+
+## Trend indicators on the summary card
+
+Each number in the summary card now shows a small trend arrow with a percentage comparing the current period to the equivalent prior period. For example, if you're viewing "Last Month", the trend compares to the month before that. Green arrows mean things are improving (income up, expenses down), red arrows mean the opposite.
+
+## AI assistant and Claude connector: new cash flow tools
+
+The AI assistant and the Claude connector (MCP) now have significantly deeper cash flow capabilities. You can ask questions like:
+
+- **"Show me my daily cash flow for last week"** — the assistant now supports day, week, and month granularity with custom date ranges, not just monthly buckets.
+- **"What's in my Food & Drink spending?"** — the assistant can drill into any category from a cash flow breakdown to show you the individual transactions behind it.
+- **"How does this month compare to last month?"** — a new comparison tool shows headline deltas (income, expenses, net, savings rate) and highlights the top categories that changed the most.
+- **"What subscriptions am I paying for?"** — the assistant can now look up your recurring bills and subscriptions (previously only available through the Claude connector).
+- **"Show me cash flow for just my Chase account"** — all cash flow tools now support filtering by specific accounts.
+
+The assistant also better understands everyday language. Questions like "where is my money going?", "am I saving enough?", "what's eating my paycheck?", or "can I afford this?" now route to the right data without needing financial jargon.
+
+---
+
 # Editable categories, recurring transactions, and subscription tracking — Shipped: April 1, 2026
 
 ## Change your transaction categories
