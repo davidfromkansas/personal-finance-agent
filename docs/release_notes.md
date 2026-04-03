@@ -4,6 +4,12 @@ User-facing changes, most recent first.
 
 ---
 
+# New domain — Shipped: April 2, 2026
+
+Abacus is now served from **getabacus.xyz**. The CLI default server URL has been updated accordingly. Existing users with a saved config will continue to work — the new default only applies to fresh logins.
+
+---
+
 # CLI polish, investment connect button, and reconnect fix — Shipped: March 31, 2026
 
 ## Abacus CLI: branded terminal experience

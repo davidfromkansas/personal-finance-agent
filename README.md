@@ -130,13 +130,13 @@ All data access is scoped to your account and read-only. Nothing is ever written
 
 ### Prerequisites
 
-1. **An Abacus account** — Sign up at [abacus-money.com](https://abacus-money.com) using Google sign-in.
+1. **An Abacus account** — Sign up at [abacus-money.com](https://getabacus.xyz) using Google sign-in.
 2. **Linked accounts** — Connect at least one bank, credit card, or investment account via Plaid from the dashboard. This is required before any MCP tools will return data.
 
 ### Connect via Claude.ai (web or mobile)
 
 1. In Claude.ai, go to **Settings → Integrations → Add custom integration**
-2. Enter the MCP server URL: `https://personal-finance-agent-production.up.railway.app/mcp`
+2. Enter the MCP server URL: `https://getabacus.xyz/mcp`
 3. Claude will redirect you to sign in with Google — use the same account as your Abacus account
 4. Once authorized, your financial tools will be available in any Claude.ai conversation
 
@@ -154,7 +154,7 @@ All data access is scoped to your account and read-only. Nothing is ever written
       "command": "npx",
       "args": [
         "mcp-remote",
-        "https://personal-finance-agent-production.up.railway.app/mcp",
+        "https://getabacus.xyz/mcp",
         "--header",
         "Authorization:Bearer YOUR_TOKEN_HERE"
       ]
