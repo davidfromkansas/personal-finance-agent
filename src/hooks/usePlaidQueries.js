@@ -5,7 +5,7 @@
  *
  * Cache invalidation helpers are exported at the bottom for use in mutations.
  */
-import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import { apiFetch } from '../lib/api'
 import queryClient, { STALE } from '../lib/queryClient'
@@ -71,6 +71,7 @@ export function useTransactions(filters) {
       if (filterParams.before_date) params.set('before_date', filterParams.before_date)
       filterParams.account_ids.forEach(id => params.append('account_ids', id))
       filterParams.categories.forEach(cat => params.append('categories', cat))
+      filterParams.detailed_categories?.forEach(cat => params.append('detailed_categories', cat))
       if (filterParams.search) params.set('search', filterParams.search)
       return apiFetch(`/api/plaid/transactions?${params}`, { getToken: getIdToken })
     },
@@ -149,6 +150,60 @@ export function useCashFlowTransactions(month) {
   })
 }
 
+export function useCashFlowTransactionsByRange(startDate, endDate) {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ start_date: startDate, end_date: endDate })
+  return useQuery({
+    queryKey: ['cash-flow-transactions-range', startDate, endDate],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-transactions?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: !!startDate && !!endDate,
+  })
+}
+
+export function useCashFlowTimeSeries(startDate, endDate, granularity = 'month') {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ start_date: startDate, end_date: endDate, granularity })
+  return useQuery({
+    queryKey: ['cash-flow-time-series', startDate, endDate, granularity],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-time-series?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: !!startDate && !!endDate,
+  })
+}
+
+export function useCashFlowBreakdown(period, breakdown = 'category', accountIds = [], customRange = null) {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ period, breakdown })
+  if (accountIds.length) params.set('account_ids', accountIds.join(','))
+  if (period === 'custom' && customRange) {
+    params.set('start_date', customRange.startDate)
+    params.set('end_date', customRange.endDate)
+  }
+  return useQuery({
+    queryKey: ['cash-flow-breakdown', period, breakdown, accountIds, customRange],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-breakdown?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: period !== 'custom' || (!!customRange?.startDate && !!customRange?.endDate),
+  })
+}
+
+export function useCashFlowNodeTransactions(period, breakdown, flowType, categoryKey, accountIds = [], customRange = null) {
+  const { getIdToken } = useAuth()
+  const params = new URLSearchParams({ period, breakdown, flow_type: flowType, category_key: categoryKey })
+  if (accountIds.length) params.set('account_ids', accountIds.join(','))
+  if (period === 'custom' && customRange) {
+    params.set('start_date', customRange.startDate)
+    params.set('end_date', customRange.endDate)
+  }
+  return useQuery({
+    queryKey: ['cash-flow-node-transactions', period, breakdown, flowType, categoryKey, accountIds, customRange],
+    queryFn: () => apiFetch(`/api/plaid/cash-flow-node-transactions?${params}`, { getToken: getIdToken }),
+    staleTime: STALE.charts,
+    enabled: !!categoryKey && (period !== 'custom' || (!!customRange?.startDate && !!customRange?.endDate)),
+  })
+}
+
 export function usePortfolioHistory(range, accountIds, options = {}) {
   const { getIdToken } = useAuth()
   return useQuery({
@@ -207,6 +262,39 @@ export function usePortfolioSnapshot(date) {
 }
 
 // ---------------------------------------------------------------------------
+// Mutations
+// ---------------------------------------------------------------------------
+
+export function useUpdateTransactionCategory() {
+  const { getIdToken } = useAuth()
+  return useMutation({
+    mutationFn: ({ plaidTransactionId, category, detailedCategory }) =>
+      apiFetch(`/api/plaid/transactions/${plaidTransactionId}/category`, {
+        method: 'PATCH',
+        body: { category, detailed_category: detailedCategory },
+        getToken: getIdToken,
+      }),
+    onSuccess: () => invalidateTransactionData(),
+  })
+}
+
+export function useUpdateTransactionRecurring() {
+  const { getIdToken } = useAuth()
+  return useMutation({
+    mutationFn: ({ plaidTransactionId, recurring }) =>
+      apiFetch(`/api/plaid/transactions/${plaidTransactionId}/recurring`, {
+        method: 'PATCH',
+        body: { recurring },
+        getToken: getIdToken,
+      }),
+    onSuccess: () => {
+      invalidateTransactionData()
+      queryClient.invalidateQueries({ queryKey: ['recurring'] })
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Cache invalidation helpers — call these after mutations
 // ---------------------------------------------------------------------------
 
@@ -222,6 +310,7 @@ export function invalidateTransactionData() {
     queryClient.invalidateQueries({ queryKey: ['spending'] }),
     queryClient.invalidateQueries({ queryKey: ['net-worth'] }),
     queryClient.invalidateQueries({ queryKey: ['cash-flow'] }),
+    queryClient.invalidateQueries({ queryKey: ['cash-flow-breakdown'] }),
     queryClient.invalidateQueries({ queryKey: ['recurring'] }),
     queryClient.invalidateQueries({ queryKey: ['transaction-categories'] }),
   ])

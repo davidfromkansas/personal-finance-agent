@@ -158,6 +158,42 @@ export async function updateTransactionAccountNames(userId, accountId, accountNa
   )
 }
 
+export async function updateTransactionCategory(userId, plaidTransactionId, category, detailedCategory) {
+  await query(
+    `UPDATE transactions SET personal_finance_category = $3, personal_finance_category_detailed = $4
+     WHERE user_id = $1 AND plaid_transaction_id = $2`,
+    [userId, plaidTransactionId, category, detailedCategory]
+  )
+}
+
+export async function updateTransactionRecurring(userId, plaidTransactionId, recurring) {
+  await query(
+    `UPDATE transactions SET recurring = $3
+     WHERE user_id = $1 AND plaid_transaction_id = $2`,
+    [userId, plaidTransactionId, recurring]
+  )
+}
+
+/**
+ * Returns subscription transactions that have a recurring frequency set.
+ * Used to augment the upcoming payments list with user-marked subscriptions.
+ */
+export async function getSubscriptionPayments(userId) {
+  const { rows } = await query(
+    `SELECT DISTINCT ON (merchant_name, amount, recurring)
+       plaid_transaction_id, name, merchant_name, amount, date, recurring,
+       personal_finance_category, personal_finance_category_detailed,
+       logo_url, account_name
+     FROM transactions
+     WHERE user_id = $1
+       AND personal_finance_category = 'SUBSCRIPTION'
+       AND recurring IS NOT NULL
+     ORDER BY merchant_name, amount, recurring, date DESC`,
+    [userId]
+  )
+  return rows
+}
+
 export async function deleteTransactionsByPlaidIds(plaidTransactionIds) {
   if (!plaidTransactionIds.length) return
   await query(
@@ -179,9 +215,9 @@ export async function getLogoUrlsByPlaidTransactionIds(userId, plaidTransactionI
 }
 
 const reportedDateExpr = 'COALESCE(authorized_date, date)'
-const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number FROM transactions`
+const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number, recurring FROM transactions`
 
-export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, search, sort = 'recent', offset = 0 } = {}) {
+export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, detailedCategories, search, sort = 'recent', offset = 0 } = {}) {
   // params shared by both queries — $1 = userId, $2+ = filter values only (no limit/offset)
   const conditions = ['user_id = $1']
   const params = [userId]
@@ -206,6 +242,11 @@ export async function getRecentTransactions(userId, limit = 25, { beforeDate, af
   if (categories?.length) {
     conditions.push(`personal_finance_category = ANY($${p++})`)
     params.push(categories)
+  }
+
+  if (detailedCategories?.length) {
+    conditions.push(`personal_finance_category_detailed = ANY($${p++})`)
+    params.push(detailedCategories)
   }
 
   if (search) {
@@ -372,8 +413,15 @@ export async function getMonthlySpendingByAccount(userId, accountId, monthsBack 
 const CASH_FLOW_EXCLUDED_CATEGORIES = ['TRANSFER_IN', 'TRANSFER_OUT']
 
 /** Monthly cash flow: inflows (credits), outflows (debits), net. Plaid: positive = out, negative = in. */
-export async function getMonthlyCashFlow(userId, months = 24) {
+export async function getMonthlyCashFlow(userId, months = 24, accountIds = null) {
   const n = Math.min(Math.max(months, 1), 36)
+  const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
+  const params = [userId, n, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  let filterClause = ''
+  if (hasFilter) {
+    params.push(accountIds)
+    filterClause = `AND account_id = ANY($${params.length})`
+  }
   const { rows } = await query(
     `SELECT to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') AS month,
             SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) AS inflows,
@@ -382,10 +430,11 @@ export async function getMonthlyCashFlow(userId, months = 24) {
      WHERE user_id = $1
        AND (personal_finance_category IS NULL OR personal_finance_category != ALL($3))
        AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($4))
+       ${filterClause}
      GROUP BY date_trunc('month', COALESCE(authorized_date, date))
      ORDER BY month DESC
      LIMIT $2`,
-    [userId, n, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+    params
   )
   return rows.map((r) => ({
     month: r.month,
@@ -395,20 +444,254 @@ export async function getMonthlyCashFlow(userId, months = 24) {
   }))
 }
 
-/** Transactions for a given month (YYYY-MM), split into inflows and outflows. Same exclusions as getMonthlyCashFlow. */
-export async function getCashFlowTransactions(userId, month) {
+/**
+ * Cash flow time series with configurable granularity and date range.
+ * granularity: 'day' | 'week' | 'month'
+ */
+export async function getCashFlowTimeSeries(userId, startDate, endDate, granularity = 'month', accountIds = null) {
+  let truncExpr, labelExpr
+  if (granularity === 'day') {
+    truncExpr = `date_trunc('day', COALESCE(authorized_date, date))`
+    labelExpr = `to_char(date_trunc('day', COALESCE(authorized_date, date)), 'YYYY-MM-DD')`
+  } else if (granularity === 'week') {
+    truncExpr = `date_trunc('week', COALESCE(authorized_date, date))`
+    labelExpr = `to_char(date_trunc('week', COALESCE(authorized_date, date)), 'YYYY-MM-DD')`
+  } else {
+    truncExpr = `date_trunc('month', COALESCE(authorized_date, date))`
+    labelExpr = `to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM')`
+  }
+
+  const params = [userId, startDate, endDate, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
+  let filterClause = ''
+  if (hasFilter) {
+    params.push(accountIds)
+    filterClause = `AND account_id = ANY($${params.length})`
+  }
+
+  const { rows } = await query(
+    `SELECT ${labelExpr} AS bucket,
+            SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) AS inflows,
+            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS outflows
+     FROM transactions
+     WHERE user_id = $1
+       AND COALESCE(authorized_date, date) >= $2::date
+       AND COALESCE(authorized_date, date) <= $3::date
+       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($4))
+       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($5))
+       ${filterClause}
+     GROUP BY ${truncExpr}
+     ORDER BY ${truncExpr} ASC`,
+    params
+  )
+  return rows.map((r) => ({
+    bucket: r.bucket,
+    inflows: parseFloat(r.inflows) || 0,
+    outflows: parseFloat(r.outflows) || 0,
+    net: (parseFloat(r.inflows) || 0) - (parseFloat(r.outflows) || 0),
+  }))
+}
+
+/** Transactions for a given month (YYYY-MM) or date range, split into inflows and outflows. Same exclusions as getMonthlyCashFlow. */
+export async function getCashFlowTransactions(userId, month, startDate = null, endDate = null) {
+  let dateClause, params
+  if (startDate && endDate) {
+    dateClause = `AND COALESCE(authorized_date, date) >= $2::date AND COALESCE(authorized_date, date) <= $3::date`
+    params = [userId, startDate, endDate, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  } else {
+    dateClause = `AND to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') = $2`
+    params = [userId, month, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  }
+  const exclIdx = startDate && endDate ? 4 : 3
+  const detailIdx = exclIdx + 1
   const { rows } = await query(
     `${TX_SELECT}
      WHERE user_id = $1
-       AND to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') = $2
-       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($3))
-       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($4))
+       ${dateClause}
+       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${exclIdx}))
+       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($${detailIdx}))
      ORDER BY COALESCE(authorized_date, date) DESC, created_at DESC`,
-    [userId, month, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+    params
   )
   const inflows = rows.filter(r => Number(r.amount) < 0)
   const outflows = rows.filter(r => Number(r.amount) > 0)
   return { inflows, outflows }
+}
+
+// ── Cash flow breakdown (Sankey page) ─────────────────────────────────────
+
+/** Plaid primary categories → user-friendly group names for Sankey "group" breakdown. */
+const CATEGORY_GROUP_MAP = {
+  INCOME: 'Earned Income',
+  FOOD_AND_DRINK: 'Food & Dining',
+  RENT_AND_UTILITIES: 'Bills & Utilities',
+  TRANSPORTATION: 'Transportation',
+  LOAN_PAYMENTS: 'Financial',
+  ENTERTAINMENT: 'Entertainment',
+  GENERAL_MERCHANDISE: 'Shopping',
+  PERSONAL_CARE: 'Personal Care',
+  MEDICAL: 'Healthcare',
+  TRAVEL: 'Travel',
+  HOME_IMPROVEMENT: 'Housing',
+  GOVERNMENT_AND_NON_PROFIT: 'Taxes & Fees',
+  BANK_FEES: 'Fees',
+}
+
+/** Compute trailing date window for cash flow periods. */
+function cashFlowDateRange(period) {
+  const pad2 = (n) => String(n).padStart(2, '0')
+  const now = new Date()
+  let startDate
+  if (period === 'week') {
+    const d = new Date(now); d.setDate(d.getDate() - 6)
+    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  } else if (period === 'month') {
+    const d = new Date(now); d.setDate(d.getDate() - 29)
+    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  } else if (period === 'quarter') {
+    const d = new Date(now); d.setMonth(d.getMonth() - 2); d.setDate(1)
+    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  } else if (period === 'ytd') {
+    startDate = `${now.getFullYear()}-01-01`
+  } else {
+    const d = new Date(now); d.setFullYear(d.getFullYear() - 1)
+    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+  }
+  const endDate = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+  return { startDate, endDate }
+}
+
+/**
+ * Cash flow breakdown by category/group/merchant for a given period.
+ * Used by the Sankey diagram on the Cash Flow page.
+ * Returns rows: { flow_type: 'income'|'expense', category_key, total_amount }
+ */
+export async function getCashFlowBreakdown(userId, period, breakdown = 'category', accountIds = null, customRange = null) {
+  const txDate = 'COALESCE(t.authorized_date, t.date)'
+
+  const { startDate, endDate } = customRange || cashFlowDateRange(period)
+
+  // Choose the grouping expression based on breakdown (all column refs prefixed with t.)
+  let groupExpr
+  if (breakdown === 'merchant') {
+    groupExpr = `COALESCE(NULLIF(t.merchant_name, ''), t.name)`
+  } else if (breakdown === 'group') {
+    const cases = Object.entries(CATEGORY_GROUP_MAP)
+      .map(([k, v]) => `WHEN t.personal_finance_category = '${k}' THEN '${v}'`)
+      .join(' ')
+    groupExpr = `CASE ${cases} ELSE COALESCE(t.personal_finance_category, 'Other') END`
+  } else {
+    groupExpr = `COALESCE(t.personal_finance_category, 'OTHER')`
+  }
+
+  const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
+  let p = 1
+  const params = [userId]
+  p++
+  params.push(startDate)
+  p++
+  params.push(endDate)
+  let filterClause = ''
+  if (hasFilter) {
+    filterClause = `AND t.account_id = ANY($${++p})`
+    params.push(accountIds)
+  }
+  params.push(CASH_FLOW_EXCLUDED_CATEGORIES)
+  const exclParam = params.length
+  params.push(NON_SPENDING_DETAILED_CATEGORIES)
+  const detailedParam = params.length
+
+  // Override category to 'Venmo' for inflows from Venmo accounts
+  const venmoOverride = `CASE WHEN t.amount < 0 AND pi.institution_name ILIKE '%venmo%' THEN 'Venmo' ELSE ${groupExpr} END`
+
+  const { rows } = await query(
+    `SELECT
+       CASE WHEN t.amount < 0 THEN 'income' ELSE 'expense' END AS flow_type,
+       ${venmoOverride} AS category_key,
+       SUM(ABS(t.amount)) AS total_amount
+     FROM transactions t
+     LEFT JOIN plaid_items pi ON t.item_id = pi.item_id
+     WHERE t.user_id = $1
+       AND ${txDate} >= $2::date
+       AND ${txDate} <= $3::date
+       ${filterClause}
+       AND (t.personal_finance_category IS NULL OR t.personal_finance_category != ALL($${exclParam}))
+       AND (t.personal_finance_category_detailed IS NULL OR t.personal_finance_category_detailed != ALL($${detailedParam}))
+     GROUP BY flow_type, category_key
+     ORDER BY total_amount DESC`,
+    params
+  )
+
+  return rows.map((r) => ({
+    flow_type: r.flow_type,
+    category_key: r.category_key,
+    total_amount: parseFloat(r.total_amount) || 0,
+  }))
+}
+
+/**
+ * Drill-down: return individual transactions for a Sankey node.
+ * Filters by period, flow direction (income/expense), category key, and breakdown type.
+ */
+export async function getCashFlowNodeTransactions(userId, period, breakdown, flowType, categoryKey, accountIds = null, customRange = null) {
+  const txDate = 'COALESCE(t.authorized_date, t.date)'
+  const { startDate, endDate } = customRange || cashFlowDateRange(period)
+
+  // Build the same grouping expression used in getCashFlowBreakdown (all column refs prefixed with t.)
+  let groupExpr
+  if (breakdown === 'merchant') {
+    groupExpr = `COALESCE(NULLIF(t.merchant_name, ''), t.name)`
+  } else if (breakdown === 'group') {
+    const cases = Object.entries(CATEGORY_GROUP_MAP)
+      .map(([k, v]) => `WHEN t.personal_finance_category = '${k}' THEN '${v}'`)
+      .join(' ')
+    groupExpr = `CASE ${cases} ELSE COALESCE(t.personal_finance_category, 'Other') END`
+  } else {
+    groupExpr = `COALESCE(t.personal_finance_category, 'OTHER')`
+  }
+
+  const amountCondition = flowType === 'income' ? 'amount < 0' : 'amount > 0'
+
+  // Support multiple category keys (comma-separated) for "Everything else" bucket
+  const categoryKeys = categoryKey.includes(',') ? categoryKey.split(',') : [categoryKey]
+
+  const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
+  let p = 4 // $1=userId, $2=startDate, $3=endDate, $4=categoryKeys[]
+  const params = [userId, startDate, endDate, categoryKeys]
+  let filterClause = ''
+  if (hasFilter) {
+    filterClause = `AND t.account_id = ANY($${++p})`
+    params.push(accountIds)
+  }
+  params.push(CASH_FLOW_EXCLUDED_CATEGORIES)
+  const exclParam = params.length
+  params.push(NON_SPENDING_DETAILED_CATEGORIES)
+  const detailedParam = params.length
+
+  // Override category to 'Venmo' for inflows from Venmo accounts (matches getCashFlowBreakdown)
+  const venmoOverride = `CASE WHEN t.amount < 0 AND pi.institution_name ILIKE '%venmo%' THEN 'Venmo' ELSE ${groupExpr} END`
+
+  const { rows } = await query(
+    `SELECT t.id, t.plaid_transaction_id, t.name, t.amount, t.date::text, t.authorized_date::text,
+            t.account_name, t.account_id, t.item_id, t.pending, t.logo_url, t.payment_channel,
+            t.personal_finance_category, t.original_description, t.merchant_name, t.location,
+            t.website, t.personal_finance_category_detailed, t.personal_finance_category_confidence,
+            t.counterparties, t.payment_meta, t.check_number, t.recurring
+     FROM transactions t
+     LEFT JOIN plaid_items pi ON t.item_id = pi.item_id
+     WHERE t.user_id = $1
+       AND ${txDate} >= $2::date
+       AND ${txDate} <= $3::date
+       AND t.${amountCondition}
+       AND (${venmoOverride}) = ANY($4)
+       ${filterClause}
+       AND (t.personal_finance_category IS NULL OR t.personal_finance_category != ALL($${exclParam}))
+       AND (t.personal_finance_category_detailed IS NULL OR t.personal_finance_category_detailed != ALL($${detailedParam}))
+     ORDER BY ${txDate} DESC, t.created_at DESC`,
+    params
+  )
+
+  return rows
 }
 
 // ── Investment snapshot writes ─────────────────────────────────────────────

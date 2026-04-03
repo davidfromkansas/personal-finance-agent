@@ -12,6 +12,9 @@
  *   get_spending_summary        — spending by category for any date range
  *   get_transactions            — individual transactions for a date range
  *   get_cash_flow               — monthly inflows / outflows / net
+ *   get_cash_flow_time_series   — inflows / outflows / net with day/week/month granularity
+ *   get_cash_flow_node_transactions — drill into a breakdown category to see transactions
+ *   compare_cash_flow           — period-over-period cash flow comparison with deltas
  *   get_recurring_transactions  — upcoming recurring bills and subscriptions
  *   get_portfolio               — current investment holdings
  *   get_investment_transactions — trade history for an investment account
@@ -34,8 +37,13 @@ import {
   getAgentSpendingSummary,
   getAgentTransactions,
   getAgentCashFlow,
+  getAgentCashFlowBreakdown,
+  getAgentCashFlowTimeSeries,
+  getAgentCashFlowNodeTransactions,
+  getAgentCashFlowComparison,
 } from '../agent/queries.js'
 import { getPlaidClient } from '../lib/plaidClient.js'
+import { getRecurringTransactions } from '../lib/recurring.js'
 import { runChat } from '../agent/chat.js'
 
 // ── Session store: sessionId → { transport, server, userId } ─────────────
@@ -177,7 +185,8 @@ For the current snapshot only, use get_net_worth instead.`,
     `Return total spending broken down by category for any date range.
 Prefer this over get_transactions for spending totals, category breakdowns, and trends — it aggregates at the DB level with no row limits.
 Income, transfers, and inter-account credit card payments are automatically excluded.
-Use this for: "how much did I spend on X?", "what are my biggest expense categories?", "compare spending this month vs last month" (call twice), "spending over the past N months".
+Use this for: "how much did I spend?", "how much did I spend on food?", "what are my biggest expense categories?", "compare spending this month vs last month" (call twice), "did I overspend?", "what did I blow money on?".
+For questions involving both income AND expenses (savings rate, net income, "where is my money going?"), use get_cash_flow_breakdown instead.
 Returns: { after_date, before_date, total, categories: [{ category, total, transaction_count }] }`,
     {
       after_date:  z.string().describe('Start date YYYY-MM-DD (inclusive)'),
@@ -226,16 +235,114 @@ Each transaction includes: merchant, amount (positive = expense, negative = inco
     'get_cash_flow',
     `Return monthly cash flow — total inflows (income), outflows (spending), and net for each month.
 Use this for questions about income vs expenses over time, savings rate, or month-over-month cash flow trends.
+Also use when the user asks things like: "is it getting better or worse?", "how has my spending changed?", "am I saving more than before?", "show me my income vs spending over time".
 Each row: { month: "YYYY-MM", inflows, outflows, net }. Net = inflows − outflows (positive = saved money that month).
-For category-level spending breakdown within a period, use get_spending_summary instead.`,
+For category-level spending breakdown within a period, use get_cash_flow_breakdown instead.`,
     {
       months_back: z.number().int().min(1).max(24).optional().describe('Number of months to return (default 12, max 24)'),
+      account_ids: z.array(z.string()).optional().describe('Optional: filter to specific account IDs (get from get_accounts)'),
     },
-    async ({ months_back }) => {
+    async ({ months_back, account_ids }) => {
       if (!await hasAccounts(userId)) {
         return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
       }
-      const data = await getAgentCashFlow(userId, months_back ?? 12)
+      const data = await getAgentCashFlow(userId, months_back ?? 12, account_ids ?? null)
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+    }
+  )
+
+  // ── get_cash_flow_time_series ────────────────────────────────────────────
+  server.tool(
+    'get_cash_flow_time_series',
+    `Return inflows, outflows, and net for a custom date range with day, week, or month granularity.
+Use this when the user specifies exact dates ("how was my cash flow in March?"), wants daily or weekly detail, or needs finer resolution than monthly.
+Also use for: "show me daily spending last week", "weekly cash flow for Q1", "how did March compare day by day?".
+Prefer over get_cash_flow when exact dates or non-monthly granularity are involved.
+Returns: { start_date, end_date, granularity, buckets: [{ bucket, inflows, outflows, net }] }`,
+    {
+      start_date: z.string().describe('Start date YYYY-MM-DD (inclusive)'),
+      end_date: z.string().describe('End date YYYY-MM-DD (inclusive)'),
+      granularity: z.enum(['day', 'week', 'month']).optional().describe('How to bucket results: day (for ranges ≤14 days), week (≤90 days), month (longer). Default: month'),
+      account_ids: z.array(z.string()).optional().describe('Optional: filter to specific account IDs (get from get_accounts)'),
+    },
+    async ({ start_date, end_date, granularity, account_ids }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
+      const data = await getAgentCashFlowTimeSeries(userId, start_date, end_date, granularity ?? 'month', account_ids ?? null)
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+    }
+  )
+
+  // ── get_cash_flow_breakdown ──────────────────────────────────────────────
+  server.tool(
+    'get_cash_flow_breakdown',
+    `Return cash flow broken down by category, group, or merchant for a time period.
+Shows both income sources and expense categories with totals, net, and savings rate.
+Use this for questions like: "where is my money going?", "what are my biggest expenses?", "break down my income sources", "what's my savings rate?", "am I saving enough?", "am I living within my means?", "what's eating my paycheck?", "how much did I make?", "what am I paying for?", "how much came in vs went out?".
+This is the most versatile cash flow tool — prefer it when the question involves both income and expenses.
+For month-over-month cash flow trends over time, use get_cash_flow instead.`,
+    {
+      period: z.enum(['week', 'month', 'quarter', 'year']).optional().describe('Time period: week (7 days), month (30 days), quarter (3 months), year (12 months). Default: month. Ignored if start_date and end_date are provided.'),
+      breakdown: z.enum(['category', 'group', 'merchant']).optional().describe('How to group: category (Plaid categories), group (coarser grouping), merchant (by merchant name). Default: category'),
+      account_ids: z.array(z.string()).optional().describe('Optional: filter to specific account IDs (get from get_accounts)'),
+      start_date: z.string().optional().describe('Optional: custom start date YYYY-MM-DD (inclusive). Use with end_date instead of period.'),
+      end_date: z.string().optional().describe('Optional: custom end date YYYY-MM-DD (inclusive). Use with start_date instead of period.'),
+    },
+    async ({ period, breakdown, account_ids, start_date, end_date }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
+      const customRange = start_date && end_date ? { startDate: start_date, endDate: end_date } : null
+      const data = await getAgentCashFlowBreakdown(userId, period ?? 'month', breakdown ?? 'category', account_ids ?? null, customRange)
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+    }
+  )
+
+  // ── get_cash_flow_node_transactions ────────────────────────────────────────
+  server.tool(
+    'get_cash_flow_node_transactions',
+    `Drill into a specific category, group, or merchant from a cash flow breakdown to see the individual transactions behind it.
+Use after get_cash_flow_breakdown when the user asks about a specific line item — e.g. "what's in my Food & Drink spending?", "show me my rent payments", "what makes up that $800 in shopping?", "break down my income sources".
+Returns the matching transactions with merchant, amount, date, account, and category.`,
+    {
+      period: z.enum(['week', 'month', 'quarter', 'year']).describe('Same period used in the breakdown query'),
+      flow_type: z.enum(['income', 'expense']).describe('Whether to drill into an income source or expense category'),
+      category_key: z.string().describe('The category/group/merchant name from get_cash_flow_breakdown results (e.g. "FOOD_AND_DRINK", "Housing", "Uber")'),
+      breakdown: z.enum(['category', 'group', 'merchant']).optional().describe('Must match the breakdown used in get_cash_flow_breakdown (default: category)'),
+    },
+    async ({ period, flow_type, category_key, breakdown }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
+      const data = await getAgentCashFlowNodeTransactions(userId, period, flow_type, category_key, breakdown ?? 'category')
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+    }
+  )
+
+  // ── compare_cash_flow ────────────────────────────────────────────────────
+  server.tool(
+    'compare_cash_flow',
+    `Compare cash flow between two date ranges — shows income, expenses, net, savings rate, and per-category changes with deltas and percentages.
+Use when the user asks "how does this month compare to last month?", "am I spending more than usual?", "did I improve?", "is it getting better?", or any period-vs-period question.
+Returns headline numbers for both periods, the delta, and category_changes sorted by largest absolute change — lead your response with the top movers and tell a story about what changed.`,
+    {
+      current_start_date: z.string().describe('Start of the current/recent period (YYYY-MM-DD)'),
+      current_end_date: z.string().describe('End of the current/recent period (YYYY-MM-DD)'),
+      previous_start_date: z.string().describe('Start of the comparison period (YYYY-MM-DD)'),
+      previous_end_date: z.string().describe('End of the comparison period (YYYY-MM-DD)'),
+      breakdown: z.enum(['category', 'group', 'merchant']).optional().describe('How to group category changes (default: group)'),
+    },
+    async ({ current_start_date, current_end_date, previous_start_date, previous_end_date, breakdown }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
+      const data = await getAgentCashFlowComparison(
+        userId,
+        { startDate: current_start_date, endDate: current_end_date },
+        { startDate: previous_start_date, endDate: previous_end_date },
+        breakdown ?? 'group'
+      )
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
     }
   )
@@ -248,44 +355,10 @@ Use this for questions like "what subscriptions do I have?", "what bills are com
 Each item includes: merchant name, average amount, frequency (WEEKLY/MONTHLY/ANNUALLY), predicted next payment date, and category.
 Results come directly from Plaid's recurring detection — may not include brand-new subscriptions.`,
     async () => {
-      const items = await getPlaidItemsByUserId(userId)
-      if (items.length === 0) {
+      if (!await hasAccounts(userId)) {
         return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
       }
-      const plaidClient = getPlaidClient()
-      const allPayments = []
-
-      await Promise.allSettled(items.map(async (row) => {
-        try {
-          const result = await plaidClient.transactionsRecurringGet({
-            access_token: row.access_token,
-            options: { personal_finance_category_version: 'v2' },
-          })
-          const outflowStreams = result.data?.outflow_streams ?? []
-          for (const stream of outflowStreams) {
-            if (!stream.predicted_next_date) continue
-            if ((stream.status ?? '') === 'TOMBSTONED') continue
-            const pfc = stream.personal_finance_category ?? stream.personalFinanceCategory
-            allPayments.push({
-              merchant: stream.merchant_name ?? stream.description ?? 'Unknown',
-              average_amount: stream.average_amount?.amount ?? stream.average_amount ?? 0,
-              last_amount: stream.last_amount?.amount ?? stream.last_amount ?? 0,
-              frequency: stream.frequency ?? 'UNKNOWN',
-              predicted_next_date: stream.predicted_next_date,
-              last_date: stream.last_date ?? null,
-              category: typeof pfc === 'string' ? pfc : pfc?.primary ?? null,
-              status: stream.status ?? 'UNKNOWN',
-            })
-          }
-        } catch (err) {
-          const code = err?.response?.data?.error_code
-          if (code !== 'PRODUCT_NOT_READY' && code !== 'PRODUCT_NOT_SUPPORTED') {
-            console.warn('[mcp] recurring get failed for item:', err.message)
-          }
-        }
-      }))
-
-      allPayments.sort((a, b) => (a.predicted_next_date > b.predicted_next_date ? 1 : -1))
+      const allPayments = await getRecurringTransactions(userId)
       return { content: [{ type: 'text', text: JSON.stringify({ recurring_transactions: allPayments }, null, 2) }] }
     }
   )

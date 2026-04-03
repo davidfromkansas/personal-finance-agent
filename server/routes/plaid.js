@@ -16,8 +16,8 @@ import {
   getPlaidItemsByUserId, getPlaidItemByItemId, getPlaidItemByInstitutionId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, setItemErrorCode, clearItemErrorCode, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
   getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
-  getMonthlyCashFlow, getCashFlowTransactions,
-  updateTransactionAccountNames,
+  getMonthlyCashFlow, getCashFlowTimeSeries, getCashFlowTransactions, getCashFlowBreakdown, getCashFlowNodeTransactions,
+  updateTransactionAccountNames, updateTransactionCategory, updateTransactionRecurring, getSubscriptionPayments,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
   upsertAccountBalanceSnapshot, getAccountBalanceHistory, getLatestAccountBalances, getLatestInvestmentAccountBalances,
   getInvestmentTransactionsByAccount,
@@ -560,6 +560,37 @@ plaidRouter.get('/transactions/categories', async (req, res) => {
   }
 })
 
+/** PATCH /api/plaid/transactions/:plaidTransactionId/category — override category */
+plaidRouter.patch('/transactions/:plaidTransactionId/category', async (req, res) => {
+  try {
+    const { category, detailed_category } = req.body
+    if (!category || !detailed_category) {
+      return res.status(400).json({ error: 'category and detailed_category are required' })
+    }
+    await updateTransactionCategory(req.uid, req.params.plaidTransactionId, category, detailed_category)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('PATCH /transactions/:id/category error:', err)
+    res.status(500).json({ error: 'Failed to update category' })
+  }
+})
+
+/** PATCH /api/plaid/transactions/:plaidTransactionId/recurring — set recurrence frequency */
+plaidRouter.patch('/transactions/:plaidTransactionId/recurring', async (req, res) => {
+  try {
+    const VALID = ['WEEKLY', 'BIWEEKLY', 'SEMI_MONTHLY', 'MONTHLY', 'QUARTERLY', 'YEARLY', 'ANNUALLY']
+    const { recurring } = req.body
+    if (recurring !== null && !VALID.includes(recurring)) {
+      return res.status(400).json({ error: `recurring must be one of: ${VALID.join(', ')} or null` })
+    }
+    await updateTransactionRecurring(req.uid, req.params.plaidTransactionId, recurring)
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('PATCH /transactions/:id/recurring error:', err)
+    res.status(500).json({ error: 'Failed to update recurring' })
+  }
+})
+
 /** GET /api/plaid/transactions — recent transactions across all accounts */
 plaidRouter.get('/transactions', async (req, res, next) => {
   try {
@@ -576,6 +607,7 @@ plaidRouter.get('/transactions', async (req, res, next) => {
     // and comma-separated (?account_ids=a,b) for backwards compatibility
     const rawAccountIds = [].concat(req.query.account_ids ?? []).flatMap(v => v.split(',')).filter(Boolean)
     const rawCategories = [].concat(req.query.categories ?? []).flatMap(v => v.split(',')).filter(Boolean)
+    const rawDetailedCategories = [].concat(req.query.detailed_categories ?? []).flatMap(v => v.split(',')).filter(Boolean)
 
     const search = req.query.search?.trim() || null
 
@@ -586,6 +618,7 @@ plaidRouter.get('/transactions', async (req, res, next) => {
     else if (beforeDate) opts.beforeDate = beforeDate
     if (rawAccountIds.length) opts.accountIds = rawAccountIds
     if (rawCategories.length) opts.categories = rawCategories
+    if (rawDetailedCategories.length) opts.detailedCategories = rawDetailedCategories
     if (search) opts.search = search
 
     const { transactions, total } = await getRecentTransactions(req.uid, limit, opts)
@@ -687,14 +720,62 @@ plaidRouter.get('/recurring', async (req, res, next) => {
     }))
 
     const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
-    const payments = itemResults.flat().filter((p) => p.predicted_next_date >= today)
-    payments.sort((a, b) => (a.predicted_next_date || '').localeCompare(b.predicted_next_date || ''))
-    const transactionIds = [...new Set(payments.map((p) => p.first_transaction_id).filter(Boolean))]
+    const plaidPayments = itemResults.flat().filter((p) => p.predicted_next_date >= today)
+
+    // Enrich Plaid payment logos
+    const transactionIds = [...new Set(plaidPayments.map((p) => p.first_transaction_id).filter(Boolean))]
     const logoMap = transactionIds.length ? await getLogoUrlsByPlaidTransactionIds(req.uid, transactionIds) : {}
-    for (const p of payments) {
+    for (const p of plaidPayments) {
       if (p.first_transaction_id && logoMap[p.first_transaction_id]) p.logo_url = logoMap[p.first_transaction_id]
       delete p.first_transaction_id
     }
+
+    // Add user-marked subscription payments from the database
+    const FREQUENCY_DAYS = { WEEKLY: 7, BIWEEKLY: 14, SEMI_MONTHLY: 15, MONTHLY: 30, QUARTERLY: 91, YEARLY: 365, ANNUALLY: 365 }
+    const subscriptionRows = await getSubscriptionPayments(req.uid)
+    const subscriptionPayments = []
+    for (const row of subscriptionRows) {
+      const freqDays = FREQUENCY_DAYS[row.recurring] ?? 30
+      // row.date may be a Date object or a string — normalize to YYYY-MM-DD string first
+      const dateStr = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10)
+      const lastDate = new Date(dateStr + 'T00:00:00')
+      // Project forward from last transaction date until we find the next future date
+      let nextDate = new Date(lastDate)
+      while (nextDate.toISOString().slice(0, 10) < today) {
+        nextDate.setDate(nextDate.getDate() + freqDays)
+      }
+      const predictedNext = nextDate.toISOString().slice(0, 10)
+      subscriptionPayments.push({
+        stream_id: `sub-${row.plaid_transaction_id}`,
+        merchant_name: row.merchant_name || row.name || 'Unknown',
+        description: row.name,
+        logo_url: row.logo_url ?? null,
+        frequency: row.recurring,
+        average_amount: Math.abs(row.amount),
+        last_amount: Math.abs(row.amount),
+        predicted_next_date: predictedNext,
+        first_date: dateStr,
+        last_date: dateStr,
+        category: null,
+        personal_finance_category_primary: 'SUBSCRIPTION',
+        status: 'ACTIVE',
+        source: 'subscription',
+      })
+    }
+
+    // Deduplicate: skip subscription entries that match a Plaid payment on amount, frequency, and category
+    const plaidKeys = new Set(plaidPayments.map((p) => {
+      const amt = Math.round((p.last_amount ?? p.average_amount ?? 0) * 100)
+      return `${amt}|${p.frequency}|${p.personal_finance_category_primary ?? ''}`
+    }))
+    const dedupedSubs = subscriptionPayments.filter((s) => {
+      const amt = Math.round((s.last_amount ?? 0) * 100)
+      const key = `${amt}|${s.frequency}|${s.personal_finance_category_primary ?? ''}`
+      return !plaidKeys.has(key)
+    })
+
+    const payments = [...plaidPayments, ...dedupedSubs]
+    payments.sort((a, b) => (a.predicted_next_date || '').localeCompare(b.predicted_next_date || ''))
     res.json({ payments })
   } catch (err) {
     console.error('GET /recurring error:', err)
@@ -714,18 +795,106 @@ plaidRouter.get('/cash-flow', async (req, res, next) => {
   }
 })
 
-/** GET /api/plaid/cash-flow-transactions?month=YYYY-MM — inflows and outflows for a single month */
+/** GET /api/plaid/cash-flow-time-series — cash flow grouped by day/week/month within a date range */
+plaidRouter.get('/cash-flow-time-series', async (req, res, next) => {
+  try {
+    const { start_date, end_date, granularity } = req.query
+    if (!start_date || !end_date) return res.status(400).json({ error: 'start_date and end_date are required' })
+    if (granularity && !['day', 'week', 'month'].includes(granularity)) {
+      return res.status(400).json({ error: 'granularity must be day, week, or month' })
+    }
+    const rows = await getCashFlowTimeSeries(req.uid, start_date, end_date, granularity || 'month')
+    res.json({ buckets: rows })
+  } catch (err) {
+    console.error('GET /cash-flow-time-series error:', err)
+    res.status(500).json({ error: 'Failed to load cash flow time series' })
+  }
+})
+
+/** GET /api/plaid/cash-flow-transactions — inflows and outflows for a month or date range */
 plaidRouter.get('/cash-flow-transactions', async (req, res, next) => {
   try {
-    const { month } = req.query
+    const { month, start_date, end_date } = req.query
+    if (start_date && end_date) {
+      const result = await getCashFlowTransactions(req.uid, null, start_date, end_date)
+      return res.json(result)
+    }
     if (!month || !/^\d{4}-\d{2}$/.test(month)) {
-      return res.status(400).json({ error: 'month must be in YYYY-MM format' })
+      return res.status(400).json({ error: 'Provide month (YYYY-MM) or start_date + end_date (YYYY-MM-DD)' })
     }
     const result = await getCashFlowTransactions(req.uid, month)
     res.json(result)
   } catch (err) {
     console.error('GET /cash-flow-transactions error:', err)
     res.status(500).json({ error: 'Failed to load cash flow transactions' })
+  }
+})
+
+/** GET /api/plaid/cash-flow-breakdown — category-level cash flow for Sankey diagram */
+plaidRouter.get('/cash-flow-breakdown', async (req, res, next) => {
+  try {
+    const period = req.query.period
+    if (!period || !['week', 'month', 'quarter', 'ytd', 'year', 'custom'].includes(period)) {
+      return res.status(400).json({ error: 'period must be week, month, quarter, year, or custom' })
+    }
+    let customRange = null
+    if (period === 'custom') {
+      const { start_date, end_date } = req.query
+      if (!start_date || !end_date) return res.status(400).json({ error: 'custom period requires start_date and end_date' })
+      customRange = { startDate: start_date, endDate: end_date }
+    }
+    const breakdown = req.query.breakdown || 'category'
+    if (!['category', 'group', 'merchant'].includes(breakdown)) {
+      return res.status(400).json({ error: 'breakdown must be category, group, or merchant' })
+    }
+    const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
+    const rows = await getCashFlowBreakdown(req.uid, period, breakdown, accountIds, customRange)
+
+    const income = { total: 0, categories: [] }
+    const expenses = { total: 0, categories: [] }
+    for (const r of rows) {
+      const entry = { name: r.category_key, amount: r.total_amount }
+      if (r.flow_type === 'income') {
+        income.total += r.total_amount
+        income.categories.push(entry)
+      } else {
+        expenses.total += r.total_amount
+        expenses.categories.push(entry)
+      }
+    }
+
+    res.json({ period, breakdown, income, expenses })
+  } catch (err) {
+    console.error('GET /cash-flow-breakdown error:', err)
+    res.status(500).json({ error: 'Failed to load cash flow breakdown' })
+  }
+})
+
+/** GET /api/plaid/cash-flow-node-transactions — transactions for a Sankey node drill-down */
+plaidRouter.get('/cash-flow-node-transactions', async (req, res, next) => {
+  try {
+    const { period, breakdown, flow_type, category_key } = req.query
+    if (!period || !['week', 'month', 'quarter', 'ytd', 'year', 'custom'].includes(period)) {
+      return res.status(400).json({ error: 'period must be week, month, quarter, year, or custom' })
+    }
+    let customRange = null
+    if (period === 'custom') {
+      const { start_date, end_date } = req.query
+      if (!start_date || !end_date) return res.status(400).json({ error: 'custom period requires start_date and end_date' })
+      customRange = { startDate: start_date, endDate: end_date }
+    }
+    if (!flow_type || !['income', 'expense'].includes(flow_type)) {
+      return res.status(400).json({ error: 'flow_type must be income or expense' })
+    }
+    if (!category_key) {
+      return res.status(400).json({ error: 'category_key is required' })
+    }
+    const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
+    const rows = await getCashFlowNodeTransactions(req.uid, period, breakdown || 'category', flow_type, category_key, accountIds, customRange)
+    res.json({ transactions: rows })
+  } catch (err) {
+    console.error('GET /cash-flow-node-transactions error:', err)
+    res.status(500).json({ error: 'Failed to load transactions' })
   }
 })
 

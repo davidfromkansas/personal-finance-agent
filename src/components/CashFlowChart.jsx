@@ -277,7 +277,7 @@ function CashFlowDrillDownTray({ month, onClose }) {
   )
 }
 
-export function CashFlowChart({ embeddedHeight = 320 }) {
+export function CashFlowChart({ embeddedHeight = 320, hideHeader = false }) {
   const { data: rawData, isLoading: loading } = useCashFlow()
   const [showInfo, setShowInfo] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(null)
@@ -341,7 +341,7 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
 
   return (
     <div
-      className="relative rounded-[14px] border border-[#9ca3af] bg-white flex flex-col overflow-hidden"
+      className={`relative ${hideHeader ? '' : 'rounded-[14px] border border-[#9ca3af]'} bg-white flex flex-col overflow-hidden`}
       style={embeddedHeight ? { height: embeddedHeight } : undefined}
     >
       {showInfo && (
@@ -368,27 +368,29 @@ export function CashFlowChart({ embeddedHeight = 320 }) {
           <p className="mt-3 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Click anywhere to dismiss</p>
         </div>
       )}
-      <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] px-5 py-3">
-        <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-          Cash flow
-        </h2>
-        <div className="flex items-center gap-4">
-          {latestMonth && (
-            <span className="text-[13px] text-white/60" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              {latestMonth.label}
+      {!hideHeader && (
+        <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] px-5 py-3">
+          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Cash flow
+          </h2>
+          <div className="flex items-center gap-4">
+            {latestMonth && (
+              <span className="text-[13px] text-white/60" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                {latestMonth.label}
+              </span>
+            )}
+            <span className="text-[18px] font-semibold leading-5 text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              {loading ? '—' : formatCurrency(netLatest)}
             </span>
-          )}
-          <span className="text-[18px] font-semibold leading-5 text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-            {loading ? '—' : formatCurrency(netLatest)}
-          </span>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setShowInfo(v => !v) }}
-            className="flex items-center justify-center w-5 h-5 rounded-full border border-white/40 text-white/70 hover:text-white hover:border-white/70 transition-colors text-[11px] font-bold leading-none"
-            title="What's included in this chart"
-          >i</button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowInfo(v => !v) }}
+              className="flex items-center justify-center w-5 h-5 rounded-full border border-white/40 text-white/70 hover:text-white hover:border-white/70 transition-colors text-[11px] font-bold leading-none"
+              title="What's included in this chart"
+            >i</button>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 min-h-0 px-4 pb-2 pt-4">
         {loading ? (

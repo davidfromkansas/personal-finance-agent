@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { AppHeader } from '../components/AppHeader'
 import { TransactionDetailPanel, bestLogoUrl, formatCategory, formatPaymentChannel } from '../components/TransactionDetailPanel'
-import { useTransactionAccounts, useTransactionCategories, useTransactions } from '../hooks/usePlaidQueries'
+import { useTransactionAccounts, useTransactions } from '../hooks/usePlaidQueries'
+import { PLAID_CATEGORIES, PRIMARY_CATEGORIES } from '../lib/plaidCategories'
 
 function toDateKey(raw) {
   if (!raw) return ''
@@ -409,6 +410,14 @@ function ActiveFilterPills({ filters, accounts, onRemove }) {
     })
   }
 
+  if (filters.detailed_categories?.length > 0) {
+    pills.push({
+      key: 'detailed_categories',
+      label: filters.detailed_categories.map(formatCategory).join(', '),
+      onRemove: () => onRemove('detailed_categories'),
+    })
+  }
+
   if (pills.length === 0) return null
 
   return (
@@ -442,7 +451,7 @@ function sortTransactions(txns, sort) {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-const EMPTY_FILTERS = { account_ids: [], categories: [], after_date: null, before_date: null, preset: 'All time' }
+const EMPTY_FILTERS = { account_ids: [], categories: [], detailed_categories: [], after_date: null, before_date: null, preset: 'All time' }
 
 // ─── Filter Sidebar ───────────────────────────────────────────────────────────
 
@@ -495,13 +504,19 @@ function OptionRow({ label, active, onClick }) {
   )
 }
 
-function FilterSidebar({ sort, onSortChange, filters, accounts, allCategories, accountsLoading, categoriesLoading, onFiltersChange }) {
+function FilterSidebar({ sort, onSortChange, filters, accounts, accountsLoading, onFiltersChange }) {
   const activeDateLabel = filters.preset === 'custom' ? 'Custom range' : (filters.preset ?? 'All time')
-  const hasActive = filters.account_ids.length > 0 || filters.after_date || filters.before_date || filters.categories.length > 0 || sort !== 'recent'
+  const hasActive = filters.account_ids.length > 0 || filters.after_date || filters.before_date || filters.categories.length > 0 || filters.detailed_categories.length > 0 || sort !== 'recent'
 
   const sortLabel = SORT_OPTIONS.find(o => o.value === sort)?.label
   const accountSummary = filters.account_ids.length > 0 ? `${filters.account_ids.length} selected` : null
   const catSummary = filters.categories.length > 0 ? `${filters.categories.length} selected` : null
+  const detailedCatSummary = filters.detailed_categories.length > 0 ? `${filters.detailed_categories.length} selected` : null
+
+  // Show detailed categories for selected primary categories, or all if none selected
+  const availableDetailed = filters.categories.length > 0
+    ? filters.categories.flatMap(cat => PLAID_CATEGORIES[cat] ?? [])
+    : PRIMARY_CATEGORIES.flatMap(cat => PLAID_CATEGORIES[cat] ?? [])
 
   return (
     <div className="flex flex-col gap-3 rounded-[14px] border border-[#9ca3af] bg-white p-5">
@@ -572,19 +587,39 @@ function FilterSidebar({ sort, onSortChange, filters, accounts, allCategories, a
       <div className="border-t border-[#f3f4f6]" />
 
       <SidebarSection label="Category" summary={catSummary}>
-        {categoriesLoading ? (
-          <div className="space-y-2">{[1,2,3,4].map(i => <div key={i} className="h-3 w-28 animate-pulse rounded bg-[#f3f4f6]" />)}</div>
-        ) : allCategories.length === 0 ? (
-          <p className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No categories</p>
+        <div className="max-h-[220px] space-y-0.5 overflow-y-auto">
+          {PRIMARY_CATEGORIES.map(cat => (
+            <CheckRow key={cat} label={formatCategory(cat)} checked={filters.categories.includes(cat)}
+              onChange={() => {
+                const cats = filters.categories.includes(cat)
+                  ? filters.categories.filter(c => c !== cat)
+                  : [...filters.categories, cat]
+                // Remove any detailed categories that no longer belong to selected primaries
+                const newPrimaries = cats
+                const validDetailed = filters.detailed_categories.filter(dc =>
+                  newPrimaries.length === 0 || newPrimaries.some(p => (PLAID_CATEGORIES[p] ?? []).includes(dc))
+                )
+                onFiltersChange({ ...filters, categories: cats, detailed_categories: validDetailed })
+              }}
+            />
+          ))}
+        </div>
+      </SidebarSection>
+
+      <div className="border-t border-[#f3f4f6]" />
+
+      <SidebarSection label="Detailed Category" summary={detailedCatSummary}>
+        {availableDetailed.length === 0 ? (
+          <p className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Select a category first</p>
         ) : (
           <div className="max-h-[220px] space-y-0.5 overflow-y-auto">
-            {allCategories.map(cat => (
-              <CheckRow key={cat} label={formatCategory(cat)} checked={filters.categories.includes(cat)}
+            {availableDetailed.map(cat => (
+              <CheckRow key={cat} label={formatCategory(cat)} checked={filters.detailed_categories.includes(cat)}
                 onChange={() => {
-                  const cats = filters.categories.includes(cat)
-                    ? filters.categories.filter(c => c !== cat)
-                    : [...filters.categories, cat]
-                  onFiltersChange({ ...filters, categories: cats })
+                  const cats = filters.detailed_categories.includes(cat)
+                    ? filters.detailed_categories.filter(c => c !== cat)
+                    : [...filters.detailed_categories, cat]
+                  onFiltersChange({ ...filters, detailed_categories: cats })
                 }}
               />
             ))}
@@ -622,10 +657,7 @@ export function TransactionsPage() {
   }, [searchInput])
 
   const { data: txAcctData, isLoading: txAcctLoading } = useTransactionAccounts()
-  const { data: txCatData, isLoading: txCatLoading } = useTransactionCategories()
   const accounts = txAcctData?.accounts ?? []
-  const allCategories = txCatData?.categories ?? []
-  const refDataLoading = txAcctLoading || txCatLoading
 
   const {
     data,
@@ -664,7 +696,8 @@ export function TransactionsPage() {
   function handleRemoveFilter(key) {
     setFilters(prev => {
       if (key === 'account_ids') return { ...prev, account_ids: [] }
-      if (key === 'categories') return { ...prev, categories: [] }
+      if (key === 'categories') return { ...prev, categories: [], detailed_categories: [] }
+      if (key === 'detailed_categories') return { ...prev, detailed_categories: [] }
       if (key === 'date') return { ...prev, after_date: null, before_date: null, preset: 'All time' }
       return prev
     })
@@ -782,9 +815,7 @@ export function TransactionsPage() {
                 onSortChange={setSort}
                 filters={filters}
                 accounts={accounts}
-                allCategories={allCategories}
                 accountsLoading={txAcctLoading}
-                categoriesLoading={txCatLoading}
                 onFiltersChange={handleFiltersChange}
               />
             </div>

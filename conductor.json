@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "setup": "npm install && cd server && npm install",
+    "run": "FRONTEND_PORT=$((CONDUCTOR_PORT + RANDOM % 10000 + 10000)) && (cd server && PORT=$CONDUCTOR_PORT CORS_ORIGIN=https://localhost:$FRONTEND_PORT node index.js) & VITE_API_URL=http://localhost:$CONDUCTOR_PORT npm run dev -- --port $FRONTEND_PORT && wait"
+  },
+  "runScriptMode": "nonconcurrent"
+}
