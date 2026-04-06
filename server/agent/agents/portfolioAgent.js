@@ -3,6 +3,7 @@
  * Registers itself on import via registerAgent().
  */
 import Anthropic from '@anthropic-ai/sdk'
+import YahooFinance from 'yahoo-finance2'
 import { registerAgent } from '../registry.js'
 import { extractAndEmitVisualizations, hasChartIntent } from '../renderChart.js'
 import {
@@ -16,6 +17,8 @@ import {
   getInvestmentAccounts,
   getInvestmentTransactionsByTicker,
 } from '../../db.js'
+
+const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] })
 
 let _client = null
 function getClient() {
@@ -38,6 +41,7 @@ Format:
 - **Single holding over time**: get_holdings_history → compute % return per day as ((price - price_start) / price_start) * 100 → display_type "line", x_key "date", y_keys ["value"], y_label "% return"
 - **Compare two holdings**: get_holdings_history for both → normalize to % return from same start → display_type "multi_line", x_key "date", y_keys [ticker1, ticker2], y_label "% return"
 - **Portfolio value over time**: get_investment_history → display_type "line", x_key "date", y_keys ["value"], y_label "$ value"
+- **Portfolio vs benchmark**: get_investment_history + get_benchmark_history → normalize both to % return from first data point → display_type "multi_line", x_key "date", y_keys ["Portfolio", "SPY"], y_label "% return"
 
 Output the visualization block first, then 2-3 sentences of insight. Do not mention charts or rendering in your prose.
 
@@ -48,6 +52,7 @@ Output the visualization block first, then 2-3 sentences of insight. Do not ment
 - **get_investment_accounts** — lists the user's linked investment accounts (account_id, account_name, institution). Use when the user refers to a specific institution or account and you need to resolve the correct account_ids.
 - **get_holdings_history** — daily price series per ticker per account over a date range. Use when asked about performance of a specific holding or ticker.
 - **get_ticker_transactions** — trade history for a specific ticker across all accounts: buys, sells, dividends, etc. Use when asked about purchase history or when a stock was bought/sold.
+- **get_benchmark_history** — daily price history for any ticker (e.g. SPY, QQQ) from Yahoo Finance. Use when the user asks to compare portfolio performance against a benchmark index. Fetch both get_investment_history and get_benchmark_history for the same date range, normalize both to % return from day 1, and chart them together.
 
 Always call a tool before answering. Never guess or fabricate figures.
 
@@ -191,6 +196,27 @@ Returns: [{ date, type, subtype, ticker, security_name, quantity, price, amount,
       required: ['ticker'],
     },
   },
+  {
+    name: 'get_benchmark_history',
+    description: `Returns daily closing prices for any ticker (e.g. SPY, QQQ, DIA) from Yahoo Finance over a date range.
+Use when the user wants to compare their portfolio performance against a benchmark index.
+Call this alongside get_investment_history for the same date range, then normalize both to % return and chart as multi_line.
+Returns: [{ date, price }] ordered by date ascending.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        symbol: {
+          type: 'string',
+          description: 'Ticker symbol for the benchmark (e.g. "SPY", "QQQ", "DIA", "IWM").',
+        },
+        since_date: {
+          type: 'string',
+          description: 'Start date (YYYY-MM-DD).',
+        },
+      },
+      required: ['symbol', 'since_date'],
+    },
+  },
 ]
 
 async function executeTool(name, input, userId, emit) {
@@ -221,6 +247,20 @@ async function executeTool(name, input, userId, emit) {
     }
     case 'get_ticker_transactions':
       return getInvestmentTransactionsByTicker(userId, input.ticker.toUpperCase(), input.limit ?? 200)
+    case 'get_benchmark_history': {
+      const sym = input.symbol.toUpperCase()
+      const period1 = new Date(input.since_date)
+      const period2 = new Date()
+      const result = await yahooFinance.historical(sym, {
+        period1,
+        period2,
+        interval: '1d',
+      }, { validateResult: false })
+      return (result ?? []).map(r => ({
+        date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
+        price: r.close ?? r.adjClose,
+      }))
+    }
     default:
       return { error: `Unknown tool: ${name}` }
   }
