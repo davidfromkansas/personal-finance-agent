@@ -14,6 +14,7 @@ import {
   getHoldingsSnapshotForDate,
   getHoldingsHistory,
   getInvestmentAccounts,
+  getInvestmentTransactionsByTicker,
 } from '../../db.js'
 
 let _client = null
@@ -46,6 +47,7 @@ Output the visualization block first, then 2-3 sentences of insight. Do not ment
 - **get_investment_history** — daily portfolio values over a date range. Use for performance, growth over time, or chart-style questions.
 - **get_investment_accounts** — lists the user's linked investment accounts (account_id, account_name, institution). Use when the user refers to a specific institution or account and you need to resolve the correct account_ids.
 - **get_holdings_history** — daily price series per ticker per account over a date range. Use when asked about performance of a specific holding or ticker.
+- **get_ticker_transactions** — trade history for a specific ticker across all accounts: buys, sells, dividends, etc. Use when asked about purchase history or when a stock was bought/sold.
 
 Always call a tool before answering. Never guess or fabricate figures.
 
@@ -169,6 +171,26 @@ If the same ticker appears under multiple account_ids, show them separately — 
       required: ['since_date'],
     },
   },
+  {
+    name: 'get_ticker_transactions',
+    description: `Returns trade history for a specific ticker across all investment accounts — buys, sells, dividends, transfers, and fees.
+Use when asked about purchase history, trade history, or when a specific stock was bought/sold — e.g. "when did I buy VOO?", "show me my PLTR trades".
+Returns: [{ date, type, subtype, ticker, security_name, quantity, price, amount, account_name, institution }] ordered newest first.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        ticker: {
+          type: 'string',
+          description: 'Ticker symbol (e.g. "VOO", "PLTR", "AAPL").',
+        },
+        limit: {
+          type: 'number',
+          description: 'Max results (default 200).',
+        },
+      },
+      required: ['ticker'],
+    },
+  },
 ]
 
 async function executeTool(name, input, userId, emit) {
@@ -197,6 +219,8 @@ async function executeTool(name, input, userId, emit) {
       const rows = await getHoldingsHistory(userId, input.since_date)
       return input.ticker ? rows.filter(r => r.ticker?.toUpperCase() === input.ticker.toUpperCase()) : rows
     }
+    case 'get_ticker_transactions':
+      return getInvestmentTransactionsByTicker(userId, input.ticker.toUpperCase(), input.limit ?? 200)
     default:
       return { error: `Unknown tool: ${name}` }
   }

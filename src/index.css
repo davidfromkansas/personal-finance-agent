@@ -16,3 +16,8 @@ body {
   min-height: 100vh;
   font-family: 'JetBrains Mono', monospace;
 }
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(255,255,255,0.1); }
+  50% { box-shadow: 0 0 18px rgba(255,255,255,0.3); }
+}

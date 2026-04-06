@@ -506,7 +506,7 @@ function ProductBadge({ label }) {
 
 function ConnectionRow({ connection, accounts, forceReconnect, onRefresh, onRemove, onReconnect }) {
   const isError = connection.status === 'error'
-  const needsReconnect = forceReconnect || (isError && connection.error_code === 'ITEM_LOGIN_REQUIRED')
+  const needsReconnect = forceReconnect || (isError && ['ITEM_LOGIN_REQUIRED', 'NO_ACCOUNTS'].includes(connection.error_code))
   const { balanceText } = getAccountSummary(accounts ?? connection.accounts)
   const displayName = connection.institution_name ?? connection.name ?? 'Unknown'
   const products = connection.products_granted ?? []
@@ -723,6 +723,18 @@ export function LoggedInPage() {
     setTxnPageStarts(newStarts)
     setTxnStartIndex(newStarts[newStarts.length - 1])
   }, [txnPageStarts])
+
+  // Auto-trigger Plaid reconnect when navigated with ?reconnect=ITEM_ID
+  const reconnectItemId = searchParams.get('reconnect')
+  useEffect(() => {
+    if (!reconnectItemId || !connections.length || linkToken) return
+    const connection = connections.find(c => c.item_id === reconnectItemId)
+    if (connection) {
+      searchParams.delete('reconnect')
+      setSearchParams(searchParams, { replace: true })
+      handleReconnect(connection)
+    }
+  }, [reconnectItemId, connections, linkToken])
 
   // Stop polling once no connections are syncing, then refresh all data
   useEffect(() => {

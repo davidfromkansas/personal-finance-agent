@@ -2,7 +2,8 @@
  * Root component: AuthProvider, Router, and route definitions.
  * Protected routes use Firebase auth; unauthenticated users redirect to /. See docs/ONBOARDING.md.
  */
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { useEffect } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { PlaidLinkProvider } from './context/PlaidLinkContext'
@@ -56,6 +57,12 @@ function LoggedOutOnly({ children }) {
   }
   if (user) return <Navigate to="/app" replace />
   return children
+}
+
+function ScrollToTop() {
+  const { pathname } = useLocation()
+  useEffect(() => { window.scrollTo(0, 0) }, [pathname])
+  return null
 }
 
 /** Route table: / (landing), /app/* (dashboard, transactions, investments, accounts), /privacy, /terms. */
@@ -123,6 +130,7 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <PlaidLinkProvider>
+            <ScrollToTop />
             <OnboardingGate>
               <AppRoutes />
             </OnboardingGate>

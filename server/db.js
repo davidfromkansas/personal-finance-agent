@@ -697,15 +697,17 @@ export async function getCashFlowNodeTransactions(userId, period, breakdown, flo
 // ── Investment snapshot writes ─────────────────────────────────────────────
 
 /** Upsert today's total portfolio value. Live writes overwrite; backfill never overwrites live. */
-export async function upsertPortfolioSnapshot(userId, date, totalValue, source) {
+export async function upsertPortfolioSnapshot(userId, date, totalValue, source, unavailableItems = null) {
   await query(
-    `INSERT INTO portfolio_snapshots (user_id, date, total_value, source)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO portfolio_snapshots (user_id, date, total_value, source, unavailable_items, updated_at)
+     VALUES ($1, $2, $3, $4, $5, NOW())
      ON CONFLICT (user_id, date) DO UPDATE
        SET total_value = EXCLUDED.total_value,
-           source = EXCLUDED.source
+           source = EXCLUDED.source,
+           unavailable_items = EXCLUDED.unavailable_items,
+           updated_at = NOW()
      WHERE portfolio_snapshots.source = 'backfill' OR EXCLUDED.source = 'live'`,
-    [userId, date, totalValue, source]
+    [userId, date, totalValue, source, unavailableItems ? JSON.stringify(unavailableItems) : null]
   )
 }
 
@@ -725,18 +727,18 @@ export async function upsertPortfolioAccountSnapshot(userId, date, itemId, accou
 }
 
 /** Upsert today's per-security holding for one account. */
-export async function upsertHoldingSnapshot(userId, date, itemId, accountId, accountName, institution, securityId, ticker, securityName, securityType, quantity, price, value, costBasis, currency, source) {
+export async function upsertHoldingSnapshot(userId, date, itemId, accountId, accountName, institution, securityId, ticker, securityName, securityType, quantity, price, value, costBasis, currency, source, lotIndex = 0) {
   await query(
     `INSERT INTO holdings_snapshots
-       (user_id, date, item_id, account_id, account_name, institution, security_id, ticker, security_name, security_type, quantity, price, value, cost_basis, currency, source)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-     ON CONFLICT (user_id, date, account_id, security_id) DO UPDATE
+       (user_id, date, item_id, account_id, account_name, institution, security_id, ticker, security_name, security_type, quantity, price, value, cost_basis, currency, source, lot_index)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+     ON CONFLICT (user_id, date, account_id, security_id, lot_index) DO UPDATE
        SET quantity = EXCLUDED.quantity,
            price = EXCLUDED.price,
            value = EXCLUDED.value,
            cost_basis = EXCLUDED.cost_basis,
            source = EXCLUDED.source`,
-    [userId, date, itemId, accountId, accountName, institution, securityId, ticker, securityName, securityType, quantity, price, value, costBasis, currency, source]
+    [userId, date, itemId, accountId, accountName, institution, securityId, ticker, securityName, securityType, quantity, price, value, costBasis, currency, source, lotIndex]
   )
 }
 
@@ -777,6 +779,33 @@ export async function getInvestmentTransactionsByAccount(userId, accountId, limi
     amount: r.amount != null ? parseFloat(r.amount) : null,
     fees: r.fees != null ? parseFloat(r.fees) : null,
     currency: r.currency,
+  }))
+}
+
+/** Fetch investment transactions for a specific ticker across all accounts, ordered newest first. */
+export async function getInvestmentTransactionsByTicker(userId, ticker, limit = 200) {
+  const { rows } = await query(
+    `SELECT date::text AS date, type, subtype, ticker, security_name, security_type, quantity, price, amount, fees, currency, account_name, institution
+     FROM investment_transactions
+     WHERE user_id = $1 AND ticker = $2
+     ORDER BY date DESC
+     LIMIT $3`,
+    [userId, ticker, limit]
+  )
+  return rows.map((r) => ({
+    date: r.date,
+    type: r.type,
+    subtype: r.subtype,
+    ticker: r.ticker,
+    security_name: r.security_name,
+    security_type: r.security_type,
+    quantity: r.quantity != null ? parseFloat(r.quantity) : null,
+    price: r.price != null ? parseFloat(r.price) : null,
+    amount: r.amount != null ? parseFloat(r.amount) : null,
+    fees: r.fees != null ? parseFloat(r.fees) : null,
+    currency: r.currency,
+    account_name: r.account_name,
+    institution: r.institution,
   }))
 }
 
@@ -837,13 +866,18 @@ export async function getInvestmentAccounts(userId) {
 /** Read portfolio_snapshots for the chart. Returns only dates that exist — no fill. */
 export async function getPortfolioHistory(userId, sinceDate) {
   const { rows } = await query(
-    `SELECT date::text AS date, total_value AS value, source
+    `SELECT date::text AS date, total_value AS value, source, unavailable_items
      FROM portfolio_snapshots
      WHERE user_id = $1 AND date >= $2
      ORDER BY date ASC`,
     [userId, sinceDate]
   )
-  return rows.map((r) => ({ date: r.date, value: parseFloat(r.value), source: r.source }))
+  return rows.map((r) => ({
+    date: r.date,
+    value: parseFloat(r.value),
+    source: r.source,
+    ...(r.unavailable_items ? { unavailableItems: r.unavailable_items } : {}),
+  }))
 }
 
 /** Read portfolio_account_snapshots filtered by account IDs. Sums per day. */
@@ -934,6 +968,8 @@ export async function hasTodaySnapshot(userId, today) {
   const { rows } = await query(
     `SELECT 1 FROM portfolio_snapshots
      WHERE user_id = $1 AND date = $2 AND source = 'live'
+       AND unavailable_items IS NULL
+       AND updated_at > NOW() - INTERVAL '30 minutes'
      LIMIT 1`,
     [userId, today]
   )
