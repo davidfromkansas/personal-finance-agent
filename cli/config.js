@@ -10,7 +10,7 @@ const CONFIG_DIR = path.join(os.homedir(), '.abacus')
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
 
 // Default server URL — override with ABACUS_SERVER_URL env var
-const DEFAULT_SERVER_URL = process.env.ABACUS_SERVER_URL || 'https://personal-finance-agent-production.up.railway.app'
+const DEFAULT_SERVER_URL = process.env.ABACUS_SERVER_URL || 'https://getabacus.xyz'
 
 export function readConfig() {
   try {

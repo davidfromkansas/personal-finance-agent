@@ -76,7 +76,7 @@ const sessions = new Map()
 
 const NO_ACCOUNTS_MSG = `No bank or investment accounts are connected yet.
 
-To get started, visit https://abacus-money.com and sign in with the same Google account you used to authorize this connector. From there you can link your accounts via Plaid (takes about 2 minutes). Once linked, come back here and try again.`
+To get started, visit https://getabacus.xyz and sign in with the same Google account you used to authorize this connector. From there you can link your accounts via Plaid (takes about 2 minutes). Once linked, come back here and try again.`
 
 async function hasAccounts(userId) {
   const items = await getPlaidItemsByUserId(userId)
@@ -127,7 +127,7 @@ I have access to your linked bank, credit card, and investment accounts. Here's 
 - "What subscriptions am I paying for?"
 - "What recurring bills are coming up?"
 
-If you haven't linked any accounts yet, visit https://abacus-money.com to get started.`,
+If you haven't linked any accounts yet, visit https://getabacus.xyz to get started.`,
         }],
       }
     }

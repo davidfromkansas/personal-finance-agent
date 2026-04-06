@@ -49,6 +49,12 @@ The Claude connector (MCP) now has additional investment tools:
 
 ---
 
+# New domain — Shipped: April 2, 2026
+
+Abacus is now served from **getabacus.xyz**. The CLI default server URL has been updated accordingly. Existing users with a saved config will continue to work — the new default only applies to fresh logins.
+
+---
+
 # Cash Flow page, AI cash flow tools, and trend indicators — Shipped: April 2, 2026
 
 ## Dedicated Cash Flow page
