@@ -43,6 +43,16 @@ function CashFlowIcon() {
   )
 }
 
+function SpendingIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M15 8.5c-.5-1-1.5-1.5-3-1.5s-3 1-3 2.5 1.5 2 3 2.5 3 1 3 2.5-1.5 2.5-3 2.5-2.5-.5-3-1.5" />
+      <path d="M12 5.5v13" />
+    </svg>
+  )
+}
+
 function AccountsIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -79,6 +89,7 @@ function SidebarToggleIcon({ collapsed }) {
 const NAV_ITEMS = [
   { label: 'Dashboard', path: '/app', icon: DashboardIcon },
   { label: 'Transactions', path: '/app/transactions', icon: TransactionsIcon },
+  { label: 'Spending', path: '/app/spending', icon: SpendingIcon },
   { label: 'Cash Flow', path: '/app/cash-flow', icon: CashFlowIcon },
   { label: 'Investments', path: '/app/investments', icon: InvestmentsIcon },
   { label: 'Accounts', path: '/app/accounts', icon: AccountsIcon },
@@ -304,7 +315,7 @@ function ChatPanel({ open, onClose }) {
 
       setMessages((prev) => [...prev, { role: 'assistant', text: replyText, activity: finalSteps, artifacts }])
     } catch (err) {
-      console.error('[agent chat error]', err)
+      console.error('Chat error:', err)
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', text: 'Something went wrong. Please try again.', isError: true },
@@ -428,6 +439,12 @@ function ChatPanel({ open, onClose }) {
                       )}
                     </div>
                   ))}
+                  {activitySteps.every(s => s.status === 'done') && (
+                    <div className="flex items-center gap-2 text-[11px] pt-1 border-t border-white/10 mt-1">
+                      <SpinnerIcon />
+                      <span className="text-white/50 animate-pulse">Putting it all together...</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

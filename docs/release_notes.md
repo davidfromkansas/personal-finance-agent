@@ -4,6 +4,43 @@ User-facing changes, most recent first.
 
 ---
 
+# Spending page, recurring payments, Ask AI everywhere, and MCP upgrades — Shipped: April 6, 2026
+
+## Spending page
+
+A new dedicated Spending page is now accessible from the sidebar and from the dashboard's "Spending" header (click the chevron). It includes:
+
+- **Spending Breakdown module** — bar chart with daily/weekly/monthly views, category donut chart, and an insights section showing daily average, period-over-period comparison, biggest transactions, and most frequent merchants.
+- **Exclude Rent toggle** — built into the spending module, on by default. Filters out rent and utilities from the bar chart, category breakdown, insights, and drill-down panels so you can focus on discretionary spending.
+- **Biggest Transactions panel** — click the chevron on "Biggest Transactions" to see all transactions for the period ranked by amount, with clickable rows that open transaction details.
+- **Most Frequent merchants panel** — click the chevron on "Most Frequent" to see merchants ranked by visit count (merchants with fewer than 2 transactions are hidden).
+- **Recurring Payments calendar** — shows upcoming recurring charges on a monthly calendar with highlighted payment days, bigger fonts for readability, and month navigation.
+
+## Ask AI buttons everywhere
+
+Every module now has an **Ask AI** button that opens the assistant with a context-aware pre-filled prompt:
+
+- **Spending Breakdown** — summarize spending habits and identify outliers
+- **Recurring Payments** — list subscriptions and flag unusually high charges
+- **Cash Flow** (dashboard) — analyze inflows vs outflows and identify trends
+- **Upcoming Payments**, **Cash Flow**, and **Spending** headers on the dashboard are now clickable with chevrons linking to their dedicated pages
+
+## Dashboard polish
+
+- Module headers use consistent dark styling with equal-height headers across Cash Flow and Upcoming Payments.
+- Period toggles and total amount moved into the chart body on the dashboard spending module.
+- "Thinking" animation added to the AI assistant — shows "Putting it all together..." with a pulsing indicator when the agent is processing.
+- Module borders darkened to #9ca3af across all pages for visual consistency.
+
+## New MCP tools and enhancements
+
+- **get_quotes** — new tool for real-time stock quotes for any ticker symbols (price, change, 52-week range, P/E, EPS, earnings date).
+- **get_spending_summary** — now supports `exclude_categories` (e.g. exclude rent) and `group_by_account` (break down spending per account with per-account category details).
+- **get_cash_flow_breakdown** — now supports `exclude_categories` for analyzing discretionary cash flow.
+- **compare_cash_flow** — now supports `exclude_categories` applied to both periods for fair comparison.
+
+---
+
 # Investments deep-dive, live pricing, connection health, and AI tools — Shipped: April 6, 2026
 
 ## Live portfolio value during market hours

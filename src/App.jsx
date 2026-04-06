@@ -16,6 +16,7 @@ import { TransactionsPage } from './pages/TransactionsPage'
 import { InvestmentsPage } from './pages/InvestmentsPage'
 import { AccountsPage } from './pages/AccountsPage'
 import { CashFlowPage } from './pages/CashFlowPage'
+import { SpendingPage } from './pages/SpendingPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import { TermsOfServicePage } from './pages/TermsOfServicePage'
 
@@ -90,6 +91,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TransactionsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/app/spending"
+        element={
+          <ProtectedRoute>
+            <SpendingPage />
           </ProtectedRoute>
         }
       />

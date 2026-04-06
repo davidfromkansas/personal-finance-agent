@@ -332,16 +332,19 @@ const NON_SPENDING_DETAILED_CATEGORIES = [
   'LOAN_DISBURSEMENTS_OTHER_DISBURSEMENT',
 ]
 
-export async function getSpendingSummaryByAccount(userId, period, accountIds) {
+export async function getSpendingSummaryByAccount(userId, period, accountIds, excludeCategories = []) {
   const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
+  const mergedPrimary = excludeCategories.length > 0
+    ? [...NON_SPENDING_CATEGORIES, ...excludeCategories]
+    : NON_SPENDING_CATEGORIES
   const primaryParam = hasFilter ? 4 : 3
   const detailedParam = primaryParam + 1
   const filterClause = hasFilter ? 'AND account_id = ANY($3)' : ''
   const pfcClause = `AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${primaryParam}))
       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($${detailedParam}))`
   const params = hasFilter
-    ? [userId, null, accountIds, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
-    : [userId, null, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+    ? [userId, null, accountIds, mergedPrimary, NON_SPENDING_DETAILED_CATEGORIES]
+    : [userId, null, mergedPrimary, NON_SPENDING_DETAILED_CATEGORIES]
 
   const txDate = 'COALESCE(authorized_date, date)'
   const pad2 = (n) => String(n).padStart(2, '0')
@@ -566,7 +569,7 @@ function cashFlowDateRange(period) {
  * Used by the Sankey diagram on the Cash Flow page.
  * Returns rows: { flow_type: 'income'|'expense', category_key, total_amount }
  */
-export async function getCashFlowBreakdown(userId, period, breakdown = 'category', accountIds = null, customRange = null) {
+export async function getCashFlowBreakdown(userId, period, breakdown = 'category', accountIds = null, customRange = null, excludeCategories = []) {
   const txDate = 'COALESCE(t.authorized_date, t.date)'
 
   const { startDate, endDate } = customRange || cashFlowDateRange(period)
@@ -596,7 +599,10 @@ export async function getCashFlowBreakdown(userId, period, breakdown = 'category
     filterClause = `AND t.account_id = ANY($${++p})`
     params.push(accountIds)
   }
-  params.push(CASH_FLOW_EXCLUDED_CATEGORIES)
+  const mergedExcluded = excludeCategories.length > 0
+    ? [...CASH_FLOW_EXCLUDED_CATEGORIES, ...excludeCategories]
+    : CASH_FLOW_EXCLUDED_CATEGORIES
+  params.push(mergedExcluded)
   const exclParam = params.length
   params.push(NON_SPENDING_DETAILED_CATEGORIES)
   const detailedParam = params.length
