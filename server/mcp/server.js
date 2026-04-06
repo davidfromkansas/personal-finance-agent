@@ -19,6 +19,7 @@
  *   get_portfolio               — current investment holdings
  *   get_investment_transactions — trade history for an investment account
  *   get_ticker_transactions    — trade history for a specific ticker across all accounts
+ *   get_quotes                  — real-time quotes for any ticker symbols
  *   get_market_overview         — major index quotes + trending symbols
  *   get_stock_fundamentals      — key financial metrics and ratios
  *   get_analyst_ratings         — analyst recommendations + price targets
@@ -205,22 +206,25 @@ For the current snapshot only, use get_net_worth instead.`,
   // ── get_spending_summary ──────────────────────────────────────────────────
   server.tool(
     'get_spending_summary',
-    `Return total spending broken down by category for any date range.
+    `Return total spending broken down by category (or by account) for any date range.
 Prefer this over get_transactions for spending totals, category breakdowns, and trends — it aggregates at the DB level with no row limits.
 Income, transfers, and inter-account credit card payments are automatically excluded.
-Use this for: "how much did I spend?", "how much did I spend on food?", "what are my biggest expense categories?", "compare spending this month vs last month" (call twice), "did I overspend?", "what did I blow money on?".
+Use this for: "how much did I spend?", "how much did I spend on food?", "what are my biggest expense categories?", "compare spending this month vs last month" (call twice), "did I overspend?", "what did I blow money on?", "how much did I spend on my Amex vs Chase?".
 For questions involving both income AND expenses (savings rate, net income, "where is my money going?"), use get_cash_flow_breakdown instead.
-Returns: { after_date, before_date, total, categories: [{ category, total, transaction_count }] }`,
+Returns: { after_date, before_date, total, categories: [{ category, total, transaction_count }] }
+When group_by_account is true, returns: { after_date, before_date, total, accounts: [{ account, total, categories: [...] }] }`,
     {
       after_date:  z.string().describe('Start date YYYY-MM-DD (inclusive)'),
       before_date: z.string().describe('End date YYYY-MM-DD (inclusive)'),
       category:    z.string().optional().describe('Filter to a single Plaid primary category (e.g. FOOD_AND_DRINK, TRAVEL, SHOPPING)'),
+      exclude_categories: z.array(z.string()).optional().describe('Plaid primary categories to exclude from results (e.g. ["RENT_AND_UTILITIES"] to exclude rent). Useful for seeing discretionary spending only.'),
+      group_by_account: z.boolean().optional().describe('If true, break down spending by account with per-account category details. Use for "how much did each account spend?" or "Amex vs Chase spending".'),
     },
-    async ({ after_date, before_date, category }) => {
+    async ({ after_date, before_date, category, exclude_categories, group_by_account }) => {
       if (!await hasAccounts(userId)) {
         return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
       }
-      const data = await getAgentSpendingSummary(userId, after_date, before_date, category ?? null)
+      const data = await getAgentSpendingSummary(userId, after_date, before_date, category ?? null, exclude_categories ?? [], group_by_account ?? false)
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
     }
   )
@@ -311,13 +315,14 @@ For month-over-month cash flow trends over time, use get_cash_flow instead.`,
       account_ids: z.array(z.string()).optional().describe('Optional: filter to specific account IDs (get from get_accounts)'),
       start_date: z.string().optional().describe('Optional: custom start date YYYY-MM-DD (inclusive). Use with end_date instead of period.'),
       end_date: z.string().optional().describe('Optional: custom end date YYYY-MM-DD (inclusive). Use with start_date instead of period.'),
+      exclude_categories: z.array(z.string()).optional().describe('Plaid primary categories to exclude (e.g. ["RENT_AND_UTILITIES"]). Useful for analyzing discretionary spending without rent skewing the picture.'),
     },
-    async ({ period, breakdown, account_ids, start_date, end_date }) => {
+    async ({ period, breakdown, account_ids, start_date, end_date, exclude_categories }) => {
       if (!await hasAccounts(userId)) {
         return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
       }
       const customRange = start_date && end_date ? { startDate: start_date, endDate: end_date } : null
-      const data = await getAgentCashFlowBreakdown(userId, period ?? 'month', breakdown ?? 'category', account_ids ?? null, customRange)
+      const data = await getAgentCashFlowBreakdown(userId, period ?? 'month', breakdown ?? 'category', account_ids ?? null, customRange, exclude_categories ?? [])
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
     }
   )
@@ -355,8 +360,9 @@ Returns headline numbers for both periods, the delta, and category_changes sorte
       previous_start_date: z.string().describe('Start of the comparison period (YYYY-MM-DD)'),
       previous_end_date: z.string().describe('End of the comparison period (YYYY-MM-DD)'),
       breakdown: z.enum(['category', 'group', 'merchant']).optional().describe('How to group category changes (default: group)'),
+      exclude_categories: z.array(z.string()).optional().describe('Plaid primary categories to exclude (e.g. ["RENT_AND_UTILITIES"]). Applied to both periods for fair comparison.'),
     },
-    async ({ current_start_date, current_end_date, previous_start_date, previous_end_date, breakdown }) => {
+    async ({ current_start_date, current_end_date, previous_start_date, previous_end_date, breakdown, exclude_categories }) => {
       if (!await hasAccounts(userId)) {
         return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
       }
@@ -364,7 +370,8 @@ Returns headline numbers for both periods, the delta, and category_changes sorte
         userId,
         { startDate: current_start_date, endDate: current_end_date },
         { startDate: previous_start_date, endDate: previous_end_date },
-        breakdown ?? 'group'
+        breakdown ?? 'group',
+        exclude_categories ?? []
       )
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
     }
@@ -438,6 +445,43 @@ Each transaction includes: date, type, ticker, security name, quantity, price, a
       }
       const txns = await getInvestmentTransactionsByTicker(userId, ticker.toUpperCase(), limit ?? 200)
       return { content: [{ type: 'text', text: JSON.stringify({ transactions: txns }, null, 2) }] }
+    }
+  )
+
+  // ── get_quotes ────────────────────────────────────────────────────────────
+  server.tool(
+    'get_quotes',
+    `Return real-time quotes for one or more stock tickers.
+Use this when the user asks about current prices — e.g. "what's Apple trading at?", "TSLA price", "how are my holdings doing right now?", "what's the price of VOO?".
+Returns: price, previous close, change, change %, market state, 52-week range, market cap, P/E ratio, EPS, and next earnings date.
+No linked accounts required — this uses public market data.`,
+    {
+      tickers: z.array(z.string()).describe('List of ticker symbols (e.g. ["AAPL", "TSLA", "VOO"])'),
+    },
+    async ({ tickers }) => {
+      const results = await Promise.allSettled(
+        tickers.map(ticker =>
+          yahooFinanceMcp.quote(ticker, {}, { validateResult: false }).then(q => ({
+            ticker,
+            name: q.shortName || q.longName || ticker,
+            price: q.regularMarketPrice ?? null,
+            prevClose: q.regularMarketPreviousClose ?? null,
+            change: q.regularMarketChange ?? null,
+            changePct: q.regularMarketChangePercent ?? null,
+            marketState: q.marketState ?? null,
+            week52Low: q.fiftyTwoWeekLow ?? null,
+            week52High: q.fiftyTwoWeekHigh ?? null,
+            marketCap: q.marketCap ?? null,
+            peRatio: q.trailingPE ?? null,
+            eps: q.epsTrailingTwelveMonths ?? null,
+            earningsDate: q.earningsTimestamp ? new Date(q.earningsTimestamp).toISOString().slice(0, 10) : (q.earningsTimestampStart ? new Date(q.earningsTimestampStart).toISOString().slice(0, 10) : null),
+          }))
+        )
+      )
+      const quotes = results
+        .filter(r => r.status === 'fulfilled')
+        .map(r => r.value)
+      return { content: [{ type: 'text', text: JSON.stringify({ quotes }, null, 2) }] }
     }
   )
 

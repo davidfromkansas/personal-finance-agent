@@ -111,12 +111,13 @@ export function useTransactionCategories() {
 // Parameterized chart queries (lazy — only fetches when enabled)
 // ---------------------------------------------------------------------------
 
-export function useSpending(period, accountIds = []) {
+export function useSpending(period, accountIds = [], excludeCategories = []) {
   const { getIdToken } = useAuth()
   const params = new URLSearchParams({ period })
   if (accountIds.length) params.set('account_ids', accountIds.join(','))
+  if (excludeCategories.length) params.set('exclude_categories', excludeCategories.join(','))
   return useQuery({
-    queryKey: ['spending', period, accountIds],
+    queryKey: ['spending', period, accountIds, excludeCategories],
     queryFn: () => apiFetch(`/api/plaid/spending-summary?${params}`, { getToken: getIdToken }),
     staleTime: STALE.charts,
   })
@@ -172,16 +173,17 @@ export function useCashFlowTimeSeries(startDate, endDate, granularity = 'month')
   })
 }
 
-export function useCashFlowBreakdown(period, breakdown = 'category', accountIds = [], customRange = null) {
+export function useCashFlowBreakdown(period, breakdown = 'category', accountIds = [], customRange = null, excludeCategories = []) {
   const { getIdToken } = useAuth()
   const params = new URLSearchParams({ period, breakdown })
   if (accountIds.length) params.set('account_ids', accountIds.join(','))
+  if (excludeCategories.length) params.set('exclude_categories', excludeCategories.join(','))
   if (period === 'custom' && customRange) {
     params.set('start_date', customRange.startDate)
     params.set('end_date', customRange.endDate)
   }
   return useQuery({
-    queryKey: ['cash-flow-breakdown', period, breakdown, accountIds, customRange],
+    queryKey: ['cash-flow-breakdown', period, breakdown, accountIds, customRange, excludeCategories],
     queryFn: () => apiFetch(`/api/plaid/cash-flow-breakdown?${params}`, { getToken: getIdToken }),
     staleTime: STALE.charts,
     enabled: period !== 'custom' || (!!customRange?.startDate && !!customRange?.endDate),

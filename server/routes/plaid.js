@@ -849,11 +849,21 @@ plaidRouter.get('/cash-flow-breakdown', async (req, res, next) => {
       return res.status(400).json({ error: 'breakdown must be category, group, or merchant' })
     }
     const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
+    const excludeCategories = req.query.exclude_categories ? req.query.exclude_categories.split(',').filter(Boolean) : []
     const rows = await getCashFlowBreakdown(req.uid, period, breakdown, accountIds, customRange)
+
+    // Map primary categories to their group names for filtering
+    const CATEGORY_GROUP_NAMES = {
+      RENT_AND_UTILITIES: 'Bills & Utilities',
+    }
+    const excludeGroupNames = new Set(excludeCategories.map(c => CATEGORY_GROUP_NAMES[c]).filter(Boolean))
+    const excludePrimarySet = new Set(excludeCategories)
 
     const income = { total: 0, categories: [] }
     const expenses = { total: 0, categories: [] }
     for (const r of rows) {
+      // Skip excluded categories (match both raw primary and group names)
+      if (excludePrimarySet.has(r.category_key) || excludeGroupNames.has(r.category_key)) continue
       const entry = { name: r.category_key, amount: r.total_amount }
       if (r.flow_type === 'income') {
         income.total += r.total_amount
@@ -907,7 +917,8 @@ plaidRouter.get('/spending-summary', async (req, res, next) => {
       return res.status(400).json({ error: 'period must be week, month, or year' })
     }
     const accountIds = req.query.account_ids ? req.query.account_ids.split(',').filter(Boolean) : null
-    const rows = await getSpendingSummaryByAccount(req.uid, period, accountIds)
+    const excludeCategories = req.query.exclude_categories ? req.query.exclude_categories.split(',').filter(Boolean) : []
+    const rows = await getSpendingSummaryByAccount(req.uid, period, accountIds, excludeCategories)
 
     const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

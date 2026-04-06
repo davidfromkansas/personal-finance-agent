@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
 } from 'recharts'
@@ -278,6 +279,7 @@ function CashFlowDrillDownTray({ month, onClose }) {
 }
 
 export function CashFlowChart({ embeddedHeight = 320, hideHeader = false }) {
+  const navigate = useNavigate()
   const { data: rawData, isLoading: loading } = useCashFlow()
   const [showInfo, setShowInfo] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(null)
@@ -369,30 +371,55 @@ export function CashFlowChart({ embeddedHeight = 320, hideHeader = false }) {
         </div>
       )}
       {!hideHeader && (
-        <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] px-5 py-3">
-          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-            Cash flow
-          </h2>
-          <div className="flex items-center gap-4">
-            {latestMonth && (
-              <span className="text-[13px] text-white/60" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                {latestMonth.label}
-              </span>
-            )}
-            <span className="text-[18px] font-semibold leading-5 text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              {loading ? '—' : formatCurrency(netLatest)}
-            </span>
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setShowInfo(v => !v) }}
-              className="flex items-center justify-center w-5 h-5 rounded-full border border-white/40 text-white/70 hover:text-white hover:border-white/70 transition-colors text-[11px] font-bold leading-none"
-              title="What's included in this chart"
-            >i</button>
-          </div>
+        <div className="shrink-0 flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] pl-5 pr-3" style={{ height: 56 }}>
+          <button
+            type="button"
+            onClick={() => navigate('/app/cashflow')}
+            className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+          >
+            <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              Cash flow
+            </h2>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18l6-6-6-6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('open-assistant', {
+                detail: { prompt: 'Analyze my cash flow for the past 3 months. Break down my inflows vs outflows, highlight any months where I spent more than I earned, and identify trends in my net cash flow.' },
+              }))
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3d3d42] hover:opacity-80 transition-opacity cursor-pointer"
+            title="Ask AI about cash flow"
+          >
+            <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
+            <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask AI</span>
+          </button>
         </div>
       )}
 
-      <div className="flex-1 min-h-0 px-4 pb-2 pt-4">
+      <div className="flex items-center justify-between px-5 pt-3 pb-1">
+        <div className="flex items-center gap-3">
+          {latestMonth && (
+            <span className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              {latestMonth.label}
+            </span>
+          )}
+          <span className="text-[20px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            {loading ? '—' : formatCurrency(netLatest)}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowInfo(v => !v) }}
+          className="flex items-center justify-center w-5 h-5 rounded-full border border-[#9ca3af] text-[#6a7282] hover:text-[#101828] hover:border-[#101828] transition-colors text-[11px] font-bold leading-none"
+          title="What's included in this chart"
+        >i</button>
+      </div>
+
+      <div className="flex-1 min-h-0 px-4 pb-2 pt-2">
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading…</span>

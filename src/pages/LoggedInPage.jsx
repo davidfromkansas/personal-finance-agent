@@ -592,9 +592,10 @@ function ConnectionRow({ connection, accounts, forceReconnect, onRefresh, onRemo
 }
 
 function UpcomingPaymentsCard() {
+  const navigate = useNavigate()
   const [showInfo, setShowInfo] = useState(false)
   return (
-    <div className="relative min-w-0 w-full lg:flex-[2] rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden flex flex-col h-[404px]">
+    <div className="relative min-w-0 w-full lg:flex-[2] rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden flex flex-col h-full">
       {showInfo && (
         <div className="absolute inset-0 z-10 rounded-[14px] bg-white/97 px-6 py-5 overflow-y-auto" onClick={() => setShowInfo(false)}>
           <p className="text-[13px] font-semibold text-[#101828] mb-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>What's in this section</p>
@@ -623,16 +624,19 @@ function UpcomingPaymentsCard() {
           <p className="mt-3 text-[11px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Click anywhere to dismiss</p>
         </div>
       )}
-      <div className="shrink-0 rounded-t-[14px] bg-[#2B2B2B] px-5 py-3 flex items-center justify-between">
-        <h2 className="whitespace-nowrap text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-          Upcoming Payments
-        </h2>
+      <div className="shrink-0 rounded-t-[14px] bg-[#2B2B2B] px-5 flex items-center justify-between" style={{ height: 56 }}>
         <button
           type="button"
-          onClick={() => setShowInfo(v => !v)}
-          className="flex items-center justify-center w-5 h-5 rounded-full border border-white/40 text-white/70 hover:text-white hover:border-white/70 transition-colors text-[11px] font-bold leading-none"
-          title="What's included in this section"
-        >i</button>
+          onClick={() => navigate('/app/spending')}
+          className="flex items-center gap-1.5 cursor-pointer hover:opacity-80 transition-opacity"
+        >
+          <h2 className="whitespace-nowrap text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Upcoming Payments
+          </h2>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </button>
       </div>
       <div className="min-h-0 flex-1 flex flex-col">
         <UpcomingPayments />

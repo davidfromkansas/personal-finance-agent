@@ -29,13 +29,47 @@ const NON_SPENDING_DETAILED_CATEGORIES = [
  * Spending broken down by category for an arbitrary date range.
  * Returns { after_date, before_date, total, categories: [{ category, total, transaction_count }] }
  */
-export async function getAgentSpendingSummary(userId, afterDate, beforeDate, category = null) {
-  const params = [userId, afterDate, beforeDate, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+export async function getAgentSpendingSummary(userId, afterDate, beforeDate, category = null, excludeCategories = [], groupByAccount = false) {
+  const mergedPrimary = excludeCategories.length > 0
+    ? [...NON_SPENDING_CATEGORIES, ...excludeCategories]
+    : NON_SPENDING_CATEGORIES
+  const params = [userId, afterDate, beforeDate, mergedPrimary, NON_SPENDING_DETAILED_CATEGORIES]
   let categoryClause = ''
   if (category) {
     params.push(category.toUpperCase())
     categoryClause = `AND personal_finance_category = $${params.length}`
   }
+
+  if (groupByAccount) {
+    const { rows } = await query(
+      `SELECT COALESCE(account_name, 'Unknown') AS account,
+              COALESCE(personal_finance_category, 'OTHER') AS category,
+              ROUND(SUM(amount)::numeric, 2) AS total,
+              COUNT(*) AS transaction_count
+       FROM transactions
+       WHERE user_id = $1
+         AND amount > 0
+         AND date >= $2
+         AND date <= $3
+         AND (personal_finance_category IS NULL OR personal_finance_category != ALL($4))
+         AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($5))
+         ${categoryClause}
+       GROUP BY account_name, personal_finance_category
+       ORDER BY account_name, total DESC`,
+      params
+    )
+    // Group by account
+    const accountMap = {}
+    for (const r of rows) {
+      if (!accountMap[r.account]) accountMap[r.account] = { account: r.account, total: 0, categories: [] }
+      accountMap[r.account].total += parseFloat(r.total)
+      accountMap[r.account].categories.push({ category: r.category, total: parseFloat(r.total), transaction_count: parseInt(r.transaction_count) })
+    }
+    const accounts = Object.values(accountMap).map(a => ({ ...a, total: Math.round(a.total * 100) / 100 })).sort((a, b) => b.total - a.total)
+    const total = accounts.reduce((sum, a) => sum + a.total, 0)
+    return { after_date: afterDate, before_date: beforeDate, total: Math.round(total * 100) / 100, accounts }
+  }
+
   const { rows } = await query(
     `SELECT COALESCE(personal_finance_category, 'OTHER') AS category,
             ROUND(SUM(amount)::numeric, 2) AS total,
@@ -127,8 +161,8 @@ export async function getAgentCashFlowNodeTransactions(userId, period, flowType,
   return { period, flow_type: flowType, category_key: categoryKey, breakdown, transaction_count: transactions.length, transactions }
 }
 
-export async function getAgentCashFlowBreakdown(userId, period = 'month', breakdown = 'category', accountIds = null, customRange = null) {
-  const rows = await getCashFlowBreakdown(userId, period, breakdown, accountIds, customRange)
+export async function getAgentCashFlowBreakdown(userId, period = 'month', breakdown = 'category', accountIds = null, customRange = null, excludeCategories = []) {
+  const rows = await getCashFlowBreakdown(userId, period, breakdown, accountIds, customRange, excludeCategories)
   const income = { total: 0, categories: [] }
   const expenses = { total: 0, categories: [] }
   for (const r of rows) {
@@ -152,10 +186,10 @@ export async function getAgentCashFlowBreakdown(userId, period = 'month', breakd
  * Compare cash flow between two arbitrary date ranges.
  * Returns headline numbers for both periods, deltas, and per-category changes sorted by largest absolute delta.
  */
-export async function getAgentCashFlowComparison(userId, currentRange, previousRange, breakdown = 'category') {
+export async function getAgentCashFlowComparison(userId, currentRange, previousRange, breakdown = 'category', excludeCategories = []) {
   const [current, previous] = await Promise.all([
-    getAgentCashFlowBreakdown(userId, 'month', breakdown, null, currentRange),
-    getAgentCashFlowBreakdown(userId, 'month', breakdown, null, previousRange),
+    getAgentCashFlowBreakdown(userId, 'month', breakdown, null, currentRange, excludeCategories),
+    getAgentCashFlowBreakdown(userId, 'month', breakdown, null, previousRange, excludeCategories),
   ])
 
   const round = (n) => Math.round(n * 100) / 100
