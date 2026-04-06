@@ -26,7 +26,7 @@ const SKIP_CODES = [
 const BALANCE_LIMIT_CODE = 'BALANCE_LIMIT'
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 }
 
 /** @param {string} userId */

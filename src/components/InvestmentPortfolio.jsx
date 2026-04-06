@@ -5,6 +5,8 @@ import {
 import { useInvestments, useAccounts, usePortfolioHistory, useQuotes, useTickerHistory } from '../hooks/usePlaidQueries'
 import { useMarketClock } from '../hooks/useMarketClock'
 import { usePlaidLinkContext } from '../context/PlaidLinkContext'
+import { useNavigate } from 'react-router-dom'
+import { StockDetailPanel } from './StockDetailPanel'
 
 
 const RANGES = [
@@ -148,11 +150,11 @@ function Week52Range({ low, high, price }) {
   )
 }
 
-function MoverCard({ quote }) {
+function MoverCard({ quote, onClick }) {
   const up = quote.changePct >= 0
   const MONO = { fontFamily: 'JetBrains Mono,monospace' }
   return (
-    <div className="flex w-[160px] shrink-0 flex-col rounded-[10px] border border-[#9ca3af] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6]">
+    <div onClick={() => onClick?.(quote.ticker)} className="flex w-[160px] shrink-0 flex-col rounded-[10px] border border-[#9ca3af] bg-[#fafafa] p-4 transition-colors hover:bg-[#f3f4f6] cursor-pointer">
       <p className="text-[11px] font-bold text-[#101828]" style={MONO}>{quote.ticker}</p>
       <p className="mt-1 text-[15px] font-semibold text-[#101828]" style={MONO}>${quote.price.toFixed(2)}</p>
       <div className={`mt-1 flex items-center gap-1 text-[11px] font-semibold ${up ? 'text-[#16a34a]' : 'text-[#dc2626]'}`} style={MONO}>
@@ -167,6 +169,7 @@ function MoverCard({ quote }) {
 
 export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, ref) {
   const { isOpen } = useMarketClock()
+  const navigate = useNavigate()
   const { openLink, linkLoading } = usePlaidLinkContext()
   const { data: investmentsData, isLoading: holdingsLoading, refetch: refetchInvestments } = useInvestments()
   const { data: accountsData, refetch: refetchAccounts } = useAccounts()
@@ -183,6 +186,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
   const [activeRange, setActiveRange] = useState('1D')
   const [selectedAccountKey, setSelectedAccountKey] = useState(null)
   const [chartMode, setChartMode] = useState('portfolio') // 'portfolio' | 'holdings'
+  const [panelTicker, setPanelTicker] = useState(null)
 
   const accounts = useMemo(() => {
     if (holdings.length > 0) {
@@ -220,8 +224,15 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
     activeRange === '1D' && isOpen ? { refetchInterval: 60_000, staleTime: 60_000 } : {},
   )
   const chartHistory = chartData?.history ?? null
-  const chartCurrentValue = chartData?.current?.value ?? null
   const isIntraday = chartData?.isIntraday ?? false
+
+  // Always fetch 1D data for live portfolio value during market hours
+  const { data: liveData } = usePortfolioHistory(
+    '1D',
+    selectedAccountIds,
+    isOpen ? { refetchInterval: 60_000, staleTime: 60_000 } : { enabled: false },
+  )
+  const liveValue = liveData?.current?.value ?? null
 
   const refreshAll = useCallback(() => {
     setSelectedAccountKey(null)
@@ -262,8 +273,8 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
       .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
   }, [quotesData])
 
-  const displayValue = totalValue > 0 ? totalValue : (chartCurrentValue ?? 0)
-  const hasInvestmentData = totalValue > 0 || (chartCurrentValue != null && chartCurrentValue > 0)
+  const displayValue = isOpen && liveValue ? liveValue : (totalValue > 0 ? totalValue : 0)
+  const hasInvestmentData = totalValue > 0 || (liveValue != null && liveValue > 0)
 
   const chartChange = useMemo(() => {
     if (!chartHistory?.length) return null
@@ -353,77 +364,68 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
   }
 
   return (
+    <>
     <div className="rounded-[14px] border border-[#9ca3af] bg-white">
-      {/* Header + range toggles */}
-      <div className="flex flex-col gap-3 rounded-t-[14px] bg-[#2B2B2B] px-5 py-3 sm:flex-row sm:items-start sm:justify-between">
+      {/* Header */}
+      <div className="flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] pl-5 pr-3 py-3">
+        <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white cursor-pointer hover:text-white/80 transition-colors" style={{ fontFamily: 'JetBrains Mono,monospace' }} onClick={() => navigate('/app/investments')}>
+          Investment Portfolio <span className="ml-0.5 text-[22px] font-bold text-white/60">›</span>
+          {selectedAccountKey && (
+            <span className="ml-1.5 text-white/70">
+              · {accounts.find((a) => a.key === selectedAccountKey)?.account ?? 'Account'}
+            </span>
+          )}
+        </h2>
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new CustomEvent('open-assistant', { detail: { prompt: 'Explain my portfolio performance in the past one month' } }))}
+          className="flex items-center gap-1.5 rounded-[7px] bg-white/15 px-2.5 py-1.5 hover:bg-white/25 transition-colors cursor-pointer"
+          title="Ask AI about your portfolio"
+        >
+          <img src="/ai-icon.svg" alt="Ask AI" className="h-5 w-5" />
+          <span className="text-[13px] font-medium text-white/90" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask AI</span>
+        </button>
+      </div>
+
+      {/* Value + change + chart mode toggle */}
+      <div className="flex items-start justify-between px-5 pt-4 pb-2">
         <div>
-          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-            Investment Portfolio
-            {selectedAccountKey && (
-              <span className="ml-1.5 text-white/70">
-                · {accounts.find((a) => a.key === selectedAccountKey)?.account ?? 'Account'}
-              </span>
-            )}
-          </h2>
+          <p className="text-[11px] font-semibold uppercase tracking-[1px] text-[#9ca3af] mb-0.5" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Total Value</p>
           <div className="flex items-baseline gap-3">
-            <span className="text-[28px] font-bold tracking-tight text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            <span className="text-[28px] font-bold tracking-tight text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
               {holdingsLoading && chartLoading ? '—' : formatCurrency(displayValue)}
             </span>
             {!holdingsLoading && !chartLoading && chartChange && (
               <span
-                className={`whitespace-nowrap text-[14px] font-semibold ${chartChange.diff >= 0 ? 'text-[#6ee7b7]' : 'text-[#fca5a5]'}`}
+                className={`whitespace-nowrap text-[14px] font-semibold ${chartChange.diff >= 0 ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}
                 style={{ fontFamily: 'JetBrains Mono,monospace' }}
               >
                 {chartChange.diff >= 0 ? '+' : ''}{formatCurrency(chartChange.diff)} ({formatPct(chartChange.pct)})
               </span>
             )}
           </div>
-        </div>
-        <div className="flex gap-1">
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setActiveRange(r.key)}
-              className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
-                activeRange === r.key
-                  ? 'bg-white text-[#7c3aed]'
-                  : 'bg-white/15 text-white/70 hover:bg-white/25 hover:text-white'
-              }`}
-              style={{ fontFamily: 'JetBrains Mono,monospace' }}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-
-      {/* 1D session label */}
-      {activeRange === '1D' && chartData?.tradingDate && (
-        <div className="flex items-center gap-2 px-5 pt-2 pb-0">
-          {isOpen ? (
-            <>
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
-              <span className="text-[10px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                Live · updates every minute
-              </span>
-            </>
-          ) : (
-            <span className="text-[10px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              {(() => {
-                const [y, m, d] = chartData.tradingDate.split('-')
-                return new Date(+y, +m - 1, +d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-              })()} session · market closed
-            </span>
+          {activeRange === '1D' && chartData?.tradingDate && (
+            <div className="flex items-center gap-2 mt-1">
+              {isOpen ? (
+                <>
+                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
+                  <span className="text-[10px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                    Live · updates every minute
+                  </span>
+                </>
+              ) : (
+                <span className="text-[10px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                  {(() => {
+                    const [y, m, d] = chartData.tradingDate.split('-')
+                    return new Date(+y, +m - 1, +d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+                  })()} session · market closed
+                </span>
+              )}
+            </div>
           )}
         </div>
-      )}
-
-      {/* Chart mode toggle */}
-      {topTickers.length > 0 && (
-        <div className="flex justify-end px-5 pt-2">
-          <div className="flex rounded-md border border-[#e5e7eb] bg-[#f9fafb] p-0.5">
+        {topTickers.length > 0 && (
+          <div className="flex rounded-md border border-[#e5e7eb] bg-[#f9fafb] p-0.5 mt-1">
             {(['portfolio', 'holdings']).map((mode) => (
               <button
                 key={mode}
@@ -438,8 +440,8 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
               </button>
             ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Chart */}
       <div className="px-4 pb-3 pt-2" style={{ height: 200 }}>
@@ -495,6 +497,25 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
         )}
       </div>
 
+      {/* Range toggles */}
+      <div className="flex justify-center gap-1 px-5 pb-3">
+        {RANGES.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            onClick={() => setActiveRange(r.key)}
+            className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
+              activeRange === r.key
+                ? 'bg-[#101828] text-white'
+                : 'text-[#6a7282] hover:bg-[#f3f4f6]'
+            }`}
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
       {holdingsLoading ? (
         <div className="flex h-20 items-center justify-center">
           <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading...</span>
@@ -531,7 +552,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
                     {isOpen ? 'Intraday change from previous close · ~15 min delayed' : 'Change from previous close · final prices for the day'}
                   </p>
                 </div>
-                <div className="flex gap-1">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => scrollBy(-1)}
@@ -558,49 +579,40 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
                 style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
               >
                 {topMovers.map((q) => (
-                  <MoverCard key={q.ticker} quote={q} />
+                  <MoverCard key={q.ticker} quote={q} onClick={(ticker) => setPanelTicker(ticker)} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Account list */}
-          <div className="border-t border-[#9ca3af] px-6 pt-3 pb-3">
-            <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              Accounts
-            </p>
-            <div className="flex flex-col gap-1">
-              {accounts.map((acc) => {
-                const isSelected = selectedAccountKey === acc.key
-                return (
-                  <button
-                    key={acc.key}
-                    type="button"
-                    onClick={() => handleAccountClick(acc.key)}
-                    className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors ${
-                      isSelected
-                        ? 'bg-[#ede9fe] ring-1 ring-[#7c3aed]'
-                        : 'hover:bg-[#f9fafb]'
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                        {acc.account}
-                      </p>
-                      <p className="truncate text-[11px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                        {acc.institution}
-                      </p>
-                    </div>
-                    <span className="shrink-0 text-[13px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                      {formatCurrency(acc.value)}
-                    </span>
-                  </button>
-                )
-              })}
+          {/* Accounts link */}
+          <div className="border-t border-[#9ca3af] px-6 py-2.5">
+            <div className="flex w-full items-center justify-between px-2">
+              <span
+                onClick={() => navigate('/app/investments')}
+                className="text-[12px] font-medium text-[#101828] transition-colors hover:text-[#6a7282] cursor-pointer"
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
+              >
+                {accounts.length} investment account{accounts.length !== 1 ? 's' : ''} connected
+              </span>
+              <button
+                type="button"
+                onClick={() => openLink('investments')}
+                disabled={linkLoading}
+                className="flex items-center gap-1.5 rounded-md bg-[#111113] px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-50 cursor-pointer"
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
+              >
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden>
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                {linkLoading ? 'Opening…' : 'Add investment account'}
+              </button>
             </div>
           </div>
         </>
       )}
     </div>
+    <StockDetailPanel ticker={panelTicker} holdings={holdings} onClose={() => setPanelTicker(null)} />
+    </>
   )
 })

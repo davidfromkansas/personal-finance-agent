@@ -21,6 +21,7 @@ import {
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
   upsertAccountBalanceSnapshot, getAccountBalanceHistory, getLatestAccountBalances, getLatestInvestmentAccountBalances,
   getInvestmentTransactionsByAccount,
+  getInvestmentTransactionsByTicker,
 } from '../db.js'
 
 /* ── Unified per-item account cache with request deduplication ────── */
@@ -1129,6 +1130,7 @@ plaidRouter.get('/investments', async (req, res, next) => {
     const items = await getPlaidItemsByUserId(req.uid)
     const plaidClient = getPlaidClient()
     const allHoldings = []
+    const failedItems = []
 
     for (const row of items) {
       try {
@@ -1166,16 +1168,24 @@ plaidRouter.get('/investments', async (req, res, next) => {
         }
       } catch (err) {
         const code = err.response?.data?.error_code
-        const SKIP_CODES = ['PRODUCTS_NOT_SUPPORTED', 'NO_INVESTMENT_ACCOUNTS', 'CONSENT_NOT_GRANTED', 'ADDITIONAL_CONSENT_REQUIRED', 'ITEM_LOGIN_REQUIRED']
-        if (SKIP_CODES.includes(code)) {
+        const SILENT_CODES = ['PRODUCTS_NOT_SUPPORTED', 'NO_INVESTMENT_ACCOUNTS', 'CONSENT_NOT_GRANTED', 'ADDITIONAL_CONSENT_REQUIRED']
+        const PERSIST_ERROR_CODES = ['ITEM_LOGIN_REQUIRED', 'NO_ACCOUNTS']
+        if (SILENT_CODES.includes(code)) {
           console.log(`Investments skipped for item ${row.item_id} (${row.institution_name}): ${code}`)
           continue
         }
+        if (PERSIST_ERROR_CODES.includes(code)) {
+          console.log(`Investments error for item ${row.item_id} (${row.institution_name}): ${code}`)
+          setItemErrorCode(req.uid, row.item_id, code).catch(() => {})
+          failedItems.push({ item_id: row.item_id, institution_name: row.institution_name ?? 'Unknown', error_code: code })
+          continue
+        }
         console.error(`Investments get failed for item ${row.item_id}:`, err.response?.data ?? err.message)
+        failedItems.push({ item_id: row.item_id, institution_name: row.institution_name ?? 'Unknown', error_code: code ?? 'UNKNOWN' })
       }
     }
 
-    res.json({ holdings: allHoldings })
+    res.json({ holdings: allHoldings, failedItems })
   } catch (err) {
     console.error('GET /investments error:', err)
     res.status(500).json({ error: 'Failed to load investments' })
@@ -1192,6 +1202,19 @@ plaidRouter.get('/investment-transactions', async (req, res, next) => {
   } catch (err) {
     console.error('GET /investment-transactions error:', err)
     res.status(500).json({ error: 'Failed to load investment transactions' })
+  }
+})
+
+/** GET /api/plaid/ticker-transactions — trade history for a specific ticker across all accounts */
+plaidRouter.get('/ticker-transactions', async (req, res, next) => {
+  try {
+    const { ticker } = req.query
+    if (!ticker) return res.status(400).json({ error: 'ticker is required' })
+    const txns = await getInvestmentTransactionsByTicker(req.uid, ticker)
+    res.json({ transactions: txns })
+  } catch (err) {
+    console.error('GET /ticker-transactions error:', err)
+    res.status(500).json({ error: 'Failed to load ticker transactions' })
   }
 })
 
@@ -1507,15 +1530,20 @@ plaidRouter.get('/portfolio-history', async (req, res) => {
       }
 
       // Aggregate quantities per ticker (filter out cash/non-priced securities)
+      // Track unpriced holdings (cash, money market, etc.) as a constant baseline
       const tickerQuantities = {}
+      let unpricedBaseline = 0
       for (const h of filteredHoldings) {
-        if (!h.ticker || h.ticker.startsWith('CUR:') || !h.quantity) continue
+        if (!h.ticker || h.ticker.startsWith('CUR:') || !h.quantity) {
+          unpricedBaseline += parseFloat(h.value ?? 0)
+          continue
+        }
         tickerQuantities[h.ticker] = (tickerQuantities[h.ticker] || 0) + parseFloat(h.quantity)
       }
 
       const tickers = Object.keys(tickerQuantities)
       if (!tickers.length) {
-        return res.json({ range: '1D', isIntraday: true, tradingDate: tradingDateStr, current: { value: 0 }, history: [] })
+        return res.json({ range: '1D', isIntraday: true, tradingDate: tradingDateStr, current: { value: unpricedBaseline }, history: [] })
       }
 
       // Fetch intraday 5m bars from Yahoo Finance for each ticker
@@ -1559,8 +1587,9 @@ plaidRouter.get('/portfolio-history', async (req, res) => {
       }
 
       // For each timestamp compute portfolio value — use last-known price (forward-fill) per ticker
+      // Add unpricedBaseline (cash, money market, etc.) to each point so 1D matches daily snapshots
       const history = allTs.map((ts) => {
-        let value = 0
+        let value = unpricedBaseline
         for (const [ticker, qty] of Object.entries(tickerQuantities)) {
           const pts = tickerPrices[ticker]
           if (!pts) continue
@@ -1653,10 +1682,10 @@ plaidRouter.get('/portfolio-snapshot', async (req, res) => {
 /** GET /api/plaid/ticker-history?tickers=VOO,PLTR&range=1D|1W|1M|3M|YTD|1Y|ALL — Yahoo Finance price history for movers chart */
 plaidRouter.get('/ticker-history', async (req, res) => {
   try {
-    const VALID_RANGES = ['1D', '1W', '1M', '3M', 'YTD', '1Y', '5Y', 'ALL']
+    const VALID_RANGES = ['1D', '5D', '1W', '1M', '3M', '6M', 'YTD', '1Y', '5Y', 'ALL']
     const range = (req.query.range || '1Y').toUpperCase()
     if (!VALID_RANGES.includes(range)) {
-      return res.status(400).json({ error: 'range must be one of: 1D, 1W, 1M, 3M, YTD, 1Y, 5Y, ALL' })
+      return res.status(400).json({ error: 'range must be one of: 1D, 5D, 1W, 1M, 3M, 6M, YTD, 1Y, 5Y, ALL' })
     }
     const tickers = (req.query.tickers || '').split(',').map(t => t.trim()).filter(Boolean)
     if (!tickers.length) return res.json({ range, series: [] })
@@ -1718,12 +1747,16 @@ plaidRouter.get('/ticker-history', async (req, res) => {
 
     // ── Daily ranges ────────────────────────────────────────────────────
     let sinceDate
-    if (range === '1W') {
+    if (range === '5D') {
+      const d = new Date(today); d.setDate(d.getDate() - 5); sinceDate = toDateStr(d)
+    } else if (range === '1W') {
       const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)
     } else if (range === '1M') {
       const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStr(d)
     } else if (range === '3M') {
       const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStr(d)
+    } else if (range === '6M') {
+      const d = new Date(today); d.setMonth(d.getMonth() - 6); sinceDate = toDateStr(d)
     } else if (range === 'YTD') {
       sinceDate = `${today.getFullYear()}-01-01`
     } else if (range === '1Y') {
@@ -1780,6 +1813,10 @@ plaidRouter.get('/quotes', async (req, res) => {
           marketState: q.marketState ?? null, // REGULAR, PRE, POST, CLOSED
           week52Low: q.fiftyTwoWeekLow ?? null,
           week52High: q.fiftyTwoWeekHigh ?? null,
+          marketCap: q.marketCap ?? null,
+          peRatio: q.trailingPE ?? null,
+          eps: q.epsTrailingTwelveMonths ?? null,
+          earningsDate: q.earningsTimestamp ? new Date(q.earningsTimestamp).toISOString().slice(0, 10) : (q.earningsTimestampStart ? new Date(q.earningsTimestampStart).toISOString().slice(0, 10) : null),
         }))
       )
     )

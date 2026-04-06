@@ -5,3 +5,4 @@
 import './spendingAgent.js'
 import './portfolioAgent.js'
 import './accountsAgent.js'
+import './marketResearchAgent.js'

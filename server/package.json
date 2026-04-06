@@ -3,6 +3,9 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
+    "start:pm2": "npx pm2 start ecosystem.config.cjs",
+    "stop:pm2": "npx pm2 stop abacus-server",
+    "logs:pm2": "npx pm2 logs abacus-server",
     "dev": "nodemon index.js"
   },
   "dependencies": {
@@ -16,6 +19,7 @@
     "node-cron": "^4.2.1",
     "pg": "^8.13.0",
     "plaid": "^32.0.0",
+    "pm2": "^6.0.14",
     "yahoo-finance2": "^3.13.2"
   },
   "devDependencies": {

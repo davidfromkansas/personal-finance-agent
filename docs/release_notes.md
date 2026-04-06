@@ -4,6 +4,51 @@ User-facing changes, most recent first.
 
 ---
 
+# Investments deep-dive, live pricing, connection health, and AI tools — Shipped: April 6, 2026
+
+## Live portfolio value during market hours
+
+When the US stock market is open, the Total Portfolio Value on both the dashboard and the Investments page now updates in real time using Yahoo Finance prices (refreshed every 60 seconds). When the market is closed, the value falls back to the most recent Plaid snapshot. The 1D intraday chart now also includes cash and money market holdings in its baseline so the chart value matches the header.
+
+## Connection health: know when an account isn't syncing
+
+If one of your brokerage connections has a problem (expired login, Plaid can't reach it), you'll now see:
+
+- A **warning banner** at the top of the Investments page naming the affected institution and explaining that your portfolio total may be incomplete.
+- A **Reconnect** button in both the warning banner and the Accounts list that opens Plaid's re-authentication flow directly — no need to navigate back to the dashboard.
+- **Yellow dots on the performance chart** on dates where one or more accounts were unavailable, so you can see which data points are affected rather than wondering about unexpected dips.
+
+Accounts that need reconnecting also appear in the Accounts sidebar on the Investments page with a red "Reconnect" label.
+
+## Investments page: dynamic period change
+
+The stats row at the top of the Investments page now shows three columns: **Total Portfolio Value**, a **period change** that updates to match the selected chart range (1W Change, 1M Change, 3M Change, etc.), and **YTD Return**. Previously the middle column was always "Day Change" regardless of which range was selected.
+
+## Snapshot staleness and completeness
+
+Portfolio snapshots now track when they were last updated and which accounts were unavailable at the time. If you visit the Investments page and your snapshot is more than 30 minutes old or was taken with missing accounts, a fresh snapshot is automatically taken. This means reconnecting a broken account and revisiting the page will immediately capture the corrected data.
+
+## Stock detail panel and Ask AI buttons
+
+Clicking any ticker card in the Top Movers section opens a slide-in detail panel showing the stock's current price, daily change, 52-week range, your holdings of that stock, and an **Ask AI** button that opens the AI assistant pre-filled with a question about that ticker.
+
+Ask AI buttons now appear on the Investment Portfolio header, Top Movers, and Portfolio Movers sections — each pre-filled with a relevant question. The buttons use a new rainbow hexagon icon.
+
+## Market research agent
+
+The AI assistant now has a **Market Research** agent that can look up real-time stock quotes, company profiles, and recent news for any ticker using Finnhub. Ask questions like "What's happening with AAPL?" or "Give me a summary of my portfolio's top movers this week" and the assistant will pull live market data into its answer.
+
+## New MCP tools for Claude connector
+
+The Claude connector (MCP) now has additional investment tools:
+
+- **get_portfolio_history** — historical portfolio value over any time range
+- **get_ticker_history** — daily price history for specific tickers
+- **get_quotes** — real-time stock quotes
+- **get_ticker_transactions** — trade history for a specific ticker across all accounts
+
+---
+
 # Cash Flow page, AI cash flow tools, and trend indicators — Shipped: April 2, 2026
 
 ## Dedicated Cash Flow page

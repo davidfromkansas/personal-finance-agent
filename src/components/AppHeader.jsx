@@ -84,7 +84,7 @@ const NAV_ITEMS = [
   { label: 'Accounts', path: '/app/accounts', icon: AccountsIcon },
 ]
 
-const CHAT_MODES = ['Auto', 'Transactions', 'Investments', 'Accounts']
+const CHAT_MODES = ['Auto', 'Transactions', 'Investments', 'Accounts', 'Research']
 
 const TOOL_LABELS = {
   get_spending_summary: 'Querying spending summary',
@@ -102,6 +102,21 @@ const TOOL_LABELS = {
   get_net_worth: 'Calculating net worth',
   get_balance_history: 'Fetching balance history',
   get_connected_accounts: 'Loading connected accounts',
+  get_market_overview: 'Fetching market overview',
+  get_market_movers: 'Loading market movers',
+  get_sector_performance: 'Checking sector performance',
+  get_stock_quote: 'Fetching stock quote',
+  get_stock_fundamentals: 'Analyzing fundamentals',
+  get_analyst_ratings: 'Fetching analyst ratings',
+  get_insider_activity: 'Checking insider activity',
+  get_earnings_data: 'Loading earnings data',
+  get_company_news: 'Fetching company news',
+  get_market_news: 'Fetching market news',
+  get_company_profile: 'Loading company profile',
+  get_company_peers: 'Finding company peers',
+  get_social_sentiment: 'Checking social sentiment',
+  search_symbol: 'Searching symbols',
+  get_user_holdings: 'Loading your holdings',
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
@@ -200,22 +215,29 @@ function ChatPanel({ open, onClose }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, loading, activitySteps])
 
-  async function handleSend() {
-    const text = input.trim()
-    if (!text || loading) return
+  useEffect(() => {
+    function handlePromptEvent(e) {
+      if (e.detail?.prompt && !loading) {
+        const prompt = e.detail.prompt
+        setMessages((prev) => [...prev, { role: 'user', text: prompt }])
+        setInput('')
+        doSend(prompt)
+      }
+    }
+    if (open) {
+      window.addEventListener('assistant-send-prompt', handlePromptEvent)
+      return () => window.removeEventListener('assistant-send-prompt', handlePromptEvent)
+    }
+  }, [open, loading])
 
+  async function doSend(text) {
     const history = messages
       .filter((m) => !m.isError && (m.role === 'user' || m.role === 'assistant'))
       .map((m) => ({ role: m.role, content: m.text }))
-
-    setMessages((prev) => [...prev, { role: 'user', text }])
-    setInput('')
-    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setLoading(true)
     setActivitySteps([])
 
     try {
-      // Both real and demo endpoints use SSE streaming with the same event protocol
       const isDemo = isDemoMode()
       let fetchOptions
 
@@ -239,7 +261,6 @@ function ChatPanel({ open, onClose }) {
         }
       }
 
-      // SSE stream: tool activity events then streamed text tokens
       const res = await fetch(fetchOptions.url, {
         method: 'POST',
         headers: fetchOptions.headers,
@@ -290,8 +311,17 @@ function ChatPanel({ open, onClose }) {
       ])
     } finally {
       setLoading(false)
-      setActivitySteps([])
     }
+  }
+
+  async function handleSend() {
+    const text = input.trim()
+    if (!text || loading) return
+
+    setMessages((prev) => [...prev, { role: 'user', text }])
+    setInput('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
+    await doSend(text)
   }
 
   function handleKeyDown(e) {
@@ -464,6 +494,19 @@ export function AppHeader() {
   const [layout, setLayout] = useState(isCurrentlyCollapsed)       // only for label opacity
   const [chatOpen, setChatOpen] = useState(false)
 
+  useEffect(() => {
+    function handleOpenWithPrompt(e) {
+      setChatOpen(true)
+      if (e.detail?.prompt) {
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('assistant-send-prompt', { detail: { prompt: e.detail.prompt } }))
+        }, 300)
+      }
+    }
+    window.addEventListener('open-assistant', handleOpenWithPrompt)
+    return () => window.removeEventListener('open-assistant', handleOpenWithPrompt)
+  }, [])
+
   function handleToggle() {
     const next = !collapsedRef.current
     collapsedRef.current = next
@@ -497,6 +540,7 @@ export function AppHeader() {
       <button
         type="button"
         onClick={() => setChatOpen(true)}
+        id="open-assistant-btn"
         className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#18181b] text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl cursor-pointer"
         title="Open assistant"
       >

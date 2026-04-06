@@ -18,6 +18,16 @@
  *   get_recurring_transactions  — upcoming recurring bills and subscriptions
  *   get_portfolio               — current investment holdings
  *   get_investment_transactions — trade history for an investment account
+ *   get_ticker_transactions    — trade history for a specific ticker across all accounts
+ *   get_market_overview         — major index quotes + trending symbols
+ *   get_stock_fundamentals      — key financial metrics and ratios
+ *   get_analyst_ratings         — analyst recommendations + price targets
+ *   get_company_news            — company-specific news articles
+ *   get_market_news             — general market news headlines
+ *   get_insider_activity        — insider transactions + sentiment
+ *   get_earnings_data           — earnings calendar or company earnings
+ *   get_company_profile         — company info (industry, sector, IPO, etc.)
+ *   get_social_sentiment        — social media sentiment (Reddit, Twitter)
  *   ask_question                — delegates to the full AI orchestrator
  */
 import { randomUUID } from 'crypto'
@@ -30,6 +40,7 @@ import {
   getLatestPortfolioValue,
   getLatestHoldingsSnapshot,
   getInvestmentTransactionsByAccount,
+  getInvestmentTransactionsByTicker,
   getPortfolioHistory,
   getPlaidItemsByUserId,
 } from '../db.js'
@@ -45,6 +56,18 @@ import {
 import { getPlaidClient } from '../lib/plaidClient.js'
 import { getRecurringTransactions } from '../lib/recurring.js'
 import { runChat } from '../agent/chat.js'
+import YahooFinance from 'yahoo-finance2'
+import { finnhubGet, toDateStr } from '../lib/finnhub.js'
+
+const yahooFinanceMcp = new YahooFinance({ suppressNotices: ['ripHistorical'] })
+
+// Simple in-memory cache for MCP market data tools
+const mcpCache = new Map()
+function mcpCached(key, ttl, fn) {
+  const entry = mcpCache.get(key)
+  if (entry && Date.now() - entry.ts < ttl) return Promise.resolve(entry.data)
+  return fn().then(data => { mcpCache.set(key, { data, ts: Date.now() }); return data })
+}
 
 // ── Session store: sessionId → { transport, server, userId } ─────────────
 const sessions = new Map()
@@ -399,6 +422,237 @@ Each transaction includes: date, type (buy/sell/dividend/etc.), security name, t
     }
   )
 
+  // ── get_ticker_transactions ────────────────────────────────────────────────
+  server.tool(
+    'get_ticker_transactions',
+    `Return trade history for a specific ticker across all investment accounts — buys, sells, dividends, transfers, and fees.
+Use this when the user asks about a specific stock or ETF's purchase history, e.g. "when did I buy VOO?", "show me my PLTR trades".
+Each transaction includes: date, type, ticker, security name, quantity, price, amount, account name, and institution.`,
+    {
+      ticker: z.string().describe('Ticker symbol, e.g. "VOO", "PLTR", "AAPL"'),
+      limit:  z.number().int().min(1).max(500).optional().describe('Max results (default 200)'),
+    },
+    async ({ ticker, limit }) => {
+      if (!await hasAccounts(userId)) {
+        return { content: [{ type: 'text', text: NO_ACCOUNTS_MSG }] }
+      }
+      const txns = await getInvestmentTransactionsByTicker(userId, ticker.toUpperCase(), limit ?? 200)
+      return { content: [{ type: 'text', text: JSON.stringify({ transactions: txns }, null, 2) }] }
+    }
+  )
+
+  // ── Market Research Tools (no linked accounts required) ─────────────────
+
+  // ── get_market_overview ──────────────────────────────────────────────────
+  server.tool(
+    'get_market_overview',
+    `Return current quotes for major US indices (SPY, QQQ, DIA, IWM) plus currently trending symbols.
+Use for "how is the market doing?", "market overview", "what's trending?" questions.
+No linked accounts required — this uses public market data.`,
+    async () => {
+      const indices = await mcpCached('mcp_indices', 60_000, () =>
+        Promise.allSettled(['SPY', 'QQQ', 'DIA', 'IWM'].map(s =>
+          yahooFinanceMcp.quote(s, {}, { validateResult: false })
+        ))
+      )
+      const result = indices
+        .filter(r => r.status === 'fulfilled' && r.value)
+        .map(r => {
+          const q = r.value
+          return { symbol: q.symbol, name: q.shortName || q.symbol, price: q.regularMarketPrice, change: q.regularMarketChange, changePct: q.regularMarketChangePercent, marketState: q.marketState }
+        })
+      return { content: [{ type: 'text', text: JSON.stringify({ indices: result }, null, 2) }] }
+    }
+  )
+
+  // ── get_stock_fundamentals (MCP) ────────────────────────────────────────
+  server.tool(
+    'get_stock_fundamentals',
+    `Return key financial metrics, ratios, and estimates for a company — P/E, PEG, margins, growth, debt, analyst targets, EPS estimates.
+Use for deep-dive stock analysis questions. No linked accounts required.`,
+    {
+      symbol: z.string().describe('Ticker symbol (e.g. "AAPL")'),
+    },
+    async ({ symbol }) => {
+      const sym = symbol.toUpperCase()
+      const [ySummary, fhMetric] = await Promise.all([
+        mcpCached(`mcp_fundamentals_${sym}`, 300_000, () =>
+          yahooFinanceMcp.quoteSummary(sym, {
+            modules: ['financialData', 'defaultKeyStatistics', 'earningsTrend', 'price'],
+          }, { validateResult: false }).catch(() => null)
+        ),
+        finnhubGet('/stock/metric', { symbol: sym, metric: 'all' }, 300_000),
+      ])
+      const fd = ySummary?.financialData ?? {}
+      const ks = ySummary?.defaultKeyStatistics ?? {}
+      const p = ySummary?.price ?? {}
+      const fhM = fhMetric?.metric ?? {}
+      const result = {
+        symbol: sym, currentPrice: p.regularMarketPrice, marketCap: p.marketCap, currency: p.currency,
+        trailingPE: ks.trailingPE ?? fhM.peBasicExclExtraTTM, forwardPE: ks.forwardPE, pegRatio: ks.pegRatio,
+        priceToBook: ks.priceToBook ?? fhM.pbAnnual, beta: ks.beta ?? fhM.beta,
+        fiftyTwoWeekHigh: ks.fiftyTwoWeekHigh, fiftyTwoWeekLow: ks.fiftyTwoWeekLow,
+        revenueGrowth: fd.revenueGrowth, earningsGrowth: fd.earningsGrowth,
+        profitMargins: fd.profitMargins, returnOnEquity: fd.returnOnEquity,
+        debtToEquity: fd.debtToEquity, currentRatio: fd.currentRatio,
+        freeCashflow: fd.freeCashflow, operatingCashflow: fd.operatingCashflow,
+        targetMeanPrice: fd.targetMeanPrice, targetHighPrice: fd.targetHighPrice, targetLowPrice: fd.targetLowPrice,
+        numberOfAnalystOpinions: fd.numberOfAnalystOpinions,
+        dividendYieldTTM: fhM.dividendYieldIndicatedAnnual,
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+    }
+  )
+
+  // ── get_analyst_ratings (MCP) ───────────────────────────────────────────
+  server.tool(
+    'get_analyst_ratings',
+    `Return analyst recommendation trends and price targets for a stock.
+Use for "what do analysts think about X?", "price targets for X" questions. No linked accounts required.`,
+    {
+      symbol: z.string().describe('Ticker symbol (e.g. "AAPL")'),
+    },
+    async ({ symbol }) => {
+      const sym = symbol.toUpperCase()
+      const [recs, targets] = await Promise.all([
+        finnhubGet('/stock/recommendation', { symbol: sym }, 600_000),
+        finnhubGet('/stock/price-target', { symbol: sym }, 600_000),
+      ])
+      const result = {
+        recommendations: Array.isArray(recs) ? recs.slice(0, 6) : recs,
+        priceTarget: targets?.error ? targets : {
+          targetHigh: targets.targetHigh, targetLow: targets.targetLow,
+          targetMean: targets.targetMean, targetMedian: targets.targetMedian,
+        },
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+    }
+  )
+
+  // ── get_company_news (MCP) ──────────────────────────────────────────────
+  server.tool(
+    'get_company_news',
+    `Return recent news articles about a specific company from Finnhub.
+Use for "any news about X?", "what's happening with X?" questions. No linked accounts required.`,
+    {
+      symbol: z.string().describe('Ticker symbol (e.g. "AAPL")'),
+      days_back: z.number().int().min(1).max(90).optional().describe('Number of days to look back (default 45)'),
+    },
+    async ({ symbol, days_back }) => {
+      const sym = symbol.toUpperCase()
+      const to = toDateStr(new Date())
+      const from = toDateStr(new Date(Date.now() - (days_back || 45) * 24 * 60 * 60 * 1000))
+      const data = await finnhubGet('/company-news', { symbol: sym, from, to }, 180_000)
+      if (data?.error) return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+      const articles = (Array.isArray(data) ? data : []).slice(0, 15).map(a => ({
+        headline: a.headline, summary: a.summary, source: a.source, url: a.url,
+        datetime: a.datetime ? new Date(a.datetime * 1000).toISOString() : null,
+      }))
+      return { content: [{ type: 'text', text: JSON.stringify({ articles }, null, 2) }] }
+    }
+  )
+
+  // ── get_market_news (MCP) ───────────────────────────────────────────────
+  server.tool(
+    'get_market_news',
+    `Return general financial market news headlines from Finnhub.
+Use for "what's happening in the market?", "any big news today?" questions. No linked accounts required.`,
+    async () => {
+      const data = await finnhubGet('/news', { category: 'general' }, 180_000)
+      if (data?.error) return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+      const articles = (Array.isArray(data) ? data : []).slice(0, 15).map(a => ({
+        headline: a.headline, summary: a.summary, source: a.source, url: a.url,
+        datetime: a.datetime ? new Date(a.datetime * 1000).toISOString() : null,
+      }))
+      return { content: [{ type: 'text', text: JSON.stringify({ articles }, null, 2) }] }
+    }
+  )
+
+  // ── get_insider_activity (MCP) ──────────────────────────────────────────
+  server.tool(
+    'get_insider_activity',
+    `Return recent insider transactions and insider sentiment for a stock.
+Use for "any insider buying/selling?", "insider activity on X" questions. No linked accounts required.`,
+    {
+      symbol: z.string().describe('Ticker symbol (e.g. "AAPL")'),
+    },
+    async ({ symbol }) => {
+      const sym = symbol.toUpperCase()
+      const [txns, sentiment] = await Promise.all([
+        finnhubGet('/stock/insider-transactions', { symbol: sym }, 600_000),
+        finnhubGet('/stock/insider-sentiment', { symbol: sym, from: '2020-01-01', to: toDateStr(new Date()) }, 600_000),
+      ])
+      const result = {
+        transactions: (txns?.data ?? txns ?? []).slice?.(0, 20) ?? txns,
+        sentiment: sentiment?.error ? sentiment : (sentiment?.data ?? sentiment),
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+    }
+  )
+
+  // ── get_earnings_data (MCP) ─────────────────────────────────────────────
+  server.tool(
+    'get_earnings_data',
+    `Return earnings calendar (upcoming earnings) or company-specific earnings history.
+If symbol is provided: returns earnings surprises for that company.
+If symbol is omitted: returns upcoming earnings calendar for the next 7 days.
+No linked accounts required.`,
+    {
+      symbol: z.string().optional().describe('Ticker symbol. Omit for upcoming earnings calendar.'),
+    },
+    async ({ symbol }) => {
+      if (symbol) {
+        const data = await finnhubGet('/stock/earnings', { symbol: symbol.toUpperCase() }, 300_000)
+        if (data?.error) return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+        return { content: [{ type: 'text', text: JSON.stringify({ earnings: Array.isArray(data) ? data.slice(0, 12) : data }, null, 2) }] }
+      }
+      const from = toDateStr(new Date())
+      const to = toDateStr(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000))
+      const data = await finnhubGet('/calendar/earnings', { from, to }, 300_000)
+      if (data?.error) return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+      return { content: [{ type: 'text', text: JSON.stringify({ earnings: (data?.earningsCalendar ?? []).slice(0, 30) }, null, 2) }] }
+    }
+  )
+
+  // ── get_company_profile (MCP) ───────────────────────────────────────────
+  server.tool(
+    'get_company_profile',
+    `Return company profile: name, industry, sector, market cap, IPO date, website.
+Use for "tell me about X", "what does X do?" questions. No linked accounts required.`,
+    {
+      symbol: z.string().describe('Ticker symbol (e.g. "AAPL")'),
+    },
+    async ({ symbol }) => {
+      const data = await finnhubGet('/stock/profile2', { symbol: symbol.toUpperCase() }, 300_000)
+      if (data?.error) return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+      const result = {
+        name: data.name, ticker: data.ticker, exchange: data.exchange,
+        industry: data.finnhubIndustry, country: data.country,
+        marketCap: data.marketCapitalization, shareOutstanding: data.shareOutstanding,
+        ipo: data.ipo, weburl: data.weburl, logo: data.logo,
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
+    }
+  )
+
+  // ── get_social_sentiment (MCP) ──────────────────────────────────────────
+  server.tool(
+    'get_social_sentiment',
+    `Return social media sentiment data for a stock from Reddit and Twitter.
+Use for "what are people saying about X?" questions. No linked accounts required.
+Note: This may require a premium Finnhub plan.`,
+    {
+      symbol: z.string().describe('Ticker symbol (e.g. "AAPL")'),
+    },
+    async ({ symbol }) => {
+      const from = toDateStr(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
+      const to = toDateStr(new Date())
+      const data = await finnhubGet('/stock/social-sentiment', { symbol: symbol.toUpperCase(), from, to }, 600_000)
+      if (data?.error) return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] }
+      return { content: [{ type: 'text', text: JSON.stringify({ reddit: (data.reddit ?? []).slice(0, 10), twitter: (data.twitter ?? []).slice(0, 10) }, null, 2) }] }
+    }
+  )
+
   // ── ask_question ──────────────────────────────────────────────────────────
   server.tool(
     'ask_question',
@@ -487,6 +741,7 @@ export async function mcpHandler(req, res) {
 
     transport.onclose = () => {
       if (transport.sessionId) sessions.delete(transport.sessionId)
+      server.close().catch(() => {})
     }
 
     await server.connect(transport)
