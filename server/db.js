@@ -382,6 +382,7 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds, ex
            SUM(amount) AS total
     FROM transactions
     WHERE user_id = $1
+      AND amount > 0
       AND ${dateFilter}
       ${filterClause} ${pfcClause}
     GROUP BY ${groupExpr}, account_name
