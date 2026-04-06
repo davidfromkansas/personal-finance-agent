@@ -574,6 +574,7 @@ const SLASH_COMMANDS = [
   { cmd: '/help',     desc: 'Show commands and example queries' },
   { cmd: '/connect',  desc: 'Link a bank or investment account' },
   { cmd: '/accounts', desc: 'Show connected accounts and balances' },
+  { cmd: '/sp500',    desc: 'Compare portfolio performance vs S&P 500' },
   { cmd: '/clear',    desc: 'Redraw banner and reset view' },
   { cmd: '/logout',   desc: 'Log out and delete saved credentials' },
   { cmd: '/exit',     desc: 'Exit the CLI' },
@@ -744,6 +745,12 @@ rl.on('line', async (line) => {
     return
   }
 
+  // Shortcut commands that send a pre-filled question to the agent
+  const SHORTCUT_COMMANDS = {
+    sp500: 'How has my investment portfolio performance compared against the S&P 500? Show a chart comparing both as % return.',
+  }
+  const shortcutQuestion = SHORTCUT_COMMANDS[input]
+
   stopAbacusAnim()
 
   if (!hasConnectedAccounts) {
@@ -768,7 +775,8 @@ rl.on('line', async (line) => {
   }
   process.stdin.on('keypress', onEscKey)
   try {
-    const answer = await askQuestion(serverUrl, config.token, input, history, {
+    const queryText = shortcutQuestion || input
+    const answer = await askQuestion(serverUrl, config.token, queryText, history, {
       onAgentStart: (agent, question) => currentDisplay?.agentStart(agent, question),
       onAgentDone:  (agent, toolCount, duration) => currentDisplay?.agentDone(agent, toolCount, duration),
       onToolCall:   (agent, tool) => currentDisplay?.toolCall(agent, tool),
@@ -792,7 +800,7 @@ rl.on('line', async (line) => {
     const answerFormatted = format(answer)
     console.log('\n' + answerFormatted + '\n')
     addLines(3 + (answerFormatted.match(/\n/g) || []).length)
-    history.push({ role: 'user', content: input })
+    history.push({ role: 'user', content: queryText })
     history.push({ role: 'assistant', content: answer })
   } catch (err) {
     process.stdin.removeListener('keypress', onEscKey)

@@ -84,6 +84,14 @@ The Claude connector (MCP) now has additional investment tools:
 - **get_quotes** — real-time stock quotes
 - **get_ticker_transactions** — trade history for a specific ticker across all accounts
 
+## Benchmark comparison: portfolio vs S&P 500
+
+You can now ask the AI assistant to compare your portfolio performance against the S&P 500 (or any other index like QQQ or DIA). The assistant fetches your portfolio history and the benchmark's daily prices from Yahoo Finance, normalizes both to % return, and renders a side-by-side chart. Try: "How has my portfolio compared to the S&P 500?"
+
+## CLI: `/sp500` shortcut command
+
+The Abacus CLI has a new `/sp500` command that instantly asks the AI to compare your portfolio against the S&P 500 with a chart — no need to type the full question. It appears in the slash command menu alongside `/help`, `/connect`, and `/accounts`.
+
 ---
 
 # New domain — Shipped: April 2, 2026
