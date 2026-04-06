@@ -88,6 +88,8 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose, excludeCatego
   const [search, setSearch] = useState('')
   const open = !!bucket
 
+  const accountIdsKey = accountIds?.join(',') ?? ''
+  const excludeKey = excludeCategories.join(',')
   useEffect(() => {
     if (!bucket) return
     setTransactions(null)
@@ -110,7 +112,8 @@ function SpendingDrillPanel({ bucket, period, accountIds, onClose, excludeCatego
         )
       ))
       .catch(() => setTransactions([]))
-  }, [bucket, period, accountIds, excludeCategories, getIdToken])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bucket, period, accountIdsKey, excludeKey, getIdToken])
 
   const total = transactions?.reduce((s, t) => s + Number(t.amount), 0) ?? 0
 
