@@ -1,5 +1,7 @@
 # Privacy & Security FAQ
 
+> **Early Preview — Use at Your Own Risk.** Abacus is an early-stage personal project, not a commercial product. While we take data protection seriously and encrypt all sensitive information, this software has not been independently audited, and we make no guarantees about its security or reliability. Do not rely on Abacus as your sole financial record. By using Abacus you acknowledge that it is provided "as is" without warranty of any kind.
+
 ## What data does Abacus store?
 
 Abacus stores your transaction history, account balances, investment holdings, and portfolio snapshots so you can view trends over time. We also store your Plaid connection tokens (so we can sync new data) and basic account metadata like account names and institution names.
