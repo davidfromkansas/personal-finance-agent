@@ -20,6 +20,7 @@ import { SpendingPage } from './pages/SpendingPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import { TermsOfServicePage } from './pages/TermsOfServicePage'
 import { ConnectAgentPage } from './pages/ConnectAgentPage'
+import { PrivacyFaqPage } from './pages/PrivacyFaqPage'
 
 function OnboardingGate({ children }) {
   const { user, ready } = useAuth()
@@ -136,6 +137,7 @@ function AppRoutes() {
         }
       />
       <Route path="/privacy" element={<PrivacyPolicyPage />} />
+      <Route path="/privacy-faq" element={<PrivacyFaqPage />} />
       <Route path="/terms" element={<TermsOfServicePage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

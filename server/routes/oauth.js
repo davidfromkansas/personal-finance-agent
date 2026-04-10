@@ -14,7 +14,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import { verifyIdToken } from '../middleware/auth.js'
-import { createCliToken } from '../db.js'
+import { createCliToken, resolveUserId } from '../db.js'
 
 const router = Router()
 
@@ -94,7 +94,8 @@ router.post('/authorize/complete', async (req, res) => {
     }
     pendingSessions.delete(sessionId)
 
-    const userId = await verifyIdToken(firebaseIdToken)
+    const firebaseUid = await verifyIdToken(firebaseIdToken)
+    const userId = await resolveUserId(firebaseUid)
 
     const code = crypto.randomBytes(32).toString('hex')
     authCodes.set(code, {

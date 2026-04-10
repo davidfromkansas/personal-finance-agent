@@ -19,6 +19,9 @@ server/.env
 server/firebase-service-account.json
 **/firebase-service-account*.json
 
+# Database backups (contain plaintext data)
+pre-encryption-backup.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
