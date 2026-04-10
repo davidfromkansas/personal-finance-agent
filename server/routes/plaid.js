@@ -15,7 +15,7 @@ const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] })
 import {
   getPlaidItemsByUserId, getPlaidItemByItemId, getPlaidItemByInstitutionId, upsertPlaidItem, deletePlaidItem, updateAccountsCache,
   getSyncCursor, updateSyncCursor, clearSyncCursor, setItemErrorCode, clearItemErrorCode, upsertTransactions, deleteTransactionsByPlaidIds, getLogoUrlsByPlaidTransactionIds,
-  getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate,
+  getRecentTransactions, getTransactionCategories, getTransactionAccounts, getSpendingSummaryByAccount, getTransactionsForNetWorth, getEarliestTransactionDate, getInvestmentBalanceHistory,
   getMonthlyCashFlow, getCashFlowTimeSeries, getCashFlowTransactions, getCashFlowBreakdown, getCashFlowNodeTransactions,
   updateTransactionAccountNames, updateTransactionCategory, updateTransactionRecurring, getSubscriptionPayments,
   getPortfolioHistory, getPortfolioAccountHistory, getLatestPortfolioValue, hasTodaySnapshot, getHoldingsSnapshotForDate, getHoldingsHistory, getLatestHoldingsSnapshot,
@@ -233,6 +233,75 @@ function invalidateBalanceCache(userId) {
 
 /* ── Transaction sync helper ─────────────────────────────────────── */
 
+/** Backfill up to 2 years of transactions using transactionsGet (explicit date range).
+ *  Uses upsert so duplicates with transactionsSync are harmless. */
+async function backfillTransactionsGet(plaidClient, userId, itemId, accessToken) {
+  const endDate = new Date().toISOString().slice(0, 10)
+  const startD = new Date()
+  startD.setFullYear(startD.getFullYear() - 2)
+  const startDate = startD.toISOString().slice(0, 10)
+
+  let accountNames = {}
+  try {
+    const acctRes = await plaidClient.accountsGet({ access_token: accessToken })
+    for (const a of acctRes.data.accounts ?? []) {
+      accountNames[a.account_id] = a.official_name || a.name || a.subtype || 'Account'
+    }
+  } catch (_) {}
+
+  let totalFetched = 0
+  let offset = 0
+  const PAGE_SIZE = 500
+  while (true) {
+    const response = await plaidClient.transactionsGet({
+      access_token: accessToken,
+      start_date: startDate,
+      end_date: endDate,
+      options: { count: PAGE_SIZE, offset, include_personal_finance_category: true, include_original_description: true },
+    })
+    const txns = response.data.transactions
+    if (!txns.length) break
+
+    const toUpsert = txns.map(t => {
+      const logoUrl = t.logo_url ?? t.counterparties?.[0]?.logo_url ?? null
+      const loc = t.location ?? null
+      const location = (loc && Object.values(loc).some(Boolean)) ? loc : null
+      const paymentMeta = t.payment_meta ?? null
+      const hasPaymentMeta = paymentMeta && Object.values(paymentMeta).some(Boolean)
+      return {
+        account_id: t.account_id,
+        transaction_id: t.transaction_id,
+        name: t.name || t.merchant_name || 'Transaction',
+        amount: t.amount,
+        date: t.date,
+        authorized_date: t.authorized_date ?? null,
+        account_name: accountNames[t.account_id] ?? null,
+        payment_channel: t.payment_channel ?? null,
+        personal_finance_category: t.personal_finance_category?.primary ?? null,
+        pending: t.pending === true,
+        logo_url: logoUrl,
+        original_description: t.original_description ?? null,
+        merchant_name: t.merchant_name ?? null,
+        location,
+        website: t.website ?? null,
+        personal_finance_category_detailed: t.personal_finance_category?.detailed ?? null,
+        personal_finance_category_confidence: t.personal_finance_category?.confidence_level ?? null,
+        counterparties: t.counterparties?.length ? t.counterparties : null,
+        payment_meta: hasPaymentMeta ? paymentMeta : null,
+        check_number: t.check_number ?? null,
+      }
+    })
+    await upsertTransactions(userId, itemId, toUpsert)
+    totalFetched += txns.length
+    console.log(`[backfill] item ${itemId}: fetched ${txns.length} transactions (offset ${offset}, total so far ${totalFetched})`)
+
+    if (offset + txns.length >= response.data.total_transactions) break
+    offset += txns.length
+  }
+  console.log(`[backfill] item ${itemId}: done — ${totalFetched} total transactions`)
+  return totalFetched
+}
+
 async function syncTransactionsForItem(plaidClient, userId, itemId, accessToken) {
   let cursor = await getSyncCursor(userId, itemId)
   let hasMore = true
@@ -419,9 +488,15 @@ plaidRouter.post('/exchange-token', async (req, res, next) => {
     // webhooks as data becomes available, which will trigger incremental syncs.
     syncingItems.add(item_id)
     console.log(`[sync] Starting background initial sync for item ${item_id}`)
-    syncTransactionsForItem(plaidClient, req.uid, item_id, access_token)
-      .then(() => console.log(`[sync] Initial sync complete for item ${item_id}`))
-      .catch((err) => console.error(`[sync] Initial sync failed for item ${item_id}:`, err.response?.data ?? err.message))
+    ;(async () => {
+      // 1. Cursor-based sync to establish the sync cursor for future incremental updates
+      await syncTransactionsForItem(plaidClient, req.uid, item_id, access_token)
+      console.log(`[sync] Initial sync complete for item ${item_id}`)
+      // 2. Backfill with transactionsGet (2-year lookback) to capture any additional history
+      await backfillTransactionsGet(plaidClient, req.uid, item_id, access_token)
+      console.log(`[backfill] Initial backfill complete for item ${item_id}`)
+    })()
+      .catch((err) => console.error(`[sync] Initial sync/backfill failed for item ${item_id}:`, err.response?.data ?? err.message))
       .finally(() => syncingItems.delete(item_id))
 
     // Snapshot new item with full 2-year investment transaction history
@@ -1071,6 +1146,25 @@ plaidRouter.post('/refresh', async (req, res, next) => {
   }
 })
 
+/** POST /api/plaid/backfill — pull older transactions via transactionsGet with explicit 2-year date range */
+plaidRouter.post('/backfill', async (req, res, next) => {
+  const { item_id } = req.body
+  if (!item_id) return res.status(400).json({ error: 'Missing item_id' })
+  try {
+    const items = await getPlaidItemsByUserId(req.uid)
+    const item = items.find(i => i.item_id === item_id)
+    if (!item) return res.status(404).json({ error: 'Connection not found' })
+
+    const plaidClient = getPlaidClient()
+    const totalFetched = await backfillTransactionsGet(plaidClient, req.uid, item_id, item.access_token)
+    res.json({ success: true, transactions_fetched: totalFetched })
+  } catch (err) {
+    const data = err.response?.data
+    console.error('POST /backfill error:', data ?? err.message)
+    res.status(500).json({ error: 'Failed to backfill transactions' })
+  }
+})
+
 /** POST /api/plaid/link-token/update — create link token in update mode for reconnecting */
 plaidRouter.post('/link-token/update', async (req, res, next) => {
   const { item_id } = req.body
@@ -1367,10 +1461,10 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
     const DEBT_TYPES = new Set(['credit', 'loan'])
 
     // Fetch balance history for depository/credit/loan from snapshots,
-    // and investment account values from portfolio_account_snapshots
+    // and per-date investment account values from portfolio_account_snapshots
     const [balanceRows, investmentRows] = await Promise.all([
       getAccountBalanceHistory(req.uid, { afterDate: afterDate ?? undefined }),
-      getLatestInvestmentAccountBalances(req.uid),
+      getInvestmentBalanceHistory(req.uid, { afterDate: afterDate ?? undefined }),
     ])
 
     if (balanceRows.length === 0 && investmentRows.length === 0) {
@@ -1402,27 +1496,22 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
       }
     }
 
-    // Group balance history by date then account
+    // Group balance history by date then account (skip investment — those come from portfolio snapshots)
     const byDate = {}
     for (const row of balanceRows) {
+      if (row.type === 'investment') continue
       const d = row.date instanceof Date ? toDateStr(row.date) : String(row.date).slice(0, 10)
       if (!byDate[d]) byDate[d] = {}
       byDate[d][row.account_id] = { current: parseFloat(row.current ?? 0), type: row.type }
     }
 
-    // Inject latest investment values on every snapshot date (they don't change daily in this table)
-    // Investment values use their latest snapshot value carried forward to all dates
-    const investmentByAccount = {}
+    // Group investment history by date then account (from portfolio_account_snapshots)
     for (const row of investmentRows) {
-      investmentByAccount[row.account_id] = {
-        current: parseFloat(row.current ?? 0),
-        institution_name: row.institution_name,
-        account_name: row.account_name,
-      }
+      const d = row.date instanceof Date ? toDateStr(row.date) : String(row.date).slice(0, 10)
+      if (!byDate[d]) byDate[d] = {}
+      byDate[d][row.account_id] = { current: row.current, type: 'investment' }
     }
 
-    // Build per-account investment history from portfolio_account_snapshots if range requires it
-    // For now, carry the latest value across all dates (investment snapshots not yet joined by date)
     const allDates = Object.keys(byDate).sort()
 
     const history = allDates.map((day) => {
@@ -1430,7 +1519,6 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
       let debts = 0
       const by_account = {}
 
-      // Non-investment accounts from balance snapshots
       for (const [accountId, { current, type }] of Object.entries(byDate[day])) {
         if (ASSET_TYPES.has(type)) {
           assets += current
@@ -1439,12 +1527,6 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
           debts += Math.abs(current)
           by_account[accountId] = Math.round(-Math.abs(current) * 100) / 100
         }
-      }
-
-      // Investment accounts: carry latest snapshot value
-      for (const [accountId, { current }] of Object.entries(investmentByAccount)) {
-        assets += current
-        by_account[accountId] = Math.round(current * 100) / 100
       }
 
       return {
@@ -1456,25 +1538,42 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
       }
     })
 
-    // Current totals: latest snapshot row per account
-    const latestBalances = await getLatestAccountBalances(req.uid)
+    // Current totals: live Plaid balances (not snapshots)
+    const liveAccounts = await getAllUserAccounts(req.uid)
     let currentAssets = 0, currentDebts = 0
-    for (const acc of latestBalances) {
+    const todayByAccount = {}
+    for (const acc of liveAccounts) {
       const val = parseFloat(acc.current ?? 0)
-      if (ASSET_TYPES.has(acc.type)) currentAssets += val
-      else if (DEBT_TYPES.has(acc.type)) currentDebts += Math.abs(val)
+      if (ASSET_TYPES.has(acc.type)) {
+        currentAssets += val
+        todayByAccount[acc.account_id] = Math.round(val * 100) / 100
+      } else if (DEBT_TYPES.has(acc.type)) {
+        currentDebts += Math.abs(val)
+        todayByAccount[acc.account_id] = Math.round(-Math.abs(val) * 100) / 100
+      }
     }
-    for (const { current } of Object.values(investmentByAccount)) {
-      currentAssets += current
+
+    // Replace or append today's data point with live values
+    const todayEntry = {
+      date: todayStr,
+      assets: Math.round(currentAssets * 100) / 100,
+      debts: Math.round(currentDebts * 100) / 100,
+      net_worth: Math.round((currentAssets - currentDebts) * 100) / 100,
+      by_account: todayByAccount,
+    }
+    if (history.length && history[history.length - 1].date === todayStr) {
+      history[history.length - 1] = todayEntry
+    } else {
+      history.push(todayEntry)
     }
 
     res.json({
       range,
       accounts: Object.values(accountMetaMap),
       current: {
-        assets: Math.round(currentAssets * 100) / 100,
-        debts: Math.round(currentDebts * 100) / 100,
-        net_worth: Math.round((currentAssets - currentDebts) * 100) / 100,
+        assets: todayEntry.assets,
+        debts: todayEntry.debts,
+        net_worth: todayEntry.net_worth,
       },
       history,
     })
@@ -1859,6 +1958,7 @@ plaidRouter.get('/accounts', async (req, res, next) => {
               ...acc,
               item_id: row.item_id,
               institution_name: row.institution_name ?? 'Unknown',
+              last_synced_at: row.last_synced_at ?? null,
             })
           }
         } catch (err) {

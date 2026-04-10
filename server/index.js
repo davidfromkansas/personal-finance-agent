@@ -108,6 +108,11 @@ app.post('/api/agent/chat-demo', async (req, res, next) => {
   }
 })
 
+// Disable HTTP caching on API routes so browsers always get fresh data
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store')
+  next()
+})
 app.use('/api/plaid', authMiddleware, plaidRouter)
 app.use('/api/agent', authMiddleware, agentRouter)
 app.use('/api/cron', cronRouter)

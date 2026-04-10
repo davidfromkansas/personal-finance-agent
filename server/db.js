@@ -1019,17 +1019,18 @@ export async function upsertAccountBalanceSnapshot(userId, itemId, institutionNa
 
 /** Get balance history for all accounts belonging to a user, ordered by date ascending. */
 export async function getAccountBalanceHistory(userId, { afterDate, beforeDate, accountId } = {}) {
-  const conditions = ['user_id = $1']
+  const conditions = ['abs.user_id = $1']
   const params = [userId]
-  if (afterDate) { params.push(afterDate); conditions.push(`date >= $${params.length}`) }
-  if (beforeDate) { params.push(beforeDate); conditions.push(`date <= $${params.length}`) }
-  if (accountId) { params.push(accountId); conditions.push(`account_id = $${params.length}`) }
+  if (afterDate) { params.push(afterDate); conditions.push(`abs.date >= $${params.length}`) }
+  if (beforeDate) { params.push(beforeDate); conditions.push(`abs.date <= $${params.length}`) }
+  if (accountId) { params.push(accountId); conditions.push(`abs.account_id = $${params.length}`) }
   const { rows } = await query(
-    `SELECT date, account_id, account_name, institution_name, type, subtype,
-            current, available, credit_limit, currency
-     FROM account_balance_snapshots
+    `SELECT abs.date, abs.account_id, abs.account_name, abs.institution_name, abs.type, abs.subtype,
+            abs.current, abs.available, abs.credit_limit, abs.currency
+     FROM account_balance_snapshots abs
+     INNER JOIN plaid_items pi ON pi.item_id = abs.item_id AND pi.user_id = abs.user_id
      WHERE ${conditions.join(' AND ')}
-     ORDER BY date ASC, account_name ASC`,
+     ORDER BY abs.date ASC, abs.account_name ASC`,
     params
   )
   return rows
@@ -1047,6 +1048,25 @@ export async function getLatestAccountBalances(userId) {
     [userId]
   )
   return rows
+}
+
+/** Returns per-date, per-account investment values from portfolio_account_snapshots. */
+export async function getInvestmentBalanceHistory(userId, { afterDate } = {}) {
+  const conditions = ['pas.user_id = $1']
+  const params = [userId]
+  if (afterDate) {
+    conditions.push(`pas.date >= $${params.length + 1}`)
+    params.push(afterDate)
+  }
+  const { rows } = await query(
+    `SELECT pas.date::text AS date, pas.account_id, pas.account_name, pas.institution AS institution_name, pas.value AS current
+     FROM portfolio_account_snapshots pas
+     INNER JOIN plaid_items pi ON pi.item_id = pas.item_id AND pi.user_id = pas.user_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY pas.date ASC`,
+    params
+  )
+  return rows.map(r => ({ ...r, type: 'investment', current: parseFloat(r.current ?? 0) }))
 }
 
 /** Returns the most recent portfolio value per investment account for a user. */

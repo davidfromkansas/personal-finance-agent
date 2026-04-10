@@ -48,17 +48,44 @@ export function PlaidLinkProvider({ children, onConnectSuccess }) {
     }
   }, [getIdToken])
 
+  const reconnect = useCallback(async (itemId) => {
+    if (linkLoading) return
+    setLinkToken(null)
+    setLinkError(null)
+    setLinkMode('reconnect')
+    setLinkLoading(true)
+    try {
+      const data = await apiFetch('/api/plaid/link-token/update', {
+        method: 'POST',
+        body: { item_id: itemId },
+        getToken: getIdToken,
+      })
+      if (data.link_token) setLinkToken(data.link_token)
+      else { setLinkError('Could not start reconnection'); setLinkLoading(false) }
+    } catch (err) {
+      setLinkError(err.message ?? 'Could not start reconnection')
+      setLinkLoading(false)
+    }
+  }, [getIdToken])
+
   const handleSuccess = useCallback(async (public_token, metadata) => {
     setLinkError(null)
     try {
-      await apiFetch('/api/plaid/exchange-token', {
-        method: 'POST',
-        body: { public_token, institution_name: metadata?.institution?.name ?? null },
-        getToken: getIdToken,
-      })
-      await queryClient.refetchQueries({ queryKey: ['connections'] })
-      invalidateAfterConnect()
-      onConnectSuccess?.()
+      if (linkMode === 'reconnect') {
+        // Reconnect mode — trigger sync to clear error state and refresh data
+        await apiFetch('/api/plaid/sync', { method: 'POST', getToken: getIdToken })
+        await queryClient.refetchQueries({ queryKey: ['connections'] })
+        invalidateAfterConnect()
+      } else {
+        await apiFetch('/api/plaid/exchange-token', {
+          method: 'POST',
+          body: { public_token, institution_name: metadata?.institution?.name ?? null },
+          getToken: getIdToken,
+        })
+        await queryClient.refetchQueries({ queryKey: ['connections'] })
+        invalidateAfterConnect()
+        onConnectSuccess?.()
+      }
     } catch (err) {
       setLinkError(err.message ?? 'Failed to add connection')
     } finally {
@@ -66,7 +93,7 @@ export function PlaidLinkProvider({ children, onConnectSuccess }) {
       setLinkMode('add')
       setLinkLoading(false)
     }
-  }, [getIdToken, onConnectSuccess])
+  }, [getIdToken, onConnectSuccess, linkMode])
 
   const handleExit = useCallback(() => {
     setLinkToken(null)
@@ -79,7 +106,7 @@ export function PlaidLinkProvider({ children, onConnectSuccess }) {
   }, [])
 
   return (
-    <PlaidLinkContext.Provider value={{ openLink, linkLoading, linkError }}>
+    <PlaidLinkContext.Provider value={{ openLink, reconnect, linkLoading, linkError }}>
       {children}
       {linkToken && (
         <PlaidLinkOpener
