@@ -4,6 +4,45 @@ User-facing changes, most recent first.
 
 ---
 
+# Dashboard polish, accounts reconnect, and investment value accuracy — Shipped: April 10, 2026
+
+## Dashboard: cleaner Net Worth and Investment Portfolio modules
+
+The Net Worth module has been simplified — the info button and Organic/Account Changes breakdown have been removed. The styling now matches the Investment Portfolio module: "Total Net Worth" label with a `+$X (+Y%)` change format. The chart is now an area chart with a visible gradient fill.
+
+The Investment Portfolio module no longer shows the Top Movers carousel on the dashboard (still available on the full Investments page). Both modules are now equal height and have been moved above the Spending and Transactions modules in the dashboard grid.
+
+"Add Connection" has been renamed to "Add Account" across the app.
+
+## Accounts page: connection type modal and reconnect UI
+
+Clicking "Add Account" on the Accounts page now shows the same connection type modal as the dashboard (Credit Cards vs Investments). Previously it went straight to the Plaid flow with no choice.
+
+Accounts with Plaid connection errors now show:
+- A **warning banner** at the top listing affected institutions with Reconnect and Remove buttons
+- **Red error styling** on individual account rows with an "Error" badge and inline Reconnect button
+- A **Remove** option for stale items that can no longer be reconnected (e.g., already invalidated in Plaid)
+
+Clicking an investment account on the Accounts page now opens the same detail panel shown on the Investments page (holdings breakdown, account info).
+
+## Investment Portfolio: accurate real-time values
+
+The Total Portfolio Value header and chart now show consistent values:
+- **Market open**: live Plaid API value (real-time holdings), updated every 60 seconds. The chart's "today" data point also reflects this live value.
+- **Market closed**: latest snapshot value (captured at ~4:30 PM ET market close).
+
+Previously, the header value could differ from the chart depending on which time range was selected, due to different data sources (live API vs. snapshots) fighting each other.
+
+## Net Worth: fixed inflated historical values
+
+The net worth chart was showing inflated historical values because investment account balances were being carried forward as a flat constant across all dates. Investment values now use per-date snapshots from `portfolio_account_snapshots`, and investment-type rows are excluded from `account_balance_snapshots` to prevent double-counting.
+
+## Known Limitations document
+
+A new [KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) documents data accuracy caveats, Plaid quirks, and architectural trade-offs — including why recurring payment dates can be off by a day (Plaid uses post date, not charge date).
+
+---
+
 # Spending page, recurring payments, Ask AI everywhere, and MCP upgrades — Shipped: April 6, 2026
 
 ## Spending page
