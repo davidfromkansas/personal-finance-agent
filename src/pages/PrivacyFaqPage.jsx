@@ -16,6 +16,19 @@ export function PrivacyFaqPage() {
           Last updated: April 2026
         </p>
 
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-5 py-4 mb-12">
+          <p className="text-[15px] font-medium text-amber-900 mb-2">
+            Early Preview &mdash; Use at Your Own Risk
+          </p>
+          <p className="text-[14px] leading-relaxed text-amber-800">
+            Abacus is an early-stage personal project, not a commercial product. While we take
+            data protection seriously and encrypt all sensitive information, this software has
+            not been independently audited, and we make no guarantees about its security or
+            reliability. Do not rely on Abacus as your sole financial record. By using Abacus
+            you acknowledge that it is provided &ldquo;as is&rdquo; without warranty of any kind.
+          </p>
+        </div>
+
         <div className="space-y-10 text-[15px] leading-relaxed text-gray-800">
           <section>
             <h2 className="text-xl font-medium text-black mb-3">
