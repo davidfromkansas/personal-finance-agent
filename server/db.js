@@ -1,4 +1,5 @@
 import pg from 'pg'
+import { hashFirebaseUid, encrypt, decrypt, encryptNum, decryptNum, encryptJSON, decryptJSON, encryptBool, decryptBool, decryptRow, decryptRows } from './lib/crypto.js'
 
 const { Pool } = pg
 
@@ -6,7 +7,53 @@ const { Pool } = pg
  * Postgres access layer. All functions take userId (from req.uid); no ORM.
  * Used by server/routes/plaid.js for plaid_items, transactions, and aggregations.
  * Run migrations with: node server/run-migration.js
+ *
+ * ENCRYPTION: Most columns are encrypted at the app layer (AES-256-GCM).
+ * Only dates, Plaid IDs, user_id (opaque UUID), and lot_index remain plaintext.
+ * Do NOT add SQL WHERE/GROUP BY/SUM on encrypted columns — filter in JS after decrypting.
  */
+
+// ── Encryption field specs (field name → type for decryptRow/decryptRows) ────
+const PLAID_ITEM_FIELDS = {
+  access_token: 'string', institution_name: 'string', accounts_cache: 'json',
+  error_code: 'string', products_granted: 'string', sync_cursor: 'string',
+}
+
+const TX_FIELDS = {
+  name: 'string', amount: 'number', account_name: 'string', payment_channel: 'string',
+  personal_finance_category: 'string', pending: 'bool', logo_url: 'string',
+  original_description: 'string', merchant_name: 'string', location: 'json',
+  website: 'string', personal_finance_category_detailed: 'string',
+  personal_finance_category_confidence: 'string', counterparties: 'json',
+  payment_meta: 'json', check_number: 'string', recurring: 'string',
+}
+
+const HOLDING_FIELDS = {
+  account_name: 'string', institution: 'string', ticker: 'string',
+  security_name: 'string', security_type: 'string', quantity: 'number',
+  price: 'number', value: 'number', cost_basis: 'number', currency: 'string', source: 'string',
+}
+
+const INV_TX_FIELDS = {
+  institution: 'string', account_name: 'string', ticker: 'string',
+  security_name: 'string', security_type: 'string', quantity: 'number',
+  price: 'number', amount: 'number', fees: 'number', type: 'string',
+  subtype: 'string', currency: 'string',
+}
+
+const BALANCE_FIELDS = {
+  account_name: 'string', institution_name: 'string', current: 'number',
+  available: 'number', credit_limit: 'number', type: 'string',
+  subtype: 'string', currency: 'string',
+}
+
+const PORTFOLIO_SNAPSHOT_FIELDS = {
+  total_value: 'number', source: 'string', unavailable_items: 'json',
+}
+
+const PORTFOLIO_ACCT_FIELDS = {
+  account_name: 'string', institution: 'string', value: 'number', source: 'string',
+}
 let pool = null
 
 function getPool() {
@@ -33,13 +80,32 @@ export async function query(text, params) {
   }
 }
 
+/**
+ * Maps a Firebase UID to an opaque internal UUID. Creates the mapping on first login.
+ * Used by auth middleware so req.uid is always the opaque UUID.
+ */
+export async function resolveUserId(firebaseUid) {
+  const hash = hashFirebaseUid(firebaseUid)
+  const { rows } = await query(`SELECT id FROM users WHERE firebase_uid_hash = $1`, [hash])
+  if (rows.length > 0) return rows[0].id
+  const encrypted = encrypt(firebaseUid)
+  const { rows: inserted } = await query(
+    `INSERT INTO users (firebase_uid_hash, firebase_uid_encrypted)
+     VALUES ($1, $2)
+     ON CONFLICT (firebase_uid_hash) DO UPDATE SET firebase_uid_hash = EXCLUDED.firebase_uid_hash
+     RETURNING id`,
+    [hash, encrypted]
+  )
+  return inserted[0].id
+}
+
 export async function getPlaidItemByItemId(itemId) {
   const { rows } = await query(
     `SELECT id, user_id, item_id, access_token, institution_name, last_synced_at, created_at, accounts_cache
      FROM plaid_items WHERE item_id = $1 LIMIT 1`,
     [itemId]
   )
-  return rows[0] ?? null
+  return rows[0] ? decryptRow(rows[0], PLAID_ITEM_FIELDS) : null
 }
 
 export async function getPlaidItemsByUserId(userId) {
@@ -48,7 +114,7 @@ export async function getPlaidItemsByUserId(userId) {
      FROM plaid_items WHERE user_id = $1 ORDER BY created_at ASC`,
     [userId]
   )
-  return rows
+  return decryptRows(rows, PLAID_ITEM_FIELDS)
 }
 
 export async function getPlaidItemByInstitutionId(userId, institutionId) {
@@ -56,13 +122,13 @@ export async function getPlaidItemByInstitutionId(userId, institutionId) {
     `SELECT item_id, institution_name FROM plaid_items WHERE user_id = $1 AND institution_id = $2 LIMIT 1`,
     [userId, institutionId]
   )
-  return rows[0] ?? null
+  return rows[0] ? decryptRow(rows[0], PLAID_ITEM_FIELDS) : null
 }
 
 export async function updateAccountsCache(userId, itemId, accountsJson) {
   await query(
     `UPDATE plaid_items SET accounts_cache = $3 WHERE user_id = $1 AND item_id = $2`,
-    [userId, itemId, JSON.stringify(accountsJson)]
+    [userId, itemId, encryptJSON(accountsJson)]
   )
 }
 
@@ -76,7 +142,7 @@ export async function upsertPlaidItem({ userId, itemId, accessToken, institution
        institution_id = COALESCE(EXCLUDED.institution_id, plaid_items.institution_id),
        products_granted = COALESCE(EXCLUDED.products_granted, plaid_items.products_granted),
        last_synced_at = COALESCE(EXCLUDED.last_synced_at, plaid_items.last_synced_at)`,
-    [userId, itemId, accessToken, institutionName ?? null, institutionId ?? null, productsGranted ?? null, lastSyncedAt ?? new Date()]
+    [userId, itemId, encrypt(accessToken), encrypt(institutionName ?? null), institutionId ?? null, encrypt(productsGranted ?? null), lastSyncedAt ?? new Date()]
   )
 }
 
@@ -92,7 +158,7 @@ export async function deletePlaidItem(userId, itemId) {
     `DELETE FROM plaid_items WHERE user_id = $1 AND item_id = $2 RETURNING access_token`,
     [userId, itemId]
   )
-  return rows[0] ?? null
+  return rows[0] ? decryptRow(rows[0], PLAID_ITEM_FIELDS) : null
 }
 
 export async function getSyncCursor(userId, itemId) {
@@ -100,20 +166,20 @@ export async function getSyncCursor(userId, itemId) {
     `SELECT sync_cursor FROM plaid_items WHERE user_id = $1 AND item_id = $2`,
     [userId, itemId]
   )
-  return rows[0]?.sync_cursor ?? null
+  return rows[0]?.sync_cursor ? decrypt(rows[0].sync_cursor) : null
 }
 
 export async function updateSyncCursor(userId, itemId, cursor) {
   await query(
     `UPDATE plaid_items SET sync_cursor = $3, last_synced_at = NOW() WHERE user_id = $1 AND item_id = $2`,
-    [userId, itemId, cursor]
+    [userId, itemId, encrypt(cursor)]
   )
 }
 
 export async function setItemErrorCode(userId, itemId, errorCode) {
   await query(
     `UPDATE plaid_items SET error_code = $3 WHERE user_id = $1 AND item_id = $2`,
-    [userId, itemId, errorCode]
+    [userId, itemId, encrypt(errorCode)]
   )
 }
 
@@ -146,15 +212,25 @@ export async function upsertTransactions(userId, itemId, txns) {
          website = EXCLUDED.website, personal_finance_category_detailed = EXCLUDED.personal_finance_category_detailed,
          personal_finance_category_confidence = EXCLUDED.personal_finance_category_confidence,
          counterparties = EXCLUDED.counterparties, payment_meta = EXCLUDED.payment_meta, check_number = EXCLUDED.check_number`,
-      [userId, itemId, t.account_id, t.transaction_id, t.name, t.amount, t.date, t.authorized_date ?? null, t.account_name ?? null, t.payment_channel ?? null, t.personal_finance_category ?? null, t.pending === true, t.logo_url ?? null, t.original_description ?? null, t.merchant_name ?? null, t.location ? JSON.stringify(t.location) : null, t.website ?? null, t.personal_finance_category_detailed ?? null, t.personal_finance_category_confidence ?? null, t.counterparties?.length ? JSON.stringify(t.counterparties) : null, t.payment_meta ? JSON.stringify(t.payment_meta) : null, t.check_number ?? null]
+      [userId, itemId, t.account_id, t.transaction_id,
+       encrypt(t.name), encryptNum(t.amount), t.date, t.authorized_date ?? null,
+       encrypt(t.account_name ?? null), encrypt(t.payment_channel ?? null),
+       encrypt(t.personal_finance_category ?? null), encryptBool(t.pending === true),
+       encrypt(t.logo_url ?? null), encrypt(t.original_description ?? null),
+       encrypt(t.merchant_name ?? null), encryptJSON(t.location ?? null),
+       encrypt(t.website ?? null), encrypt(t.personal_finance_category_detailed ?? null),
+       encrypt(t.personal_finance_category_confidence ?? null),
+       encryptJSON(t.counterparties?.length ? t.counterparties : null),
+       encryptJSON(t.payment_meta ?? null), encrypt(t.check_number ?? null)]
     )
   }
 }
 
 export async function updateTransactionAccountNames(userId, accountId, accountName) {
+  // Can't compare encrypted ciphertext (random IV), so always update
   await query(
-    `UPDATE transactions SET account_name = $3 WHERE user_id = $1 AND account_id = $2 AND (account_name IS DISTINCT FROM $3)`,
-    [userId, accountId, accountName]
+    `UPDATE transactions SET account_name = $3 WHERE user_id = $1 AND account_id = $2`,
+    [userId, accountId, encrypt(accountName)]
   )
 }
 
@@ -162,7 +238,7 @@ export async function updateTransactionCategory(userId, plaidTransactionId, cate
   await query(
     `UPDATE transactions SET personal_finance_category = $3, personal_finance_category_detailed = $4
      WHERE user_id = $1 AND plaid_transaction_id = $2`,
-    [userId, plaidTransactionId, category, detailedCategory]
+    [userId, plaidTransactionId, encrypt(category), encrypt(detailedCategory)]
   )
 }
 
@@ -170,7 +246,7 @@ export async function updateTransactionRecurring(userId, plaidTransactionId, rec
   await query(
     `UPDATE transactions SET recurring = $3
      WHERE user_id = $1 AND plaid_transaction_id = $2`,
-    [userId, plaidTransactionId, recurring]
+    [userId, plaidTransactionId, encrypt(recurring)]
   )
 }
 
@@ -179,19 +255,27 @@ export async function updateTransactionRecurring(userId, plaidTransactionId, rec
  * Used to augment the upcoming payments list with user-marked subscriptions.
  */
 export async function getSubscriptionPayments(userId) {
+  // personal_finance_category is encrypted — fetch all with recurring IS NOT NULL, then filter in JS
   const { rows } = await query(
-    `SELECT DISTINCT ON (merchant_name, amount, recurring)
-       plaid_transaction_id, name, merchant_name, amount, date, recurring,
+    `SELECT plaid_transaction_id, name, merchant_name, amount, date, recurring,
        personal_finance_category, personal_finance_category_detailed,
        logo_url, account_name
      FROM transactions
      WHERE user_id = $1
-       AND personal_finance_category = 'SUBSCRIPTION'
        AND recurring IS NOT NULL
-     ORDER BY merchant_name, amount, recurring, date DESC`,
+     ORDER BY date DESC`,
     [userId]
   )
-  return rows
+  const decrypted = decryptRows(rows, TX_FIELDS)
+  // Filter to SUBSCRIPTION category, then dedupe by merchant+amount+recurring
+  const subscriptions = decrypted.filter(r => r.personal_finance_category === 'SUBSCRIPTION')
+  const seen = new Set()
+  return subscriptions.filter(r => {
+    const key = `${r.merchant_name}|${r.amount}|${r.recurring}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 export async function deleteTransactionsByPlaidIds(plaidTransactionIds) {
@@ -210,7 +294,7 @@ export async function getLogoUrlsByPlaidTransactionIds(userId, plaidTransactionI
     [userId, plaidTransactionIds]
   )
   const map = {}
-  for (const r of rows) map[r.plaid_transaction_id] = r.logo_url
+  for (const r of rows) map[r.plaid_transaction_id] = decrypt(r.logo_url)
   return map
 }
 
@@ -218,7 +302,8 @@ const reportedDateExpr = 'COALESCE(authorized_date, date)'
 const TX_SELECT = `SELECT id, plaid_transaction_id, name, amount, date::text, authorized_date::text, account_name, account_id, item_id, pending, logo_url, payment_channel, personal_finance_category, original_description, merchant_name, location, website, personal_finance_category_detailed, personal_finance_category_confidence, counterparties, payment_meta, check_number, recurring FROM transactions`
 
 export async function getRecentTransactions(userId, limit = 25, { beforeDate, afterDate, fromDate, toDate, accountIds, categories, detailedCategories, search, sort = 'recent', offset = 0 } = {}) {
-  // params shared by both queries — $1 = userId, $2+ = filter values only (no limit/offset)
+  // Only filter on plaintext columns (user_id, dates, account_id) in SQL.
+  // Encrypted fields (categories, amounts, names) are filtered in JS after decryption.
   const conditions = ['user_id = $1']
   const params = [userId]
   let p = 2
@@ -239,55 +324,64 @@ export async function getRecentTransactions(userId, limit = 25, { beforeDate, af
     params.push(accountIds)
   }
 
-  if (categories?.length) {
-    conditions.push(`personal_finance_category = ANY($${p++})`)
-    params.push(categories)
-  }
-
-  if (detailedCategories?.length) {
-    conditions.push(`personal_finance_category_detailed = ANY($${p++})`)
-    params.push(detailedCategories)
-  }
-
-  if (search) {
-    conditions.push(`(merchant_name ILIKE $${p} OR name ILIKE $${p++})`)
-    params.push(`%${search}%`)
-  }
-
-  const orderBy = sort === 'oldest'      ? `${reportedDateExpr} ASC, created_at ASC`
-               : sort === 'amount_desc'  ? `amount DESC, ${reportedDateExpr} DESC`
-               : sort === 'amount_asc'   ? `amount ASC, ${reportedDateExpr} DESC`
-               :                          `${reportedDateExpr} DESC, created_at DESC`
-
   const where = conditions.join(' AND ')
-  // Inline limit/offset as integers (safe — values come from parseInt server-side)
-  const [{ rows }, { rows: countRows }] = await Promise.all([
-    query(`${TX_SELECT} WHERE ${where} ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`, params),
-    query(`SELECT COUNT(*)::int AS total FROM transactions WHERE ${where}`, params),
-  ])
-  return { transactions: rows, total: countRows[0].total }
+  const { rows } = await query(
+    `${TX_SELECT} WHERE ${where} ORDER BY ${reportedDateExpr} DESC, created_at DESC`,
+    params
+  )
+
+  let filtered = decryptRows(rows, TX_FIELDS)
+
+  // Filter on encrypted fields in JS
+  if (categories?.length) {
+    filtered = filtered.filter(r => r.personal_finance_category && categories.includes(r.personal_finance_category))
+  }
+  if (detailedCategories?.length) {
+    filtered = filtered.filter(r => r.personal_finance_category_detailed && detailedCategories.includes(r.personal_finance_category_detailed))
+  }
+  if (search) {
+    const s = search.toLowerCase()
+    filtered = filtered.filter(r =>
+      (r.merchant_name && r.merchant_name.toLowerCase().includes(s)) ||
+      (r.name && r.name.toLowerCase().includes(s))
+    )
+  }
+
+  // Sort in JS (dates already sorted by SQL for 'recent')
+  if (sort === 'oldest') {
+    filtered.sort((a, b) => (a.authorized_date || a.date || '').localeCompare(b.authorized_date || b.date || ''))
+  } else if (sort === 'amount_desc') {
+    filtered.sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0))
+  } else if (sort === 'amount_asc') {
+    filtered.sort((a, b) => (a.amount ?? 0) - (b.amount ?? 0))
+  }
+
+  const total = filtered.length
+  const transactions = filtered.slice(offset, offset + limit)
+  return { transactions, total }
 }
 
 export async function getTransactionAccounts(userId) {
   const { rows } = await query(
-    `SELECT DISTINCT account_id, account_name
+    `SELECT DISTINCT ON (account_id) account_id, account_name
      FROM transactions
      WHERE user_id = $1 AND account_name IS NOT NULL
-     ORDER BY account_name`,
+     ORDER BY account_id`,
     [userId]
   )
-  return rows
+  return decryptRows(rows, { account_name: 'string' })
 }
 
 export async function getTransactionCategories(userId) {
+  // Categories are encrypted — fetch all, decrypt, dedupe in JS
   const { rows } = await query(
-    `SELECT DISTINCT personal_finance_category
+    `SELECT personal_finance_category
      FROM transactions
-     WHERE user_id = $1 AND personal_finance_category IS NOT NULL
-     ORDER BY personal_finance_category`,
+     WHERE user_id = $1 AND personal_finance_category IS NOT NULL`,
     [userId]
   )
-  return rows.map(r => r.personal_finance_category)
+  const decrypted = decryptRows(rows, { personal_finance_category: 'string' })
+  return [...new Set(decrypted.map(r => r.personal_finance_category).filter(Boolean))].sort()
 }
 
 export async function getTransactionsForNetWorth(userId, sinceDate) {
@@ -298,7 +392,7 @@ export async function getTransactionsForNetWorth(userId, sinceDate) {
      ORDER BY account_id, date ASC`,
     [userId, sinceDate]
   )
-  return rows
+  return decryptRows(rows, { amount: 'number' })
 }
 
 export async function getEarliestTransactionDate(userId) {
@@ -337,79 +431,96 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds, ex
   const mergedPrimary = excludeCategories.length > 0
     ? [...NON_SPENDING_CATEGORIES, ...excludeCategories]
     : NON_SPENDING_CATEGORIES
-  const primaryParam = hasFilter ? 4 : 3
-  const detailedParam = primaryParam + 1
-  const filterClause = hasFilter ? 'AND account_id = ANY($3)' : ''
-  const pfcClause = `AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${primaryParam}))
-      AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($${detailedParam}))`
-  const params = hasFilter
-    ? [userId, null, accountIds, mergedPrimary, NON_SPENDING_DETAILED_CATEGORIES]
-    : [userId, null, mergedPrimary, NON_SPENDING_DETAILED_CATEGORIES]
 
-  const txDate = 'COALESCE(authorized_date, date)'
   const pad2 = (n) => String(n).padStart(2, '0')
   const fmtDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-  let bucketExpr, groupExpr, dateFilter
+  let startDate, bucketFn
   if (period === 'week') {
-    // Pass start date from JS so the filter uses the same clock as the allKeys array in the route
-    const start = new Date()
-    start.setDate(start.getDate() - 6)
-    params[1] = fmtDate(start)
-    bucketExpr = `(${txDate})::text`
-    groupExpr = txDate
-    dateFilter = `${txDate} >= $2::date`
+    const start = new Date(); start.setDate(start.getDate() - 6)
+    startDate = fmtDate(start)
+    bucketFn = (d) => d // daily bucket = date string
   } else if (period === 'month') {
-    const start = new Date()
-    start.setDate(start.getDate() - 28)
-    params[1] = fmtDate(start)
-    bucketExpr = `date_trunc('week', ${txDate})::date::text`
-    groupExpr = `date_trunc('week', ${txDate})`
-    dateFilter = `${txDate} >= $2::date`
+    const start = new Date(); start.setDate(start.getDate() - 28)
+    startDate = fmtDate(start)
+    // weekly bucket: truncate to Monday
+    bucketFn = (d) => {
+      const dt = new Date(d + 'T00:00:00'); const day = dt.getDay()
+      dt.setDate(dt.getDate() - ((day + 6) % 7)) // Monday
+      return fmtDate(dt)
+    }
   } else {
-    // Month-aligned: start from the 1st of the month 11 months ago so each bar
-    // covers a complete calendar month (Jan 1–Jan 31, Feb 1–Feb 28, etc.)
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-    params[1] = `${startOfMonth.getFullYear()}-${pad2(startOfMonth.getMonth() + 1)}-01`
-    bucketExpr = `to_char(${txDate}, 'YYYY-MM')`
-    groupExpr = `to_char(${txDate}, 'YYYY-MM')`
-    dateFilter = `${txDate} >= $2::date`
+    startDate = `${startOfMonth.getFullYear()}-${pad2(startOfMonth.getMonth() + 1)}-01`
+    bucketFn = (d) => d.slice(0, 7) // YYYY-MM
   }
 
-  const sql = `
-    SELECT ${bucketExpr} AS bucket,
-           COALESCE(account_name, 'Unknown') AS account_name,
-           SUM(amount) AS total
-    FROM transactions
-    WHERE user_id = $1
-      AND amount > 0
-      AND ${dateFilter}
-      ${filterClause} ${pfcClause}
-    GROUP BY ${groupExpr}, account_name
-    ORDER BY bucket ASC, account_name ASC`
+  // Fetch all transactions in the date range (only plaintext filters in SQL)
+  const params = [userId, startDate]
+  let filterClause = ''
+  if (hasFilter) {
+    params.push(accountIds)
+    filterClause = `AND account_id = ANY($${params.length})`
+  }
+  const { rows } = await query(
+    `SELECT amount, account_name, personal_finance_category, personal_finance_category_detailed,
+            COALESCE(authorized_date, date)::text AS tx_date
+     FROM transactions
+     WHERE user_id = $1 AND COALESCE(authorized_date, date) >= $2::date ${filterClause}`,
+    params
+  )
 
-  const { rows } = await query(sql, params)
-  return rows
+  // Decrypt and aggregate in JS
+  const decrypted = decryptRows(rows, { amount: 'number', account_name: 'string', personal_finance_category: 'string', personal_finance_category_detailed: 'string' })
+  const totals = new Map() // "bucket\0account_name" → total
+  for (const r of decrypted) {
+    if (r.amount == null || r.amount <= 0) continue
+    if (mergedPrimary.includes(r.personal_finance_category)) continue
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) continue
+    const bucket = bucketFn(r.tx_date)
+    const acct = r.account_name || 'Unknown'
+    const key = `${bucket}\0${acct}`
+    totals.set(key, (totals.get(key) || 0) + r.amount)
+  }
+
+  const result = []
+  for (const [key, total] of totals) {
+    const [bucket, account_name] = key.split('\0')
+    result.push({ bucket, account_name, total })
+  }
+  result.sort((a, b) => a.bucket.localeCompare(b.bucket) || a.account_name.localeCompare(b.account_name))
+  return result
 }
 
 /** Monthly spending totals for a single account. Same exclusions as other spending queries. */
 export async function getMonthlySpendingByAccount(userId, accountId, monthsBack = 12) {
   const n = Math.min(Math.max(monthsBack, 1), 36)
+  const pad2 = (v) => String(v).padStart(2, '0')
+  const now = new Date()
+  const startMonth = new Date(now.getFullYear(), now.getMonth() - (n - 1), 1)
+  const startDate = `${startMonth.getFullYear()}-${pad2(startMonth.getMonth() + 1)}-01`
+
   const { rows } = await query(
-    `SELECT to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') AS month,
-            SUM(amount) AS total
+    `SELECT amount, personal_finance_category, personal_finance_category_detailed,
+            COALESCE(authorized_date, date)::text AS tx_date
      FROM transactions
-     WHERE user_id = $1
-       AND account_id = $2
-       AND amount > 0
-       AND COALESCE(authorized_date, date) >= (date_trunc('month', CURRENT_DATE) - ($3 - 1) * INTERVAL '1 month')::date
-       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($4))
-       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($5))
-     GROUP BY date_trunc('month', COALESCE(authorized_date, date))
-     ORDER BY month ASC`,
-    [userId, accountId, n, NON_SPENDING_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+     WHERE user_id = $1 AND account_id = $2 AND COALESCE(authorized_date, date) >= $3::date`,
+    [userId, accountId, startDate]
   )
-  return rows.map((r) => ({ month: r.month, total: parseFloat(r.total) || 0 }))
+
+  const decrypted = decryptRows(rows, { amount: 'number', personal_finance_category: 'string', personal_finance_category_detailed: 'string' })
+  const totals = new Map()
+  for (const r of decrypted) {
+    if (r.amount == null || r.amount <= 0) continue
+    if (NON_SPENDING_CATEGORIES.includes(r.personal_finance_category)) continue
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) continue
+    const month = r.tx_date.slice(0, 7)
+    totals.set(month, (totals.get(month) || 0) + r.amount)
+  }
+
+  return [...totals.entries()]
+    .map(([month, total]) => ({ month, total }))
+    .sort((a, b) => a.month.localeCompare(b.month))
 }
 
 // Inter-account transfers excluded from cash flow to avoid double-counting
@@ -420,32 +531,37 @@ const CASH_FLOW_EXCLUDED_CATEGORIES = ['TRANSFER_IN', 'TRANSFER_OUT']
 export async function getMonthlyCashFlow(userId, months = 24, accountIds = null) {
   const n = Math.min(Math.max(months, 1), 36)
   const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
-  const params = [userId, n, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  const params = [userId]
   let filterClause = ''
   if (hasFilter) {
     params.push(accountIds)
     filterClause = `AND account_id = ANY($${params.length})`
   }
   const { rows } = await query(
-    `SELECT to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') AS month,
-            SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) AS inflows,
-            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS outflows
+    `SELECT amount, personal_finance_category, personal_finance_category_detailed,
+            COALESCE(authorized_date, date)::text AS tx_date
      FROM transactions
-     WHERE user_id = $1
-       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($3))
-       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($4))
-       ${filterClause}
-     GROUP BY date_trunc('month', COALESCE(authorized_date, date))
-     ORDER BY month DESC
-     LIMIT $2`,
+     WHERE user_id = $1 ${filterClause}`,
     params
   )
-  return rows.map((r) => ({
-    month: r.month,
-    inflows: parseFloat(r.inflows) || 0,
-    outflows: parseFloat(r.outflows) || 0,
-    net: (parseFloat(r.inflows) || 0) - (parseFloat(r.outflows) || 0),
-  }))
+
+  const decrypted = decryptRows(rows, { amount: 'number', personal_finance_category: 'string', personal_finance_category_detailed: 'string' })
+  const monthMap = new Map() // month → { inflows, outflows }
+  for (const r of decrypted) {
+    if (r.amount == null) continue
+    if (CASH_FLOW_EXCLUDED_CATEGORIES.includes(r.personal_finance_category)) continue
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) continue
+    const month = r.tx_date.slice(0, 7)
+    const entry = monthMap.get(month) || { inflows: 0, outflows: 0 }
+    if (r.amount < 0) entry.inflows += Math.abs(r.amount)
+    else entry.outflows += r.amount
+    monthMap.set(month, entry)
+  }
+
+  return [...monthMap.entries()]
+    .map(([month, { inflows, outflows }]) => ({ month, inflows, outflows, net: inflows - outflows }))
+    .sort((a, b) => b.month.localeCompare(a.month))
+    .slice(0, n)
 }
 
 /**
@@ -453,19 +569,23 @@ export async function getMonthlyCashFlow(userId, months = 24, accountIds = null)
  * granularity: 'day' | 'week' | 'month'
  */
 export async function getCashFlowTimeSeries(userId, startDate, endDate, granularity = 'month', accountIds = null) {
-  let truncExpr, labelExpr
+  const pad2 = (v) => String(v).padStart(2, '0')
+  const fmtDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+
+  let bucketFn
   if (granularity === 'day') {
-    truncExpr = `date_trunc('day', COALESCE(authorized_date, date))`
-    labelExpr = `to_char(date_trunc('day', COALESCE(authorized_date, date)), 'YYYY-MM-DD')`
+    bucketFn = (d) => d // YYYY-MM-DD
   } else if (granularity === 'week') {
-    truncExpr = `date_trunc('week', COALESCE(authorized_date, date))`
-    labelExpr = `to_char(date_trunc('week', COALESCE(authorized_date, date)), 'YYYY-MM-DD')`
+    bucketFn = (d) => {
+      const dt = new Date(d + 'T00:00:00'); const day = dt.getDay()
+      dt.setDate(dt.getDate() - ((day + 6) % 7))
+      return fmtDate(dt)
+    }
   } else {
-    truncExpr = `date_trunc('month', COALESCE(authorized_date, date))`
-    labelExpr = `to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM')`
+    bucketFn = (d) => d.slice(0, 7) // YYYY-MM
   }
 
-  const params = [userId, startDate, endDate, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+  const params = [userId, startDate, endDate]
   const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
   let filterClause = ''
   if (hasFilter) {
@@ -474,26 +594,32 @@ export async function getCashFlowTimeSeries(userId, startDate, endDate, granular
   }
 
   const { rows } = await query(
-    `SELECT ${labelExpr} AS bucket,
-            SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) AS inflows,
-            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS outflows
+    `SELECT amount, personal_finance_category, personal_finance_category_detailed,
+            COALESCE(authorized_date, date)::text AS tx_date
      FROM transactions
      WHERE user_id = $1
        AND COALESCE(authorized_date, date) >= $2::date
        AND COALESCE(authorized_date, date) <= $3::date
-       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($4))
-       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($5))
-       ${filterClause}
-     GROUP BY ${truncExpr}
-     ORDER BY ${truncExpr} ASC`,
+       ${filterClause}`,
     params
   )
-  return rows.map((r) => ({
-    bucket: r.bucket,
-    inflows: parseFloat(r.inflows) || 0,
-    outflows: parseFloat(r.outflows) || 0,
-    net: (parseFloat(r.inflows) || 0) - (parseFloat(r.outflows) || 0),
-  }))
+
+  const decrypted = decryptRows(rows, { amount: 'number', personal_finance_category: 'string', personal_finance_category_detailed: 'string' })
+  const bucketMap = new Map()
+  for (const r of decrypted) {
+    if (r.amount == null) continue
+    if (CASH_FLOW_EXCLUDED_CATEGORIES.includes(r.personal_finance_category)) continue
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) continue
+    const bucket = bucketFn(r.tx_date)
+    const entry = bucketMap.get(bucket) || { inflows: 0, outflows: 0 }
+    if (r.amount < 0) entry.inflows += Math.abs(r.amount)
+    else entry.outflows += r.amount
+    bucketMap.set(bucket, entry)
+  }
+
+  return [...bucketMap.entries()]
+    .map(([bucket, { inflows, outflows }]) => ({ bucket, inflows, outflows, net: inflows - outflows }))
+    .sort((a, b) => a.bucket.localeCompare(b.bucket))
 }
 
 /** Transactions for a given month (YYYY-MM) or date range, split into inflows and outflows. Same exclusions as getMonthlyCashFlow. */
@@ -501,24 +627,26 @@ export async function getCashFlowTransactions(userId, month, startDate = null, e
   let dateClause, params
   if (startDate && endDate) {
     dateClause = `AND COALESCE(authorized_date, date) >= $2::date AND COALESCE(authorized_date, date) <= $3::date`
-    params = [userId, startDate, endDate, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+    params = [userId, startDate, endDate]
   } else {
     dateClause = `AND to_char(date_trunc('month', COALESCE(authorized_date, date)), 'YYYY-MM') = $2`
-    params = [userId, month, CASH_FLOW_EXCLUDED_CATEGORIES, NON_SPENDING_DETAILED_CATEGORIES]
+    params = [userId, month]
   }
-  const exclIdx = startDate && endDate ? 4 : 3
-  const detailIdx = exclIdx + 1
   const { rows } = await query(
     `${TX_SELECT}
      WHERE user_id = $1
        ${dateClause}
-       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($${exclIdx}))
-       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($${detailIdx}))
      ORDER BY COALESCE(authorized_date, date) DESC, created_at DESC`,
     params
   )
-  const inflows = rows.filter(r => Number(r.amount) < 0)
-  const outflows = rows.filter(r => Number(r.amount) > 0)
+  const decrypted = decryptRows(rows, TX_FIELDS)
+  const filtered = decrypted.filter(r => {
+    if (CASH_FLOW_EXCLUDED_CATEGORIES.includes(r.personal_finance_category)) return false
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) return false
+    return true
+  })
+  const inflows = filtered.filter(r => r.amount < 0)
+  const outflows = filtered.filter(r => r.amount > 0)
   return { inflows, outflows }
 }
 
@@ -571,69 +699,67 @@ function cashFlowDateRange(period) {
  * Returns rows: { flow_type: 'income'|'expense', category_key, total_amount }
  */
 export async function getCashFlowBreakdown(userId, period, breakdown = 'category', accountIds = null, customRange = null, excludeCategories = []) {
-  const txDate = 'COALESCE(t.authorized_date, t.date)'
-
   const { startDate, endDate } = customRange || cashFlowDateRange(period)
 
-  // Choose the grouping expression based on breakdown (all column refs prefixed with t.)
-  let groupExpr
-  if (breakdown === 'merchant') {
-    groupExpr = `COALESCE(NULLIF(t.merchant_name, ''), t.name)`
-  } else if (breakdown === 'group') {
-    const cases = Object.entries(CATEGORY_GROUP_MAP)
-      .map(([k, v]) => `WHEN t.personal_finance_category = '${k}' THEN '${v}'`)
-      .join(' ')
-    groupExpr = `CASE ${cases} ELSE COALESCE(t.personal_finance_category, 'Other') END`
-  } else {
-    groupExpr = `COALESCE(t.personal_finance_category, 'OTHER')`
-  }
-
-  const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
-  let p = 1
-  const params = [userId]
-  p++
-  params.push(startDate)
-  p++
-  params.push(endDate)
-  let filterClause = ''
-  if (hasFilter) {
-    filterClause = `AND t.account_id = ANY($${++p})`
-    params.push(accountIds)
-  }
   const mergedExcluded = excludeCategories.length > 0
     ? [...CASH_FLOW_EXCLUDED_CATEGORIES, ...excludeCategories]
     : CASH_FLOW_EXCLUDED_CATEGORIES
-  params.push(mergedExcluded)
-  const exclParam = params.length
-  params.push(NON_SPENDING_DETAILED_CATEGORIES)
-  const detailedParam = params.length
 
-  // Override category to 'Venmo' for inflows from Venmo accounts
-  const venmoOverride = `CASE WHEN t.amount < 0 AND pi.institution_name ILIKE '%venmo%' THEN 'Venmo' ELSE ${groupExpr} END`
+  const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
+  const params = [userId, startDate, endDate]
+  let filterClause = ''
+  if (hasFilter) {
+    params.push(accountIds)
+    filterClause = `AND account_id = ANY($${params.length})`
+  }
 
+  // Fetch transactions in date range
   const { rows } = await query(
-    `SELECT
-       CASE WHEN t.amount < 0 THEN 'income' ELSE 'expense' END AS flow_type,
-       ${venmoOverride} AS category_key,
-       SUM(ABS(t.amount)) AS total_amount
-     FROM transactions t
-     LEFT JOIN plaid_items pi ON t.item_id = pi.item_id
-     WHERE t.user_id = $1
-       AND ${txDate} >= $2::date
-       AND ${txDate} <= $3::date
-       ${filterClause}
-       AND (t.personal_finance_category IS NULL OR t.personal_finance_category != ALL($${exclParam}))
-       AND (t.personal_finance_category_detailed IS NULL OR t.personal_finance_category_detailed != ALL($${detailedParam}))
-     GROUP BY flow_type, category_key
-     ORDER BY total_amount DESC`,
+    `SELECT amount, name, merchant_name, personal_finance_category, personal_finance_category_detailed, item_id,
+            COALESCE(authorized_date, date)::text AS tx_date
+     FROM transactions
+     WHERE user_id = $1
+       AND COALESCE(authorized_date, date) >= $2::date
+       AND COALESCE(authorized_date, date) <= $3::date
+       ${filterClause}`,
     params
   )
+  const txDecrypted = decryptRows(rows, { amount: 'number', name: 'string', merchant_name: 'string', personal_finance_category: 'string', personal_finance_category_detailed: 'string' })
 
-  return rows.map((r) => ({
-    flow_type: r.flow_type,
-    category_key: r.category_key,
-    total_amount: parseFloat(r.total_amount) || 0,
-  }))
+  // Build Venmo item_id set (fetch plaid_items for this user, decrypt institution_name, check for Venmo)
+  const { rows: items } = await query(`SELECT item_id, institution_name FROM plaid_items WHERE user_id = $1`, [userId])
+  const itemsDecrypted = decryptRows(items, { institution_name: 'string' })
+  const venmoItemIds = new Set(itemsDecrypted.filter(i => (i.institution_name || '').toLowerCase().includes('venmo')).map(i => i.item_id))
+
+  // Choose grouping function
+  let groupFn
+  if (breakdown === 'merchant') {
+    groupFn = (r) => r.merchant_name || r.name || 'Unknown'
+  } else if (breakdown === 'group') {
+    groupFn = (r) => CATEGORY_GROUP_MAP[r.personal_finance_category] || r.personal_finance_category || 'Other'
+  } else {
+    groupFn = (r) => r.personal_finance_category || 'OTHER'
+  }
+
+  // Aggregate in JS
+  const totals = new Map() // "flow_type\0category_key" → total_amount
+  for (const r of txDecrypted) {
+    if (r.amount == null) continue
+    if (mergedExcluded.includes(r.personal_finance_category)) continue
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) continue
+    const flowType = r.amount < 0 ? 'income' : 'expense'
+    // Venmo override: inflows from Venmo accounts → 'Venmo'
+    const categoryKey = (r.amount < 0 && venmoItemIds.has(r.item_id)) ? 'Venmo' : groupFn(r)
+    const key = `${flowType}\0${categoryKey}`
+    totals.set(key, (totals.get(key) || 0) + Math.abs(r.amount))
+  }
+
+  return [...totals.entries()]
+    .map(([key, total_amount]) => {
+      const [flow_type, category_key] = key.split('\0')
+      return { flow_type, category_key, total_amount }
+    })
+    .sort((a, b) => b.total_amount - a.total_amount)
 }
 
 /**
@@ -641,64 +767,57 @@ export async function getCashFlowBreakdown(userId, period, breakdown = 'category
  * Filters by period, flow direction (income/expense), category key, and breakdown type.
  */
 export async function getCashFlowNodeTransactions(userId, period, breakdown, flowType, categoryKey, accountIds = null, customRange = null) {
-  const txDate = 'COALESCE(t.authorized_date, t.date)'
   const { startDate, endDate } = customRange || cashFlowDateRange(period)
 
-  // Build the same grouping expression used in getCashFlowBreakdown (all column refs prefixed with t.)
-  let groupExpr
-  if (breakdown === 'merchant') {
-    groupExpr = `COALESCE(NULLIF(t.merchant_name, ''), t.name)`
-  } else if (breakdown === 'group') {
-    const cases = Object.entries(CATEGORY_GROUP_MAP)
-      .map(([k, v]) => `WHEN t.personal_finance_category = '${k}' THEN '${v}'`)
-      .join(' ')
-    groupExpr = `CASE ${cases} ELSE COALESCE(t.personal_finance_category, 'Other') END`
-  } else {
-    groupExpr = `COALESCE(t.personal_finance_category, 'OTHER')`
-  }
-
-  const amountCondition = flowType === 'income' ? 'amount < 0' : 'amount > 0'
-
-  // Support multiple category keys (comma-separated) for "Everything else" bucket
-  const categoryKeys = categoryKey.includes(',') ? categoryKey.split(',') : [categoryKey]
-
   const hasFilter = Array.isArray(accountIds) && accountIds.length > 0
-  let p = 4 // $1=userId, $2=startDate, $3=endDate, $4=categoryKeys[]
-  const params = [userId, startDate, endDate, categoryKeys]
+  const params = [userId, startDate, endDate]
   let filterClause = ''
   if (hasFilter) {
-    filterClause = `AND t.account_id = ANY($${++p})`
     params.push(accountIds)
+    filterClause = `AND account_id = ANY($${params.length})`
   }
-  params.push(CASH_FLOW_EXCLUDED_CATEGORIES)
-  const exclParam = params.length
-  params.push(NON_SPENDING_DETAILED_CATEGORIES)
-  const detailedParam = params.length
 
-  // Override category to 'Venmo' for inflows from Venmo accounts (matches getCashFlowBreakdown)
-  const venmoOverride = `CASE WHEN t.amount < 0 AND pi.institution_name ILIKE '%venmo%' THEN 'Venmo' ELSE ${groupExpr} END`
-
+  // Fetch all transactions in date range
   const { rows } = await query(
-    `SELECT t.id, t.plaid_transaction_id, t.name, t.amount, t.date::text, t.authorized_date::text,
-            t.account_name, t.account_id, t.item_id, t.pending, t.logo_url, t.payment_channel,
-            t.personal_finance_category, t.original_description, t.merchant_name, t.location,
-            t.website, t.personal_finance_category_detailed, t.personal_finance_category_confidence,
-            t.counterparties, t.payment_meta, t.check_number, t.recurring
-     FROM transactions t
-     LEFT JOIN plaid_items pi ON t.item_id = pi.item_id
-     WHERE t.user_id = $1
-       AND ${txDate} >= $2::date
-       AND ${txDate} <= $3::date
-       AND t.${amountCondition}
-       AND (${venmoOverride}) = ANY($4)
+    `${TX_SELECT}
+     WHERE user_id = $1
+       AND COALESCE(authorized_date, date) >= $2::date
+       AND COALESCE(authorized_date, date) <= $3::date
        ${filterClause}
-       AND (t.personal_finance_category IS NULL OR t.personal_finance_category != ALL($${exclParam}))
-       AND (t.personal_finance_category_detailed IS NULL OR t.personal_finance_category_detailed != ALL($${detailedParam}))
-     ORDER BY ${txDate} DESC, t.created_at DESC`,
+     ORDER BY COALESCE(authorized_date, date) DESC, created_at DESC`,
     params
   )
+  const txDecrypted = decryptRows(rows, TX_FIELDS)
 
-  return rows
+  // Build Venmo item_id set
+  const { rows: items } = await query(`SELECT item_id, institution_name FROM plaid_items WHERE user_id = $1`, [userId])
+  const itemsDecrypted = decryptRows(items, { institution_name: 'string' })
+  const venmoItemIds = new Set(itemsDecrypted.filter(i => (i.institution_name || '').toLowerCase().includes('venmo')).map(i => i.item_id))
+
+  // Build same grouping function as getCashFlowBreakdown
+  let groupFn
+  if (breakdown === 'merchant') {
+    groupFn = (r) => r.merchant_name || r.name || 'Unknown'
+  } else if (breakdown === 'group') {
+    groupFn = (r) => CATEGORY_GROUP_MAP[r.personal_finance_category] || r.personal_finance_category || 'Other'
+  } else {
+    groupFn = (r) => r.personal_finance_category || 'OTHER'
+  }
+
+  // Support multiple category keys (comma-separated) for "Everything else" bucket
+  const categoryKeys = new Set(categoryKey.includes(',') ? categoryKey.split(',') : [categoryKey])
+
+  return txDecrypted.filter(r => {
+    if (r.amount == null) return false
+    if (CASH_FLOW_EXCLUDED_CATEGORIES.includes(r.personal_finance_category)) return false
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) return false
+    // Flow direction
+    if (flowType === 'income' && r.amount >= 0) return false
+    if (flowType === 'expense' && r.amount <= 0) return false
+    // Category match (with Venmo override)
+    const resolved = (r.amount < 0 && venmoItemIds.has(r.item_id)) ? 'Venmo' : groupFn(r)
+    return categoryKeys.has(resolved)
+  })
 }
 
 // ── Investment snapshot writes ─────────────────────────────────────────────
@@ -712,9 +831,8 @@ export async function upsertPortfolioSnapshot(userId, date, totalValue, source, 
        SET total_value = EXCLUDED.total_value,
            source = EXCLUDED.source,
            unavailable_items = EXCLUDED.unavailable_items,
-           updated_at = NOW()
-     WHERE portfolio_snapshots.source = 'backfill' OR EXCLUDED.source = 'live'`,
-    [userId, date, totalValue, source, unavailableItems ? JSON.stringify(unavailableItems) : null]
+           updated_at = NOW()`,
+    [userId, date, encryptNum(totalValue), encrypt(source), encryptJSON(unavailableItems)]
   )
 }
 
@@ -727,9 +845,8 @@ export async function upsertPortfolioAccountSnapshot(userId, date, itemId, accou
        SET value = EXCLUDED.value,
            account_name = EXCLUDED.account_name,
            institution = EXCLUDED.institution,
-           source = EXCLUDED.source
-     WHERE portfolio_account_snapshots.source = 'backfill' OR EXCLUDED.source = 'live'`,
-    [userId, date, itemId, accountId, accountName, institution, value, source]
+           source = EXCLUDED.source`,
+    [userId, date, itemId, accountId, encrypt(accountName), encrypt(institution), encryptNum(value), encrypt(source)]
   )
 }
 
@@ -745,7 +862,10 @@ export async function upsertHoldingSnapshot(userId, date, itemId, accountId, acc
            value = EXCLUDED.value,
            cost_basis = EXCLUDED.cost_basis,
            source = EXCLUDED.source`,
-    [userId, date, itemId, accountId, accountName, institution, securityId, ticker, securityName, securityType, quantity, price, value, costBasis, currency, source, lotIndex]
+    [userId, date, itemId, accountId, encrypt(accountName), encrypt(institution), securityId,
+     encrypt(ticker), encrypt(securityName), encrypt(securityType),
+     encryptNum(quantity), encryptNum(price), encryptNum(value), encryptNum(costBasis),
+     encrypt(currency), encrypt(source), lotIndex]
   )
 }
 
@@ -760,7 +880,7 @@ export async function upsertSecurity(securityId, ticker, name, type, currency) {
            type = EXCLUDED.type,
            currency = EXCLUDED.currency,
            updated_at = NOW()`,
-    [securityId, ticker, name, type, currency ?? 'USD']
+    [securityId, encrypt(ticker), encrypt(name), encrypt(type), encrypt(currency ?? 'USD')]
   )
 }
 
@@ -774,46 +894,21 @@ export async function getInvestmentTransactionsByAccount(userId, accountId, limi
      LIMIT $3`,
     [userId, accountId, limit]
   )
-  return rows.map((r) => ({
-    date: r.date,
-    type: r.type,
-    subtype: r.subtype,
-    ticker: r.ticker,
-    security_name: r.security_name,
-    security_type: r.security_type,
-    quantity: r.quantity != null ? parseFloat(r.quantity) : null,
-    price: r.price != null ? parseFloat(r.price) : null,
-    amount: r.amount != null ? parseFloat(r.amount) : null,
-    fees: r.fees != null ? parseFloat(r.fees) : null,
-    currency: r.currency,
-  }))
+  return decryptRows(rows, INV_TX_FIELDS)
 }
 
 /** Fetch investment transactions for a specific ticker across all accounts, ordered newest first. */
 export async function getInvestmentTransactionsByTicker(userId, ticker, limit = 200) {
+  // Ticker is encrypted — fetch all for user, decrypt, filter by ticker in JS
   const { rows } = await query(
     `SELECT date::text AS date, type, subtype, ticker, security_name, security_type, quantity, price, amount, fees, currency, account_name, institution
      FROM investment_transactions
-     WHERE user_id = $1 AND ticker = $2
-     ORDER BY date DESC
-     LIMIT $3`,
-    [userId, ticker, limit]
+     WHERE user_id = $1
+     ORDER BY date DESC`,
+    [userId]
   )
-  return rows.map((r) => ({
-    date: r.date,
-    type: r.type,
-    subtype: r.subtype,
-    ticker: r.ticker,
-    security_name: r.security_name,
-    security_type: r.security_type,
-    quantity: r.quantity != null ? parseFloat(r.quantity) : null,
-    price: r.price != null ? parseFloat(r.price) : null,
-    amount: r.amount != null ? parseFloat(r.amount) : null,
-    fees: r.fees != null ? parseFloat(r.fees) : null,
-    currency: r.currency,
-    account_name: r.account_name,
-    institution: r.institution,
-  }))
+  const decrypted = decryptRows(rows, INV_TX_FIELDS)
+  return decrypted.filter(r => r.ticker === ticker).slice(0, limit)
 }
 
 /** Insert investment transactions; skip duplicates (idempotent). */
@@ -824,7 +919,11 @@ export async function upsertInvestmentTransactions(txns) {
          (user_id, item_id, account_id, institution, account_name, plaid_investment_txn_id, date, type, subtype, security_id, ticker, security_name, security_type, quantity, price, amount, fees, currency)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        ON CONFLICT (plaid_investment_txn_id) DO NOTHING`,
-      [t.user_id, t.item_id, t.account_id, t.institution, t.account_name, t.plaid_investment_txn_id, t.date, t.type, t.subtype, t.security_id, t.ticker, t.security_name, t.security_type, t.quantity, t.price, t.amount, t.fees, t.currency ?? 'USD']
+      [t.user_id, t.item_id, t.account_id, encrypt(t.institution), encrypt(t.account_name),
+       t.plaid_investment_txn_id, t.date, encrypt(t.type), encrypt(t.subtype), t.security_id,
+       encrypt(t.ticker), encrypt(t.security_name), encrypt(t.security_type),
+       encryptNum(t.quantity), encryptNum(t.price), encryptNum(t.amount), encryptNum(t.fees),
+       encrypt(t.currency ?? 'USD')]
     )
   }
 }
@@ -834,7 +933,7 @@ export async function upsertInvestmentTransactions(txns) {
 export async function createCliToken(userId, tokenHash, name, expiresAt) {
   await query(
     `INSERT INTO cli_tokens (user_id, token_hash, name, expires_at) VALUES ($1, $2, $3, $4)`,
-    [userId, tokenHash, name ?? null, expiresAt]
+    [userId, tokenHash, encrypt(name ?? null), expiresAt]
   )
 }
 
@@ -860,14 +959,14 @@ export async function revokeAllCliTokens(userId) {
  *  Joins to plaid_items to exclude orphaned snapshots from deleted items. */
 export async function getInvestmentAccounts(userId) {
   const { rows } = await query(
-    `SELECT DISTINCT hs.account_id, hs.account_name, hs.institution
+    `SELECT DISTINCT ON (hs.account_id) hs.account_id, hs.account_name, hs.institution
      FROM holdings_snapshots hs
      INNER JOIN plaid_items pi ON pi.item_id = hs.item_id AND pi.user_id = hs.user_id
      WHERE hs.user_id = $1 AND hs.account_name IS NOT NULL
-     ORDER BY hs.institution, hs.account_name`,
+     ORDER BY hs.account_id`,
     [userId]
   )
-  return rows
+  return decryptRows(rows, { account_name: 'string', institution: 'string' })
 }
 
 /** Read portfolio_snapshots for the chart. Returns only dates that exist — no fill. */
@@ -879,46 +978,63 @@ export async function getPortfolioHistory(userId, sinceDate) {
      ORDER BY date ASC`,
     [userId, sinceDate]
   )
-  return rows.map((r) => ({
-    date: r.date,
-    value: parseFloat(r.value),
-    source: r.source,
-    ...(r.unavailable_items ? { unavailableItems: r.unavailable_items } : {}),
-  }))
+  return rows.map((r) => {
+    const value = decryptNum(r.value)
+    const source = decrypt(r.source)
+    const unavailableItems = decryptJSON(r.unavailable_items)
+    return {
+      date: r.date,
+      value: value ?? 0,
+      source,
+      ...(unavailableItems ? { unavailableItems } : {}),
+    }
+  })
 }
 
 /** Read portfolio_account_snapshots filtered by account IDs. Sums per day. */
 export async function getPortfolioAccountHistory(userId, sinceDate, accountIds) {
+  // Value is encrypted — fetch rows, decrypt, sum by date in JS
   const { rows } = await query(
-    `SELECT date::text AS date, SUM(value) AS value
+    `SELECT date::text AS date, value, account_id
      FROM portfolio_account_snapshots
      WHERE user_id = $1 AND date >= $2 AND account_id = ANY($3)
-     GROUP BY date
      ORDER BY date ASC`,
     [userId, sinceDate, accountIds]
   )
-  return rows.map((r) => ({ date: r.date, value: parseFloat(r.value) }))
+  const decrypted = decryptRows(rows, { value: 'number' })
+  const byDate = new Map()
+  for (const r of decrypted) {
+    byDate.set(r.date, (byDate.get(r.date) ?? 0) + (r.value ?? 0))
+  }
+  return [...byDate.entries()].map(([date, value]) => ({ date, value }))
 }
 
 /** Daily price history per ticker — used by the Portfolio Movers chart. */
 export async function getHoldingsHistory(userId, sinceDate) {
+  // Ticker, price, etc. are encrypted — fetch all, decrypt, group in JS
   const { rows } = await query(
-    `SELECT date, ticker, account_id, account_name, MIN(security_name) AS security_name, MIN(security_type) AS security_type, MAX(price) AS price
+    `SELECT date, ticker, account_id, account_name, security_name, security_type, price
      FROM holdings_snapshots
-     WHERE user_id = $1 AND date >= $2 AND price IS NOT NULL AND price > 0 AND ticker IS NOT NULL
-     GROUP BY date, ticker, account_id, account_name
-     ORDER BY ticker, account_id, date`,
+     WHERE user_id = $1 AND date >= $2
+     ORDER BY date`,
     [userId, sinceDate]
   )
-  return rows.map((r) => ({
-    date: r.date,
-    ticker: r.ticker,
-    account_id: r.account_id,
-    account_name: r.account_name,
-    security_name: r.security_name,
-    security_type: r.security_type,
-    price: parseFloat(r.price),
-  }))
+  const decrypted = decryptRows(rows, HOLDING_FIELDS)
+  // Filter and group by date+ticker+account_id (replicating the old GROUP BY)
+  const grouped = new Map()
+  for (const r of decrypted) {
+    if (r.price == null || r.price <= 0 || !r.ticker) continue
+    const key = `${r.date}|${r.ticker}|${r.account_id}`
+    if (!grouped.has(key)) {
+      grouped.set(key, { date: r.date, ticker: r.ticker, account_id: r.account_id, account_name: r.account_name, security_name: r.security_name, security_type: r.security_type, price: r.price })
+    } else {
+      const existing = grouped.get(key)
+      if (r.price > existing.price) existing.price = r.price
+    }
+  }
+  const result = [...grouped.values()]
+  result.sort((a, b) => (a.ticker + a.account_id + a.date).localeCompare(b.ticker + b.account_id + b.date))
+  return result
 }
 
 /** Holdings snapshot for a specific date — used by the chart click side panel. */
@@ -927,23 +1043,12 @@ export async function getHoldingsSnapshotForDate(userId, date) {
     `SELECT account_id, account_name, institution, ticker, security_name, security_type,
             quantity, price, value, cost_basis, currency
      FROM holdings_snapshots
-     WHERE user_id = $1 AND date = $2
-     ORDER BY value DESC NULLS LAST`,
+     WHERE user_id = $1 AND date = $2`,
     [userId, date]
   )
-  return rows.map((r) => ({
-    account_id: r.account_id,
-    account_name: r.account_name,
-    institution: r.institution,
-    ticker: r.ticker,
-    security_name: r.security_name,
-    security_type: r.security_type,
-    quantity: r.quantity != null ? parseFloat(r.quantity) : null,
-    price: r.price != null ? parseFloat(r.price) : null,
-    value: r.value != null ? parseFloat(r.value) : null,
-    cost_basis: r.cost_basis != null ? parseFloat(r.cost_basis) : null,
-    currency: r.currency,
-  }))
+  const decrypted = decryptRows(rows, HOLDING_FIELDS)
+  decrypted.sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
+  return decrypted
 }
 
 /** Latest portfolio snapshot value for a user (used as current value). */
@@ -954,7 +1059,7 @@ export async function getLatestPortfolioValue(userId) {
      ORDER BY date DESC LIMIT 1`,
     [userId]
   )
-  return rows[0] ? parseFloat(rows[0].total_value) : null
+  return rows[0] ? decryptNum(rows[0].total_value) : null
 }
 
 /** Returns true if the user has any portfolio snapshots before today (backfill already done or live data accumulated).
@@ -972,15 +1077,18 @@ export async function hasHistoricalPortfolioData(userId, today) {
 /** Returns true if a live portfolio snapshot already exists for today. Used to skip redundant Plaid calls.
  *  today must be passed as a 'YYYY-MM-DD' string from Node.js to avoid DB timezone mismatches. */
 export async function hasTodaySnapshot(userId, today) {
+  // source is encrypted — fetch candidates by user+date+time, check source in JS
   const { rows } = await query(
-    `SELECT 1 FROM portfolio_snapshots
-     WHERE user_id = $1 AND date = $2 AND source = 'live'
-       AND unavailable_items IS NULL
+    `SELECT source, unavailable_items FROM portfolio_snapshots
+     WHERE user_id = $1 AND date = $2
        AND updated_at > NOW() - INTERVAL '30 minutes'
      LIMIT 1`,
     [userId, today]
   )
-  return rows.length > 0
+  if (!rows.length) return false
+  const source = decrypt(rows[0].source)
+  const unavailable = rows[0].unavailable_items
+  return source === 'live' && unavailable == null
 }
 
 /** Get the most recent holdings snapshot for each security (starting point for quantity reconstruction). */
@@ -993,7 +1101,7 @@ export async function getLatestHoldingsSnapshot(userId) {
      ORDER BY account_id, security_id, date DESC`,
     [userId]
   )
-  return rows
+  return decryptRows(rows, HOLDING_FIELDS)
 }
 
 /** Upsert a daily balance snapshot for one account. Called after every live accountsBalanceGet. */
@@ -1010,9 +1118,9 @@ export async function upsertAccountBalanceSnapshot(userId, itemId, institutionNa
        institution_name = EXCLUDED.institution_name`,
     [
       userId, itemId, account.account_id,
-      account.name, institutionName ?? null, date,
-      account.current ?? null, account.available ?? null, account.limit ?? null,
-      account.type ?? null, account.subtype ?? null, account.currency ?? 'USD',
+      encrypt(account.name), encrypt(institutionName ?? null), date,
+      encryptNum(account.current ?? null), encryptNum(account.available ?? null), encryptNum(account.limit ?? null),
+      encrypt(account.type ?? null), encrypt(account.subtype ?? null), encrypt(account.currency ?? 'USD'),
     ]
   )
 }
@@ -1030,10 +1138,10 @@ export async function getAccountBalanceHistory(userId, { afterDate, beforeDate, 
      FROM account_balance_snapshots abs
      INNER JOIN plaid_items pi ON pi.item_id = abs.item_id AND pi.user_id = abs.user_id
      WHERE ${conditions.join(' AND ')}
-     ORDER BY abs.date ASC, abs.account_name ASC`,
+     ORDER BY abs.date ASC`,
     params
   )
-  return rows
+  return decryptRows(rows, BALANCE_FIELDS)
 }
 
 /** Returns the most recent balance snapshot per account for a user (depository/credit/loan). */
@@ -1047,7 +1155,7 @@ export async function getLatestAccountBalances(userId) {
      ORDER BY account_id, date DESC`,
     [userId]
   )
-  return rows
+  return decryptRows(rows, BALANCE_FIELDS)
 }
 
 /** Returns per-date, per-account investment values from portfolio_account_snapshots. */
@@ -1066,7 +1174,8 @@ export async function getInvestmentBalanceHistory(userId, { afterDate } = {}) {
      ORDER BY pas.date ASC`,
     params
   )
-  return rows.map(r => ({ ...r, type: 'investment', current: parseFloat(r.current ?? 0) }))
+  const decrypted = decryptRows(rows, { account_name: 'string', institution_name: 'string', current: 'number' })
+  return decrypted.map(r => ({ ...r, type: 'investment', current: r.current ?? 0 }))
 }
 
 /** Returns the most recent portfolio value per investment account for a user. */
@@ -1080,7 +1189,8 @@ export async function getLatestInvestmentAccountBalances(userId) {
      ORDER BY account_id, date DESC`,
     [userId]
   )
-  return rows.map(r => ({ ...r, type: 'investment', subtype: null, available: null, credit_limit: null, currency: 'USD' }))
+  const decrypted = decryptRows(rows, { account_name: 'string', institution_name: 'string', current: 'number' })
+  return decrypted.map(r => ({ ...r, type: 'investment', subtype: null, available: null, credit_limit: null, currency: 'USD' }))
 }
 
 export async function getAllUserIdsWithItems() {
@@ -1091,8 +1201,8 @@ export async function getAllUserIdsWithItems() {
 export async function insertBackfillPortfolioSnapshot(userId, date, totalValue) {
   await query(
     `INSERT INTO portfolio_snapshots (user_id, date, total_value, source)
-     VALUES ($1, $2, $3, 'backfill')
+     VALUES ($1, $2, $3, $4)
      ON CONFLICT (user_id, date) DO NOTHING`,
-    [userId, date, totalValue]
+    [userId, date, encryptNum(totalValue), encrypt('backfill')]
   )
 }

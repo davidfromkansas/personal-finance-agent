@@ -63,6 +63,14 @@ function AccountsIcon() {
   )
 }
 
+function ShieldIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  )
+}
+
 function LogoutIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -645,6 +653,27 @@ export function AppHeader() {
               </span>
             </div>
           )}
+          <button
+            type="button"
+            onClick={() => navigate('/privacy-faq')}
+            className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium text-[#111113] hover:bg-black/5 transition-colors cursor-pointer"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            title={layout ? 'Privacy & Security' : undefined}
+          >
+            <span className="shrink-0 text-[#111113]">
+              <ShieldIcon />
+            </span>
+            <span
+              className="whitespace-nowrap overflow-hidden"
+              style={{
+                opacity: layout ? 0 : 1,
+                transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+                pointerEvents: 'none',
+              }}
+            >
+              Privacy &amp; Security
+            </span>
+          </button>
           <button
             type="button"
             onClick={handleLogout}

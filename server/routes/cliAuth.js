@@ -12,7 +12,7 @@
 import { Router } from 'express'
 import crypto from 'crypto'
 import { verifyIdToken } from '../middleware/auth.js'
-import { createCliToken, getCliTokenByHash, revokeAllCliTokens } from '../db.js'
+import { createCliToken, getCliTokenByHash, revokeAllCliTokens, resolveUserId } from '../db.js'
 
 const router = Router()
 
@@ -59,7 +59,8 @@ router.post('/exchange', async (req, res) => {
       return res.status(400).json({ error: 'firebaseIdToken is required' })
     }
 
-    const userId = await verifyIdToken(firebaseIdToken)
+    const firebaseUid = await verifyIdToken(firebaseIdToken)
+    const userId = await resolveUserId(firebaseUid)
 
     // Generate token: "cli_" + 48 random bytes as hex = 100-char string
     const rawToken = 'cli_' + crypto.randomBytes(48).toString('hex')
@@ -94,7 +95,8 @@ router.post('/revoke', async (req, res) => {
       }
       userId = row.user_id
     } else {
-      userId = await verifyIdToken(token)
+      const firebaseUid = await verifyIdToken(token)
+      userId = await resolveUserId(firebaseUid)
     }
 
     await revokeAllCliTokens(userId)
