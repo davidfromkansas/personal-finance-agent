@@ -654,6 +654,7 @@ export function LoggedInPage() {
     refetchInterval: isPolling ? 3000 : false,
   })
   const connections = connectionsData?.connections ?? []
+  const accountCount = connections.reduce((s, c) => s + (c.accounts ? c.accounts.length : 0), 0)
   const [transactions, setTransactions] = useState([])
   const [txnStartIndex, setTxnStartIndex] = useState(0)
   const [txnPageStarts, setTxnPageStarts] = useState([0])
@@ -1043,7 +1044,37 @@ export function LoggedInPage() {
 
       <main className="px-4 pt-6 pb-8 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1280px]">
-          <div className="grid grid-cols-8 gap-x-6 gap-y-4 items-start content-start">
+          <div className="grid grid-cols-8 gap-x-6 gap-y-4 items-stretch content-start">
+            {/* Net Worth + Connections */}
+            <div className="col-span-8 flex min-w-0 flex-col lg:col-span-4">
+              <div className="h-full flex flex-col rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden">
+                <NetWorthChart embedded />
+                <div className="mt-auto border-t border-[#9ca3af] px-3 py-2.5">
+                  <div className="flex w-full items-center justify-between">
+                    <span className="text-[12px] font-medium text-[#101828] cursor-pointer hover:text-[#6a7282] transition-colors" style={{ fontFamily: 'JetBrains Mono,monospace' }} onClick={() => navigate('/app/accounts')}>
+                      {loading ? 'Loading\u2026' : connections.length === 0 ? 'No accounts connected' : ('See all ' + accountCount + ' accounts \u203a')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => !isDemoMode() && handleAddConnection()}
+                      disabled={isDemoMode() || exchanging || linkLoading}
+                      title={isDemoMode() ? 'Not available in demo' : undefined}
+                      className="shrink-0 flex cursor-pointer items-center gap-1.5 rounded-md bg-[#111113] px-3 py-1.5 text-[11px] font-semibold text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                      style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                    >
+                      <PlusIcon />
+                      {linkLoading ? 'Opening\u2026' : exchanging ? 'Connecting\u2026' : 'Add Account'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Investment Portfolio: 4 columns */}
+            <div className="col-span-8 min-w-0 lg:col-span-4">
+              <InvestmentPortfolio />
+            </div>
+
             {/* Left 5 cols: same total height as transaction column (826px); spending = half, bottom row (3-col + recurring) = half */}
             <div className="col-span-8 min-w-0 lg:col-span-5 flex flex-col h-[826px] gap-4">
               {/* Spending: half the height of transaction module */}
@@ -1078,101 +1109,6 @@ export function LoggedInPage() {
                   </button>
                 }
               />
-            </div>
-            {/* Net Worth + Connections: 4 columns — sits directly below left block (top-aligned) */}
-            <div className="col-span-8 flex min-w-0 flex-col lg:col-span-4">
-              <div className="rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden">
-              <NetWorthChart embedded />
-              <div className="border-t border-[#9ca3af] px-6 pt-4 pb-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-[15px] font-medium tracking-[-0.2px] text-[#0a0a0a]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                    Connected accounts
-                  </h2>
-                  <p className="mt-0.5 text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                    Included in net worth above
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => !isDemoMode() && handleAddConnection()}
-                  disabled={isDemoMode() || exchanging || linkLoading}
-                  title={isDemoMode() ? 'Not available in demo' : undefined}
-                  className="shrink-0 flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg bg-[#030213] px-3 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#1a1a2e] disabled:cursor-not-allowed disabled:opacity-40"
-                  style={{ fontFamily: 'JetBrains Mono,monospace' }}
-                >
-                  <PlusIcon />
-                  {linkLoading ? 'Opening…' : exchanging ? 'Connecting…' : 'Add Connection'}
-                </button>
-              </div>
-              </div>
-              <div className="px-6 pb-2">
-              {addError && (
-                <p className="pb-4 text-[14px] text-red-600" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                  {addError}
-                </p>
-              )}
-              {duplicateInstitution && (
-                <div className="pb-4 rounded-[10px] border border-[#ffc9c9] bg-[#fef2f2] px-4 py-3" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                  <p className="text-[13px] text-[#c10007]">
-                    You already have <strong>{duplicateInstitution.institution_name}</strong> connected. To add more accounts, update your existing connection.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      setDuplicateInstitution(null)
-                      await handleReconnect({ item_id: duplicateInstitution.existing_item_id, institution_name: duplicateInstitution.institution_name })
-                    }}
-                    className="mt-2 rounded-lg bg-[#c10007] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-[#9a0006]"
-                  >
-                    Update {duplicateInstitution.institution_name} connection
-                  </button>
-                </div>
-              )}
-
-              <div className="pb-6">
-                {loading ? (
-                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading connections…</p>
-                ) : connections.length === 0 ? (
-                  <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                    No connections yet. Click “Add Connection” to link a bank account.
-                  </p>
-                ) : (
-                  <div className="flex flex-col gap-6">
-                    {Object.entries(groupConnectionsByCategory(connections)).map(([category, items]) => {
-                      if (items.length === 0) return null
-                      return (
-                        <div key={category} className="flex flex-col gap-3">
-                          <SectionHeader category={category} count={items.length} />
-                          <div className="flex flex-col gap-2">
-                            {items.map(({ connection: conn, accounts: accountsForCategory }, index) => {
-                              const singleAccount = accountsForCategory[0]
-                              return (
-                                <ConnectionRow
-                                  key={`${conn.id}-${category}-${singleAccount?.account_id ?? index}`}
-                                  connection={conn}
-                                  accounts={accountsForCategory}
-                                  forceReconnect={reconnectItemIds.has(conn.item_id)}
-                                  onRefresh={handleRefresh}
-                                  onRemove={handleDisconnect}
-                                  onReconnect={handleReconnect}
-                                />
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-              </div>
-              </div>
-            </div>
-
-            {/* Investment Portfolio: 4 columns */}
-            <div className="col-span-8 min-w-0 lg:col-span-4">
-              <InvestmentPortfolio />
             </div>
           </div>
         </div>

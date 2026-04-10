@@ -9,7 +9,7 @@ import { StockDetailPanel } from '../components/StockDetailPanel'
 import { useInvestments, usePortfolioHistory, usePortfolioSnapshot, useTickerHistory, useQuotes, useAccounts, useInvestmentTransactions, useTickerTransactions, useConnections } from '../hooks/usePlaidQueries'
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
-  LineChart, Line, ReferenceLine, PieChart, Pie, Cell,
+  LineChart, Line, ReferenceLine, PieChart, Pie, Cell, ReferenceArea,
 } from 'recharts'
 
 const RANGES = ['1W', '1M', '3M', 'YTD', '1Y', 'ALL']
@@ -45,6 +45,17 @@ function fmtCompact(value) {
 function fmtPct(value, decimals = 2) {
   if (value == null) return '—'
   return `${value >= 0 ? '+' : ''}${value.toFixed(decimals)}%`
+}
+
+function dateToTs(dateStr) {
+  return new Date(dateStr + 'T00:00:00').getTime()
+}
+
+function fmtDateLabelFromTs(ts, range) {
+  const d = new Date(ts)
+  if (range === '1W') return d.toLocaleDateString('en-US', { weekday: 'short' })
+  if (range === '1M' || range === '3M' || range === 'YTD') return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
 }
 
 function fmtDateLabel(dateStr, range) {
@@ -267,7 +278,7 @@ function MarketStatusInline() {
 
 const ACCOUNT_RANGES = ['1W', '1M', '3M', 'YTD', '1Y', 'ALL']
 
-function AccountDetailPanel({ account, holdings, accountsMeta, onClose }) {
+export function AccountDetailPanel({ account, holdings, accountsMeta, onClose }) {
   const open = !!account
   const [acctChartRange, setAcctChartRange] = useState('1M')
   const accHoldings = (holdings ?? []).filter(h => h.account_id === account?.account_id)
@@ -596,25 +607,27 @@ export function InvestmentsPage() {
     () => holdings.reduce((s, h) => s + (h.value ?? 0), 0),
     [holdings]
   )
-  const displayValue = isOpen && liveValue ? liveValue : totalValue
+  // Market open: live Plaid value (real-time). Market closed: latest snapshot value.
+  const snapshotValue = chartData?.current?.value ?? null
+  const displayValue = isOpen && liveValue ? liveValue : (snapshotValue ?? totalValue)
 
   const { rangeChange, rangeChangePct } = useMemo(() => {
     const history = chartData?.history ?? []
-    if (history.length < 2) return { rangeChange: null, rangeChangePct: null }
+    if (history.length < 1) return { rangeChange: null, rangeChangePct: null }
     const start = history[0].value
-    const end = history[history.length - 1].value
+    const end = displayValue ?? (history.length > 1 ? history[history.length - 1].value : start)
     const diff = end - start
     return { rangeChange: diff, rangeChangePct: start ? (diff / Math.abs(start)) * 100 : null }
-  }, [chartData])
+  }, [chartData, displayValue])
 
   const { ytdReturn, ytdReturnPct } = useMemo(() => {
     const history = ytdData?.history ?? []
-    if (history.length < 2) return { ytdReturn: null, ytdReturnPct: null }
+    if (history.length < 1) return { ytdReturn: null, ytdReturnPct: null }
     const start = history[0].value
-    const end = history[history.length - 1].value
+    const end = displayValue ?? (history.length > 1 ? history[history.length - 1].value : start)
     const diff = end - start
     return { ytdReturn: diff, ytdReturnPct: start ? (diff / Math.abs(start)) * 100 : null }
-  }, [ytdData])
+  }, [ytdData, displayValue])
 
   const accounts = useMemo(() => {
     const map = {}
@@ -664,18 +677,52 @@ export function InvestmentsPage() {
       .slice(0, 10)
   }, [holdings, totalValue])
 
-  const chartPoints = useMemo(() => {
-    const history = chartData?.history ?? []
-    if (!history.length) return []
+  const { chartPoints, invNoDataStart, invNoDataEnd } = useMemo(() => {
+    const history = (chartData?.history ?? []).map(p => ({ ...p, ts: chartRange === '1D' ? undefined : dateToTs(p.date) }))
+    if (!history.length) return { chartPoints: [], invNoDataStart: null, invNoDataEnd: null }
+
+    // For non-1D ranges, compute expected start and no-data region
+    let invNoDataStart = null, invNoDataEnd = null
+    if (chartRange !== '1D') {
+      const today = new Date()
+      const pad = n => String(n).padStart(2, '0')
+      const toStr = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+      let expectedStart
+      if (chartRange === '1W') { const d = new Date(today); d.setDate(d.getDate() - 7); expectedStart = toStr(d) }
+      else if (chartRange === '1M') { const d = new Date(today); d.setMonth(d.getMonth() - 1); expectedStart = toStr(d) }
+      else if (chartRange === '3M') { const d = new Date(today); d.setMonth(d.getMonth() - 3); expectedStart = toStr(d) }
+      else if (chartRange === 'YTD') { expectedStart = `${today.getFullYear()}-01-01` }
+      else if (chartRange === '1Y') { const d = new Date(today); d.setFullYear(d.getFullYear() - 1); expectedStart = toStr(d) }
+      else { expectedStart = null }
+
+      if (expectedStart && history.length > 0 && history[0].date > expectedStart) {
+        invNoDataStart = dateToTs(expectedStart)
+        invNoDataEnd = dateToTs(history[0].date)
+        history.unshift({ date: expectedStart, ts: dateToTs(expectedStart), value: null })
+      }
+
+      // Replace today's data point with live value when market is open
+      if (isOpen && liveValue && history.length > 0) {
+        const todayStr = toStr(today)
+        const lastIdx = history.length - 1
+        if (history[lastIdx].date === todayStr) {
+          history[lastIdx] = { ...history[lastIdx], value: liveValue }
+        } else {
+          // No snapshot for today yet — append live point
+          history.push({ date: todayStr, ts: dateToTs(todayStr), value: liveValue })
+        }
+      }
+    }
+
     const maxPoints = chartRange === '1W' ? 100 : chartRange === '1M' ? 60 : 90
-    if (history.length <= maxPoints) return history
+    if (history.length <= maxPoints) return { chartPoints: history, invNoDataStart, invNoDataEnd }
     const step = Math.ceil(history.length / maxPoints)
     const sampled = history.filter((_, i) => i % step === 0)
     if (sampled[sampled.length - 1]?.date !== history[history.length - 1]?.date) {
       sampled.push(history[history.length - 1])
     }
-    return sampled
-  }, [chartData, chartRange])
+    return { chartPoints: sampled, invNoDataStart, invNoDataEnd }
+  }, [chartData, chartRange, isOpen, liveValue])
 
   const isLoading = holdingsLoading
   const hasInvestmentAccounts = !isLoading && (accountsData?.accounts ?? []).some(a => a.type === 'investment')
@@ -707,7 +754,7 @@ export function InvestmentsPage() {
 
       {/* Snapshot side panel */}
       {selectedDate && (
-        <div className="fixed inset-0 z-40 flex justify-end" onClick={() => setSelectedDate(null)}>
+        <div className="fixed inset-0 z-40 flex justify-end bg-black/20 backdrop-blur-sm" onClick={() => setSelectedDate(null)}>
           <div
             className="relative flex h-full w-full max-w-[420px] flex-col overflow-y-auto bg-white shadow-2xl"
             onClick={(e) => e.stopPropagation()}
@@ -1095,12 +1142,8 @@ export function InvestmentsPage() {
                         data={chartPoints}
                         margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
                         onMouseMove={(data) => {
-                          const date = data?.activePayload?.[0]?.payload?.date ?? data?.activeLabel
+                          const date = data?.activePayload?.[0]?.payload?.date
                           if (date) hoveredDateRef.current = date
-                        }}
-                        onClick={(data) => {
-                          const date = data?.activePayload?.[0]?.payload?.date ?? data?.activeLabel ?? hoveredDateRef.current
-                          if (date) setSelectedDate(prev => prev === date ? null : date)
                         }}
                         style={{ cursor: 'pointer' }}
                       >
@@ -1111,24 +1154,45 @@ export function InvestmentsPage() {
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                        <XAxis
-                          dataKey="date"
-                          tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
-                          axisLine={false}
-                          tickLine={false}
-                          tickFormatter={(v) => fmtDateLabel(v, chartRange)}
-                          interval="preserveStartEnd"
-                          minTickGap={40}
-                        />
+                        {chartRange === '1D' ? (
+                          <XAxis
+                            dataKey="date"
+                            tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => fmtDateLabel(v, chartRange)}
+                            interval="preserveStartEnd"
+                            minTickGap={40}
+                          />
+                        ) : (
+                          <XAxis
+                            dataKey="ts"
+                            type="number"
+                            scale="time"
+                            domain={['dataMin', 'dataMax']}
+                            tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => fmtDateLabelFromTs(v, chartRange)}
+                            minTickGap={40}
+                          />
+                        )}
                         <YAxis
                           tick={{ fontSize: 11, fill: '#6a7282', fontFamily: 'JetBrains Mono,monospace' }}
                           axisLine={false}
                           tickLine={false}
                           tickFormatter={(v) => fmtCompact(v)}
                           width={56}
-                          domain={['auto', 'auto']}
+                          domain={invNoDataEnd ? [
+                            Math.floor(Math.min(...chartPoints.filter(p => p.value != null).map(p => p.value)) * 0.95),
+                            Math.ceil(Math.max(...chartPoints.filter(p => p.value != null).map(p => p.value)) * 1.05),
+                          ] : ['auto', 'auto']}
+                          allowDataOverflow={!!invNoDataEnd}
                         />
                         <Tooltip content={<ChartTooltip />} />
+                        {invNoDataStart != null && invNoDataEnd != null && (
+                          <ReferenceArea x1={invNoDataStart} x2={invNoDataEnd} fill="#f3f4f6" fillOpacity={0.8} strokeOpacity={0} />
+                        )}
                         <Area
                           type="monotone"
                           dataKey="value"
@@ -1136,7 +1200,7 @@ export function InvestmentsPage() {
                           strokeWidth={2}
                           fill="url(#invGradient)"
                           dot={<IncompleteDataDot />}
-                          activeDot={{ r: 4, fill: '#7c3aed', stroke: '#fff', strokeWidth: 2 }}
+                          activeDot={{ r: 4, fill: '#7c3aed', stroke: '#fff', strokeWidth: 2, cursor: 'pointer', onClick: (_, e) => { const date = e?.payload?.date; if (date) setSelectedDate(prev => prev === date ? null : date) } }}
                         />
                       </AreaChart>
                     </ResponsiveContainer>

@@ -273,30 +273,47 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
       .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
   }, [quotesData])
 
-  const displayValue = isOpen && liveValue ? liveValue : (totalValue > 0 ? totalValue : 0)
+  // Market open: live Plaid value (real-time). Market closed: latest snapshot value.
+  const snapshotValue = chartData?.current?.value ?? null
+  const displayValue = isOpen && liveValue ? liveValue : (snapshotValue ?? (totalValue > 0 ? totalValue : 0))
   const hasInvestmentData = totalValue > 0 || (liveValue != null && liveValue > 0)
 
   const chartChange = useMemo(() => {
     if (!chartHistory?.length) return null
     const startVal = chartHistory[0].value
-    const endVal = chartHistory[chartHistory.length - 1].value
+    const endVal = displayValue ?? chartHistory[chartHistory.length - 1].value
     const diff = endVal - startVal
     const pct = startVal !== 0 ? (diff / Math.abs(startVal)) * 100 : 0
     return { diff, pct }
-  }, [chartHistory])
+  }, [chartHistory, displayValue])
 
   const chartPoints = useMemo(() => {
     if (!chartHistory?.length) return []
     if (activeRange === '1D') return chartHistory // intraday: use all 5m bars as-is
+    const history = [...chartHistory]
+
+    // Replace today's data point with live value when market is open
+    if (isOpen && liveValue && history.length > 0) {
+      const today = new Date()
+      const pad = n => String(n).padStart(2, '0')
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`
+      const lastIdx = history.length - 1
+      if (history[lastIdx].date === todayStr) {
+        history[lastIdx] = { ...history[lastIdx], value: liveValue }
+      } else {
+        history.push({ date: todayStr, value: liveValue })
+      }
+    }
+
     const maxPoints = activeRange === '1W' ? 100 : activeRange === '1M' ? 60 : 90
-    if (chartHistory.length <= maxPoints) return chartHistory
-    const step = Math.ceil(chartHistory.length / maxPoints)
-    const sampled = chartHistory.filter((_, i) => i % step === 0)
-    if (sampled[sampled.length - 1]?.date !== chartHistory[chartHistory.length - 1]?.date) {
-      sampled.push(chartHistory[chartHistory.length - 1])
+    if (history.length <= maxPoints) return history
+    const step = Math.ceil(history.length / maxPoints)
+    const sampled = history.filter((_, i) => i % step === 0)
+    if (sampled[sampled.length - 1]?.date !== history[history.length - 1]?.date) {
+      sampled.push(history[history.length - 1])
     }
     return sampled
-  }, [chartHistory, activeRange])
+  }, [chartHistory, activeRange, isOpen, liveValue])
 
   // Top tickers by value for the % change chart (max 8, exclude cash/currency entries)
   const topTickers = useMemo(() => {
@@ -365,7 +382,7 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
 
   return (
     <>
-    <div className="rounded-[14px] border border-[#9ca3af] bg-white">
+    <div className="rounded-[14px] border border-[#9ca3af] bg-white h-full">
       {/* Header */}
       <div className="flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] pl-5 pr-3 py-3">
         <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white cursor-pointer hover:text-white/80 transition-colors" style={{ fontFamily: 'JetBrains Mono,monospace' }} onClick={() => navigate('/app/investments')}>
@@ -540,54 +557,10 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
         </div>
       ) : accounts.length === 0 ? null : (
         <>
-          {/* Top Movers carousel */}
-          {topMovers.length > 0 && (
-            <div className="border-t border-[#9ca3af] px-6 pt-3 pb-5">
-              <div className="mb-2 flex items-center justify-between">
-                <div>
-                  <p className="text-[12px] font-semibold uppercase tracking-[0.5px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                    Top Movers
-                  </p>
-                  <p className="text-[10px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                    {isOpen ? 'Intraday change from previous close · ~15 min delayed' : 'Change from previous close · final prices for the day'}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => scrollBy(-1)}
-                    disabled={!canScrollLeft}
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#9ca3af] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
-                    aria-label="Scroll left"
-                  >
-                    <ChevronLeftIcon />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => scrollBy(1)}
-                    disabled={!canScrollRight}
-                    className="flex h-6 w-6 items-center justify-center rounded-md border border-[#9ca3af] text-[#6a7282] transition-colors hover:bg-[#f3f4f6] disabled:opacity-30"
-                    aria-label="Scroll right"
-                  >
-                    <ChevronRightIcon />
-                  </button>
-                </div>
-              </div>
-              <div
-                ref={scrollRef}
-                className="flex gap-2 overflow-x-auto"
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch' }}
-              >
-                {topMovers.map((q) => (
-                  <MoverCard key={q.ticker} quote={q} onClick={(ticker) => setPanelTicker(ticker)} />
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Accounts link */}
-          <div className="border-t border-[#9ca3af] px-6 py-2.5">
-            <div className="flex w-full items-center justify-between px-2">
+          <div className="border-t border-[#9ca3af] px-3 py-2.5">
+            <div className="flex w-full items-center justify-between">
               <span
                 onClick={() => navigate('/app/investments')}
                 className="text-[12px] font-medium text-[#101828] transition-colors hover:text-[#6a7282] cursor-pointer"

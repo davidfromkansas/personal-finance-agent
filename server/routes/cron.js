@@ -33,7 +33,8 @@ function verifyCronSecret(req, res, next) {
  * Runs sequentially to avoid hammering Plaid. Safe to call multiple times per day —
  * snapshotInvestments upserts today's row (one snapshot per account per day).
  *
- * Suggested Railway schedule: 0 6 * * *  (6 AM UTC daily)
+ * Note: primary snapshots are taken via node-cron in index.js at 4:29 PM ET (market close).
+ * This Railway route is a manual/fallback trigger.
  */
 cronRouter.post('/refresh-investments', verifyCronSecret, async (req, res) => {
   const startedAt = Date.now()
