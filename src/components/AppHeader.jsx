@@ -73,6 +73,36 @@ function LogoutIcon() {
   )
 }
 
+function GetStartedIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function ConnectAgentIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+      <path d="M7 10h2" />
+      <path d="M15 10h2" />
+      <path d="M10 13h4" />
+    </svg>
+  )
+}
+
+function WhatsNewIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z" />
+    </svg>
+  )
+}
+
 function SidebarToggleIcon({ collapsed }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -93,6 +123,12 @@ const NAV_ITEMS = [
   { label: 'Cash Flow', path: '/app/cash-flow', icon: CashFlowIcon },
   { label: 'Investments', path: '/app/investments', icon: InvestmentsIcon },
   { label: 'Accounts', path: '/app/accounts', icon: AccountsIcon },
+]
+
+const HELP_ITEMS = [
+  { label: 'Get Started', icon: GetStartedIcon },
+  { label: 'Connect Agent (MCP)', path: '/app/connect-agent', icon: ConnectAgentIcon },
+  { label: "What's New", icon: WhatsNewIcon },
 ]
 
 const CHAT_MODES = ['Auto', 'Transactions', 'Investments', 'Accounts', 'Research']
@@ -624,6 +660,42 @@ export function AppHeader() {
                   {label}
                 </span>
               </button>
+            )
+          })}
+
+          {/* Divider */}
+          <hr className="my-3 border-black/10" />
+
+          {/* Help & info */}
+          {HELP_ITEMS.map(({ label, path, icon: Icon }) => {
+            const isActive = path && location.pathname === path
+            return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => path && navigate(path)}
+              title={layout ? label : undefined}
+              className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium transition-colors cursor-pointer ${
+                isActive
+                  ? 'bg-black/8 text-[#111113]'
+                  : 'text-[#111113] hover:bg-black/5'
+              }`}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            >
+              <span className="shrink-0 text-[#111113] transition-colors">
+                <Icon />
+              </span>
+              <span
+                className="whitespace-nowrap overflow-hidden"
+                style={{
+                  opacity: layout ? 0 : 1,
+                  transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+                  pointerEvents: 'none',
+                }}
+              >
+                {label}
+              </span>
+            </button>
             )
           })}
         </nav>

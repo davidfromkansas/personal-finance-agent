@@ -19,6 +19,7 @@ import { CashFlowPage } from './pages/CashFlowPage'
 import { SpendingPage } from './pages/SpendingPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import { TermsOfServicePage } from './pages/TermsOfServicePage'
+import { ConnectAgentPage } from './pages/ConnectAgentPage'
 
 function OnboardingGate({ children }) {
   const { user, ready } = useAuth()
@@ -123,6 +124,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AccountsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/app/connect-agent"
+        element={
+          <ProtectedRoute>
+            <ConnectAgentPage />
           </ProtectedRoute>
         }
       />

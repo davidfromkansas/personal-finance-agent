@@ -2,6 +2,8 @@
  * OnboardingModal — blocking overlay shown to users with 0 connected accounts.
  * Cannot be dismissed. Disappears automatically once an account is successfully linked.
  */
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { usePlaidLinkContext } from '../context/PlaidLinkContext'
 
 const MONO = { fontFamily: 'JetBrains Mono,monospace' }
@@ -26,6 +28,13 @@ function LockIcon() {
 
 export function OnboardingModal() {
   const { openLink, linkLoading, linkError } = usePlaidLinkContext()
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+
+  function handleSignOut() {
+    logout()
+    navigate('/', { replace: true })
+  }
 
   return (
     <div className="min-h-screen bg-[#f8f8f8] flex items-center justify-center p-4">
@@ -87,6 +96,15 @@ export function OnboardingModal() {
             <LockIcon />
             <span>Read-only access · Secured by Plaid · Your credentials are never stored</span>
           </div>
+
+          {/* Sign out */}
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="mt-4 w-full text-center text-[12px] text-[#9ca3af] hover:text-[#6a7282] transition-colors cursor-pointer"
+          >
+            Sign out
+          </button>
         </div>
       </div>
     </div>
