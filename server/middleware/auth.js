@@ -8,7 +8,7 @@ import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
 import { fileURLToPath } from 'url'
-import { getCliTokenByHash, touchCliToken } from '../db.js'
+import { getCliTokenByHash, touchCliToken, resolveUserId } from '../db.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -79,6 +79,7 @@ export function authMiddleware(req, res, next) {
   }
 
   verifyIdToken(token)
+    .then((firebaseUid) => resolveUserId(firebaseUid))
     .then((uid) => {
       req.uid = uid
       next()

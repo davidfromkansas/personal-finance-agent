@@ -10,6 +10,7 @@
  */
 import { query } from '../db.js'
 import { getMonthlyCashFlow, getCashFlowBreakdown, getCashFlowTimeSeries, getCashFlowNodeTransactions } from '../db.js'
+import { decryptRows } from '../lib/crypto.js'
 
 const NON_SPENDING_CATEGORIES = [
   'INCOME',
@@ -33,61 +34,61 @@ export async function getAgentSpendingSummary(userId, afterDate, beforeDate, cat
   const mergedPrimary = excludeCategories.length > 0
     ? [...NON_SPENDING_CATEGORIES, ...excludeCategories]
     : NON_SPENDING_CATEGORIES
-  const params = [userId, afterDate, beforeDate, mergedPrimary, NON_SPENDING_DETAILED_CATEGORIES]
-  let categoryClause = ''
-  if (category) {
-    params.push(category.toUpperCase())
-    categoryClause = `AND personal_finance_category = $${params.length}`
-  }
+
+  // Fetch all transactions in date range, decrypt, filter/aggregate in JS
+  const { rows } = await query(
+    `SELECT amount, account_name, personal_finance_category, personal_finance_category_detailed
+     FROM transactions
+     WHERE user_id = $1 AND date >= $2 AND date <= $3`,
+    [userId, afterDate, beforeDate]
+  )
+  const decrypted = decryptRows(rows, { amount: 'number', account_name: 'string', personal_finance_category: 'string', personal_finance_category_detailed: 'string' })
+
+  // Filter
+  const filtered = decrypted.filter(r => {
+    if (r.amount == null || r.amount <= 0) return false
+    if (mergedPrimary.includes(r.personal_finance_category)) return false
+    if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) return false
+    if (category && (r.personal_finance_category || '').toUpperCase() !== category.toUpperCase()) return false
+    return true
+  })
+
+  const round2 = (n) => Math.round(n * 100) / 100
 
   if (groupByAccount) {
-    const { rows } = await query(
-      `SELECT COALESCE(account_name, 'Unknown') AS account,
-              COALESCE(personal_finance_category, 'OTHER') AS category,
-              ROUND(SUM(amount)::numeric, 2) AS total,
-              COUNT(*) AS transaction_count
-       FROM transactions
-       WHERE user_id = $1
-         AND amount > 0
-         AND date >= $2
-         AND date <= $3
-         AND (personal_finance_category IS NULL OR personal_finance_category != ALL($4))
-         AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($5))
-         ${categoryClause}
-       GROUP BY account_name, personal_finance_category
-       ORDER BY account_name, total DESC`,
-      params
-    )
-    // Group by account
     const accountMap = {}
-    for (const r of rows) {
-      if (!accountMap[r.account]) accountMap[r.account] = { account: r.account, total: 0, categories: [] }
-      accountMap[r.account].total += parseFloat(r.total)
-      accountMap[r.account].categories.push({ category: r.category, total: parseFloat(r.total), transaction_count: parseInt(r.transaction_count) })
+    for (const r of filtered) {
+      const acct = r.account_name || 'Unknown'
+      const cat = r.personal_finance_category || 'OTHER'
+      if (!accountMap[acct]) accountMap[acct] = {}
+      if (!accountMap[acct][cat]) accountMap[acct][cat] = { total: 0, count: 0 }
+      accountMap[acct][cat].total += r.amount
+      accountMap[acct][cat].count++
     }
-    const accounts = Object.values(accountMap).map(a => ({ ...a, total: Math.round(a.total * 100) / 100 })).sort((a, b) => b.total - a.total)
-    const total = accounts.reduce((sum, a) => sum + a.total, 0)
-    return { after_date: afterDate, before_date: beforeDate, total: Math.round(total * 100) / 100, accounts }
+    const accounts = Object.entries(accountMap).map(([account, cats]) => {
+      const categories = Object.entries(cats)
+        .map(([category, { total, count }]) => ({ category, total: round2(total), transaction_count: count }))
+        .sort((a, b) => b.total - a.total)
+      const total = categories.reduce((s, c) => s + c.total, 0)
+      return { account, total: round2(total), categories }
+    }).sort((a, b) => b.total - a.total)
+    const total = accounts.reduce((s, a) => s + a.total, 0)
+    return { after_date: afterDate, before_date: beforeDate, total: round2(total), accounts }
   }
 
-  const { rows } = await query(
-    `SELECT COALESCE(personal_finance_category, 'OTHER') AS category,
-            ROUND(SUM(amount)::numeric, 2) AS total,
-            COUNT(*) AS transaction_count
-     FROM transactions
-     WHERE user_id = $1
-       AND amount > 0
-       AND date >= $2
-       AND date <= $3
-       AND (personal_finance_category IS NULL OR personal_finance_category != ALL($4))
-       AND (personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($5))
-       ${categoryClause}
-     GROUP BY personal_finance_category
-     ORDER BY total DESC`,
-    params
-  )
-  const total = rows.reduce((sum, r) => sum + parseFloat(r.total), 0)
-  return { after_date: afterDate, before_date: beforeDate, total: Math.round(total * 100) / 100, categories: rows }
+  // Group by category
+  const catMap = {}
+  for (const r of filtered) {
+    const cat = r.personal_finance_category || 'OTHER'
+    if (!catMap[cat]) catMap[cat] = { total: 0, count: 0 }
+    catMap[cat].total += r.amount
+    catMap[cat].count++
+  }
+  const categories = Object.entries(catMap)
+    .map(([category, { total, count }]) => ({ category, total: round2(total), transaction_count: count }))
+    .sort((a, b) => b.total - a.total)
+  const total = categories.reduce((s, c) => s + c.total, 0)
+  return { after_date: afterDate, before_date: beforeDate, total: round2(total), categories }
 }
 
 /**
@@ -96,31 +97,47 @@ export async function getAgentSpendingSummary(userId, afterDate, beforeDate, cat
  * No row cap — bounded by the date range the agent provides.
  */
 export async function getAgentTransactions(userId, { afterDate, beforeDate, category, spendingOnly } = {}) {
+  // Only filter on plaintext columns (user_id, dates) in SQL
   const params = [userId]
   const clauses = []
   if (afterDate) { params.push(afterDate); clauses.push(`date >= $${params.length}`) }
   if (beforeDate) { params.push(beforeDate); clauses.push(`date <= $${params.length}`) }
-  if (category) { params.push(category.toUpperCase()); clauses.push(`personal_finance_category = $${params.length}`) }
-  if (spendingOnly) {
-    params.push(NON_SPENDING_CATEGORIES)
-    clauses.push(`(personal_finance_category IS NULL OR personal_finance_category != ALL($${params.length}))`)
-    params.push(NON_SPENDING_DETAILED_CATEGORIES)
-    clauses.push(`(personal_finance_category_detailed IS NULL OR personal_finance_category_detailed != ALL($${params.length}))`)
-  }
   const where = clauses.length ? 'AND ' + clauses.join(' AND ') : ''
+
   const { rows } = await query(
-    `SELECT name AS merchant,
-            ROUND(amount::numeric, 2) AS amount,
-            COALESCE(authorized_date, date)::text AS date,
-            COALESCE(personal_finance_category, 'OTHER') AS category,
-            COALESCE(account_name, 'Unknown') AS account,
-            pending
+    `SELECT name, amount, COALESCE(authorized_date, date)::text AS date,
+            personal_finance_category, personal_finance_category_detailed,
+            account_name, pending
      FROM transactions
      WHERE user_id = $1 ${where}
      ORDER BY COALESCE(authorized_date, date) DESC, created_at DESC`,
     params
   )
-  return rows
+
+  const decrypted = decryptRows(rows, { name: 'string', amount: 'number', personal_finance_category: 'string', personal_finance_category_detailed: 'string', account_name: 'string', pending: 'bool' })
+
+  // Filter encrypted fields in JS
+  let filtered = decrypted
+  if (category) {
+    const upper = category.toUpperCase()
+    filtered = filtered.filter(r => (r.personal_finance_category || '').toUpperCase() === upper)
+  }
+  if (spendingOnly) {
+    filtered = filtered.filter(r => {
+      if (NON_SPENDING_CATEGORIES.includes(r.personal_finance_category)) return false
+      if (NON_SPENDING_DETAILED_CATEGORIES.includes(r.personal_finance_category_detailed)) return false
+      return true
+    })
+  }
+
+  return filtered.map(r => ({
+    merchant: r.name,
+    amount: r.amount != null ? Math.round(r.amount * 100) / 100 : null,
+    date: r.date,
+    category: r.personal_finance_category || 'OTHER',
+    account: r.account_name || 'Unknown',
+    pending: r.pending,
+  }))
 }
 
 /**
