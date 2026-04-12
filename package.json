@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:local": "vite --port 5176",
     "build": "vite build && cd server && npm install --omit=dev",
     "start": "cd server && node index.js",
     "lint": "eslint .",

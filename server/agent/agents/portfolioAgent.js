@@ -6,6 +6,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import YahooFinance from 'yahoo-finance2'
 import { registerAgent } from '../registry.js'
 import { extractAndEmitVisualizations, hasChartIntent } from '../renderChart.js'
+import { todayET, toDateStrET } from '../../lib/dateUtils.js'
 import {
   getPlaidItemsByUserId,
   hasHistoricalPortfolioData,
@@ -222,8 +223,8 @@ Returns: [{ date, price }] ordered by date ascending.`,
 async function executeTool(name, input, userId, emit) {
   switch (name) {
     case 'get_portfolio_summary': {
-      const today = new Date().toISOString().slice(0, 10)
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+      const today = todayET()
+      const thirtyDaysAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return toDateStrET(d) })()
       const [currentValue, history] = await Promise.all([
         getLatestPortfolioValue(userId),
         getPortfolioHistory(userId, thirtyDaysAgo),
@@ -231,7 +232,7 @@ async function executeTool(name, input, userId, emit) {
       return { currentValue, history }
     }
     case 'get_holdings': {
-      const today = new Date().toISOString().slice(0, 10)
+      const today = todayET()
       const date = input.date ?? today
       return getHoldingsSnapshotForDate(userId, date)
     }
@@ -257,7 +258,7 @@ async function executeTool(name, input, userId, emit) {
         interval: '1d',
       }, { validateResult: false })
       return (result ?? []).map(r => ({
-        date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
+        date: r.date instanceof Date ? toDateStrET(r.date) : String(r.date).slice(0, 10),
         price: r.close ?? r.adjClose,
       }))
     }
@@ -311,7 +312,7 @@ async function runAgentLoop(systemPrompt, messages, userId, emit, toolChoice = '
 
 /** Called directly from chat.js for known mode — yields full answer as one chunk after tool steps. */
 export async function* streamPortfolioAgent({ message, history, userId, emit }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const hasData = await hasHistoricalPortfolioData(userId, today)
   if (!hasData) {
     const items = await getPlaidItemsByUserId(userId)
@@ -335,7 +336,7 @@ export async function* streamPortfolioAgent({ message, history, userId, emit }) 
 
 /** Called by the orchestrator as a tool — runs to completion, returns structured result. */
 export async function askPortfolioAgent({ message, history, userId, emit }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const hasData = await hasHistoricalPortfolioData(userId, today)
   if (!hasData) {
     const items = await getPlaidItemsByUserId(userId)

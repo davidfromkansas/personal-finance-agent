@@ -5,6 +5,7 @@
  */
 import { getPlaidItemsByUserId, getSubscriptionPayments } from '../db.js'
 import { getPlaidClient } from './plaidClient.js'
+import { todayET, toDateStrET } from './dateUtils.js'
 
 const FREQUENCY_DAYS = { WEEKLY: 7, BIWEEKLY: 14, SEMI_MONTHLY: 15, MONTHLY: 30, QUARTERLY: 91, YEARLY: 365, ANNUALLY: 365 }
 
@@ -54,15 +55,15 @@ export async function getRecurringTransactions(userId) {
 
   // Fetch user-marked subscriptions from the database
   const subscriptionRows = await getSubscriptionPayments(userId)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const userPayments = []
 
   for (const row of subscriptionRows) {
     const freqDays = FREQUENCY_DAYS[row.recurring] ?? 30
-    const dateStr = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10)
+    const dateStr = row.date instanceof Date ? toDateStrET(row.date) : String(row.date).slice(0, 10)
     const lastDate = new Date(dateStr + 'T00:00:00')
     let nextDate = new Date(lastDate)
-    while (nextDate.toISOString().slice(0, 10) < today) {
+    while (toDateStrET(nextDate) < today) {
       nextDate.setDate(nextDate.getDate() + freqDays)
     }
     userPayments.push({
@@ -70,7 +71,7 @@ export async function getRecurringTransactions(userId) {
       average_amount: Math.abs(row.amount),
       last_amount: Math.abs(row.amount),
       frequency: row.recurring,
-      predicted_next_date: nextDate.toISOString().slice(0, 10),
+      predicted_next_date: toDateStrET(nextDate),
       last_date: dateStr,
       category: 'SUBSCRIPTION',
       status: 'ACTIVE',

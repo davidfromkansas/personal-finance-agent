@@ -9,6 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { registerAgent } from '../registry.js'
 import { extractAndEmitVisualizations, hasChartIntent } from '../renderChart.js'
+import { todayET, toDateStrET } from '../../lib/dateUtils.js'
 import {
   getPlaidItemsByUserId,
   getLatestAccountBalances,
@@ -243,7 +244,7 @@ async function executeTool(name, input, userId) {
       })
       return rows.map(r => ({
         ...r,
-        date: r.date instanceof Date ? r.date.toISOString().slice(0, 10) : String(r.date).slice(0, 10),
+        date: r.date instanceof Date ? toDateStrET(r.date) : String(r.date).slice(0, 10),
         current: r.current != null ? parseFloat(r.current) : null,
         available: r.available != null ? parseFloat(r.available) : null,
       }))
@@ -314,7 +315,7 @@ export async function* streamAccountsAgent({ message, history, userId, emit }) {
     return
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `Today is ${today}.\n\n${SYSTEM_PROMPT}`
   const messages = [...history, { role: 'user', content: message }]
   const toolChoice = hasChartIntent(message) ? 'any' : 'auto'
@@ -329,7 +330,7 @@ export async function askAccountsAgent({ message, history, userId, emit }) {
     return { answer: "The user hasn't linked any accounts yet.", dataAvailable: false }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `Today is ${today}.\n\n${SYSTEM_PROMPT}`
   const messages = [...history, { role: 'user', content: message }]
   const toolChoice = hasChartIntent(message) ? 'any' : 'auto'

@@ -8,6 +8,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { getOrchestratorTools, executeAgentTool } from '../registry.js'
+import { todayET } from '../../lib/dateUtils.js'
 import { hasChartIntent } from '../renderChart.js'
 
 let _client = null
@@ -70,7 +71,7 @@ Neutral and informational. Respond like a straightforward personal finance advis
 
 export async function* runOrchestrator({ message, history, userId, emit }) {
   const tools = getOrchestratorTools()
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `Today is ${today}.\n\n${SYSTEM_PROMPT}`
 
   const messages = [...history, { role: 'user', content: message }]

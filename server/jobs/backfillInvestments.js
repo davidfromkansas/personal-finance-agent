@@ -22,6 +22,7 @@
 import YahooFinance from 'yahoo-finance2'
 const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] })
 import { getPlaidClient } from '../lib/plaidClient.js'
+import { todayET, toDateStrET } from '../lib/dateUtils.js'
 import {
   getPlaidItemsByUserId,
   getLatestHoldingsSnapshot,
@@ -56,7 +57,7 @@ async function fetchHistoricalPrices(ticker, startDate, endDate) {
     const priceMap = new Map()
     for (const row of result?.quotes ?? []) {
       if (row.adjclose != null) {
-        const dateStr = new Date(row.date).toISOString().slice(0, 10)
+        const dateStr = toDateStrET(new Date(row.date))
         priceMap.set(dateStr, row.adjclose)
       }
     }
@@ -86,8 +87,8 @@ function subtractYears(dateStr, years) {
 
 function yesterday() {
   const d = new Date()
-  d.setUTCDate(d.getUTCDate() - 1)
-  return d.toISOString().slice(0, 10)
+  d.setDate(d.getDate() - 1)
+  return toDateStrET(d)
 }
 
 export async function backfillInvestments(userId) {

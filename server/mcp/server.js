@@ -59,6 +59,7 @@ import { getRecurringTransactions } from '../lib/recurring.js'
 import { runChat } from '../agent/chat.js'
 import YahooFinance from 'yahoo-finance2'
 import { finnhubGet, toDateStr } from '../lib/finnhub.js'
+import { toDateStrET } from '../lib/dateUtils.js'
 
 const yahooFinanceMcp = new YahooFinance({ suppressNotices: ['ripHistorical'] })
 
@@ -198,7 +199,7 @@ For the current snapshot only, use get_net_worth instead.`,
       }
       const since = new Date()
       since.setMonth(since.getMonth() - (months_back ?? 12))
-      const history = await getPortfolioHistory(userId, since.toISOString().slice(0, 10))
+      const history = await getPortfolioHistory(userId, toDateStrET(since))
       return { content: [{ type: 'text', text: JSON.stringify({ history }, null, 2) }] }
     }
   )
@@ -474,7 +475,7 @@ No linked accounts required — this uses public market data.`,
             marketCap: q.marketCap ?? null,
             peRatio: q.trailingPE ?? null,
             eps: q.epsTrailingTwelveMonths ?? null,
-            earningsDate: q.earningsTimestamp ? new Date(q.earningsTimestamp).toISOString().slice(0, 10) : (q.earningsTimestampStart ? new Date(q.earningsTimestampStart).toISOString().slice(0, 10) : null),
+            earningsDate: q.earningsTimestamp ? toDateStrET(new Date(q.earningsTimestamp)) : (q.earningsTimestampStart ? toDateStrET(new Date(q.earningsTimestampStart)) : null),
           }))
         )
       )

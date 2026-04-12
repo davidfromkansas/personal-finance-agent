@@ -280,25 +280,6 @@ export function RecurringCalendar() {
       <PaymentDetailPanel payment={selectedPayment} onClose={() => setSelectedPayment(null)} />
 
       <div className="rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between pl-8 pr-5 py-4 border-b border-[#e5e7eb]">
-          <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-            Recurring Payments
-          </h2>
-          <button
-            type="button"
-            onClick={() => {
-              window.dispatchEvent(new CustomEvent('open-assistant', {
-                detail: { prompt: 'Summarize my recurring payments. List all active subscriptions and recurring bills, their amounts, and frequencies. Highlight any that seem unusually high or that I might want to review.' },
-              }))
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3d3d42] hover:opacity-80 transition-opacity cursor-pointer"
-            title="Ask AI about recurring payments"
-          >
-            <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-            <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask AI</span>
-          </button>
-        </div>
         {/* Month nav */}
         <div className="flex items-center justify-between px-8 pt-4 mb-4">
           <div className="flex items-center gap-4">

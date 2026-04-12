@@ -10,6 +10,7 @@ import * as jose from 'jose'
 import YahooFinance from 'yahoo-finance2'
 import { getPlaidClient } from '../lib/plaidClient.js'
 import { snapshotInvestments } from '../jobs/snapshotInvestments.js'
+import { todayET, toDateStrET } from '../lib/dateUtils.js'
 
 const yahooFinance = new YahooFinance({ suppressNotices: ['ripHistorical'] })
 import {
@@ -128,7 +129,7 @@ function trackUserItem(userId, itemId) {
 }
 
 function snapshotBalancesInBackground(userId, row, rawAccounts) {
-  const date = new Date().toISOString().slice(0, 10)
+  const date = todayET()
   for (const acc of rawAccounts ?? []) {
     upsertAccountBalanceSnapshot(userId, row.item_id, row.institution_name ?? null, {
       account_id: acc.account_id,
@@ -236,10 +237,10 @@ function invalidateBalanceCache(userId) {
 /** Backfill up to 2 years of transactions using transactionsGet (explicit date range).
  *  Uses upsert so duplicates with transactionsSync are harmless. */
 async function backfillTransactionsGet(plaidClient, userId, itemId, accessToken) {
-  const endDate = new Date().toISOString().slice(0, 10)
+  const endDate = todayET()
   const startD = new Date()
   startD.setFullYear(startD.getFullYear() - 2)
-  const startDate = startD.toISOString().slice(0, 10)
+  const startDate = toDateStrET(startD)
 
   let accountNames = {}
   try {
@@ -795,7 +796,7 @@ plaidRouter.get('/recurring', async (req, res, next) => {
       return itemPayments
     }))
 
-    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
+    const today = todayET() // YYYY-MM-DD
     const plaidPayments = itemResults.flat().filter((p) => p.predicted_next_date >= today)
 
     // Enrich Plaid payment logos
@@ -813,14 +814,14 @@ plaidRouter.get('/recurring', async (req, res, next) => {
     for (const row of subscriptionRows) {
       const freqDays = FREQUENCY_DAYS[row.recurring] ?? 30
       // row.date may be a Date object or a string — normalize to YYYY-MM-DD string first
-      const dateStr = row.date instanceof Date ? row.date.toISOString().slice(0, 10) : String(row.date).slice(0, 10)
+      const dateStr = row.date instanceof Date ? toDateStrET(row.date) : String(row.date).slice(0, 10)
       const lastDate = new Date(dateStr + 'T00:00:00')
       // Project forward from last transaction date until we find the next future date
       let nextDate = new Date(lastDate)
-      while (nextDate.toISOString().slice(0, 10) < today) {
+      while (toDateStrET(nextDate) < today) {
         nextDate.setDate(nextDate.getDate() + freqDays)
       }
-      const predictedNext = nextDate.toISOString().slice(0, 10)
+      const predictedNext = toDateStrET(nextDate)
       subscriptionPayments.push({
         stream_id: `sub-${row.plaid_transaction_id}`,
         merchant_name: row.merchant_name || row.name || 'Unknown',
@@ -997,7 +998,6 @@ plaidRouter.get('/spending-summary', async (req, res, next) => {
 
     const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
     const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-    const pad = (n) => String(n).padStart(2, '0')
     const today = new Date()
 
     const accountSet = new Set()
@@ -1015,7 +1015,7 @@ plaidRouter.get('/spending-summary', async (req, res, next) => {
       for (let i = 6; i >= 0; i--) {
         const d = new Date(today)
         d.setDate(d.getDate() - i)
-        allKeys.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+        allKeys.push(toDateStrET(d))
       }
     } else if (period === 'month') {
       for (let i = 3; i >= 0; i--) {
@@ -1023,13 +1023,13 @@ plaidRouter.get('/spending-summary', async (req, res, next) => {
         d.setDate(d.getDate() - i * 7)
         const day = d.getDay()
         d.setDate(d.getDate() - day + 1)
-        allKeys.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)
+        allKeys.push(toDateStrET(d))
       }
       allKeys = [...new Set(allKeys)]
     } else {
       for (let i = 11; i >= 0; i--) {
         const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
-        allKeys.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`)
+        allKeys.push(toDateStrET(d).slice(0, 7))
       }
     }
 
@@ -1333,24 +1333,22 @@ plaidRouter.get('/investment-history', async (req, res, next) => {
     }
 
     const today = new Date()
-    const pad = (n) => String(n).padStart(2, '0')
-    const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-    const todayStr = toDateStr(today)
+    const todayStr = todayET()
 
     let sinceDate
     if (range === '1W') {
-      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStrET(d)
     } else if (range === '1M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStrET(d)
     } else if (range === '3M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStrET(d)
     } else if (range === 'YTD') {
-      sinceDate = `${today.getFullYear()}-01-01`
+      sinceDate = `${todayStr.slice(0, 4)}-01-01`
     } else if (range === '1Y') {
-      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStrET(d)
     } else {
       const earliest = await getEarliestTransactionDate(req.uid)
-      sinceDate = earliest || toDateStr(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()))
+      sinceDate = earliest || toDateStrET(new Date(today.getFullYear() - 1, today.getMonth(), today.getDate()))
     }
 
     const [allAccounts, txns] = await Promise.all([
@@ -1383,7 +1381,7 @@ plaidRouter.get('/investment-history', async (req, res, next) => {
     const endD = new Date(todayStr + 'T00:00:00')
     const dayStrings = []
     for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
-      dayStrings.push(toDateStr(d))
+      dayStrings.push(toDateStrET(d))
     }
 
     const accountDailyBalances = {}
@@ -1438,21 +1436,19 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
     }
 
     const today = new Date()
-    const pad = (n) => String(n).padStart(2, '0')
-    const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-    const todayStr = toDateStr(today)
+    const todayStr = todayET()
 
     let afterDate
     if (range === '1W') {
-      const d = new Date(today); d.setDate(d.getDate() - 7); afterDate = toDateStr(d)
+      const d = new Date(today); d.setDate(d.getDate() - 7); afterDate = toDateStrET(d)
     } else if (range === '1M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 1); afterDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 1); afterDate = toDateStrET(d)
     } else if (range === '3M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 3); afterDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 3); afterDate = toDateStrET(d)
     } else if (range === 'YTD') {
-      afterDate = `${today.getFullYear()}-01-01`
+      afterDate = `${todayStr.slice(0, 4)}-01-01`
     } else if (range === '1Y') {
-      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); afterDate = toDateStr(d)
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); afterDate = toDateStrET(d)
     } else {
       afterDate = null // ALL — no lower bound
     }
@@ -1500,14 +1496,14 @@ plaidRouter.get('/net-worth-history', async (req, res, next) => {
     const byDate = {}
     for (const row of balanceRows) {
       if (row.type === 'investment') continue
-      const d = row.date instanceof Date ? toDateStr(row.date) : String(row.date).slice(0, 10)
+      const d = row.date instanceof Date ? toDateStrET(row.date) : String(row.date).slice(0, 10)
       if (!byDate[d]) byDate[d] = {}
       byDate[d][row.account_id] = { current: parseFloat(row.current ?? 0), type: row.type }
     }
 
     // Group investment history by date then account (from portfolio_account_snapshots)
     for (const row of investmentRows) {
-      const d = row.date instanceof Date ? toDateStr(row.date) : String(row.date).slice(0, 10)
+      const d = row.date instanceof Date ? toDateStrET(row.date) : String(row.date).slice(0, 10)
       if (!byDate[d]) byDate[d] = {}
       byDate[d][row.account_id] = { current: row.current, type: 'investment' }
     }
@@ -1591,12 +1587,10 @@ const INTRADAY_MARKET_HOLIDAYS = new Set([
 ])
 
 function getMostRecentTradingDay(fromDateStr) {
-  const pad = (n) => String(n).padStart(2, '0')
-  const toStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
   const d = new Date(fromDateStr + 'T12:00:00Z')
   d.setDate(d.getDate() - 1)
   for (let i = 0; i < 10; i++) {
-    const s = toStr(d)
+    const s = toDateStrET(d)
     const dow = d.getDay()
     if (dow !== 0 && dow !== 6 && !INTRADAY_MARKET_HOLIDAYS.has(s)) return s
     d.setDate(d.getDate() - 1)
@@ -1614,16 +1608,14 @@ plaidRouter.get('/portfolio-history', async (req, res) => {
     }
 
     const today = new Date()
-    const pad = (n) => String(n).padStart(2, '0')
-    const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-    const todayStr = toDateStr(today)
+    const todayStr = todayET()
 
     // ── 1D: intraday portfolio value from Yahoo Finance 5m bars ─────────
     if (range === '1D') {
       const etStr = today.toLocaleString('en-US', { timeZone: 'America/New_York' })
       const et = new Date(etStr)
       const etDow = et.getDay()
-      const etDateStr = today.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+      const etDateStr = todayStr
       const etTotalMin = et.getHours() * 60 + et.getMinutes()
       const isWeekend = etDow === 0 || etDow === 6
       const isHoliday = INTRADAY_MARKET_HOLIDAYS.has(etDateStr)
@@ -1733,15 +1725,15 @@ plaidRouter.get('/portfolio-history', async (req, res) => {
 
     let sinceDate
     if (range === '1W') {
-      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStrET(d)
     } else if (range === '1M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStrET(d)
     } else if (range === '3M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStrET(d)
     } else if (range === 'YTD') {
-      sinceDate = `${today.getFullYear()}-01-01`
+      sinceDate = `${todayStr.slice(0, 4)}-01-01`
     } else if (range === '1Y') {
-      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStrET(d)
     } else {
       sinceDate = '2000-01-01' // ALL: return everything we have
     }
@@ -1801,15 +1793,13 @@ plaidRouter.get('/ticker-history', async (req, res) => {
     if (!tickers.length) return res.json({ range, series: [] })
 
     const today = new Date()
-    const pad = (n) => String(n).padStart(2, '0')
-    const toDateStr = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
     // ── 1D: intraday 5m bars for the current (or last) trading session ──
     if (range === '1D') {
       const etStr = today.toLocaleString('en-US', { timeZone: 'America/New_York' })
       const et = new Date(etStr)
       const etDow = et.getDay()
-      const etDateStr = today.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+      const etDateStr = todayET()
       const etTotalMin = et.getHours() * 60 + et.getMinutes()
       const isWeekend = etDow === 0 || etDow === 6
       const isHoliday = INTRADAY_MARKET_HOLIDAYS.has(etDateStr)
@@ -1858,21 +1848,21 @@ plaidRouter.get('/ticker-history', async (req, res) => {
     // ── Daily ranges ────────────────────────────────────────────────────
     let sinceDate
     if (range === '5D') {
-      const d = new Date(today); d.setDate(d.getDate() - 5); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setDate(d.getDate() - 5); sinceDate = toDateStrET(d)
     } else if (range === '1W') {
-      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setDate(d.getDate() - 7); sinceDate = toDateStrET(d)
     } else if (range === '1M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 1); sinceDate = toDateStrET(d)
     } else if (range === '3M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 3); sinceDate = toDateStrET(d)
     } else if (range === '6M') {
-      const d = new Date(today); d.setMonth(d.getMonth() - 6); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setMonth(d.getMonth() - 6); sinceDate = toDateStrET(d)
     } else if (range === 'YTD') {
-      sinceDate = `${today.getFullYear()}-01-01`
+      sinceDate = `${todayET().slice(0, 4)}-01-01`
     } else if (range === '1Y') {
-      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 1); sinceDate = toDateStrET(d)
     } else if (range === '5Y') {
-      const d = new Date(today); d.setFullYear(d.getFullYear() - 5); sinceDate = toDateStr(d)
+      const d = new Date(today); d.setFullYear(d.getFullYear() - 5); sinceDate = toDateStrET(d)
     } else {
       sinceDate = '1990-01-01'
     }
@@ -1881,13 +1871,13 @@ plaidRouter.get('/ticker-history', async (req, res) => {
       tickers.map(async (ticker) => {
         const result = await yahooFinance.chart(ticker, {
           period1: sinceDate,
-          period2: toDateStr(today),
+          period2: toDateStrET(today),
           interval: '1d',
         }, { validateResult: false })
         const data = (result?.quotes ?? [])
           .filter(q => q.adjclose != null)
           .map(q => ({
-            date: new Date(q.date).toISOString().slice(0, 10),
+            date: toDateStrET(new Date(q.date)),
             price: q.adjclose,
           }))
         return { ticker, data }
@@ -1926,7 +1916,7 @@ plaidRouter.get('/quotes', async (req, res) => {
           marketCap: q.marketCap ?? null,
           peRatio: q.trailingPE ?? null,
           eps: q.epsTrailingTwelveMonths ?? null,
-          earningsDate: q.earningsTimestamp ? new Date(q.earningsTimestamp).toISOString().slice(0, 10) : (q.earningsTimestampStart ? new Date(q.earningsTimestampStart).toISOString().slice(0, 10) : null),
+          earningsDate: q.earningsTimestamp ? toDateStrET(new Date(q.earningsTimestamp)) : (q.earningsTimestampStart ? toDateStrET(new Date(q.earningsTimestampStart)) : null),
         }))
       )
     )

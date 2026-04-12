@@ -8,6 +8,7 @@ import { apiFetch } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { useSpending, useCashFlowBreakdown, useCashFlowTransactionsByRange } from '../hooks/usePlaidQueries'
 import { TransactionDetailPanel } from './TransactionDetailPanel'
+import { usePlaidLinkContext } from '../context/PlaidLinkContext'
 
 const PERIODS = [
   { key: 'week', label: 'Daily', subtitle: 'Last 7 days' },
@@ -276,6 +277,7 @@ function bucketDateRange(dateKey, period) {
 
 export function SpendingCharts({ connections, embeddedHeight, standalone, excludeCategories: excludeCategoriesProp = [] }) {
   const navigate = useNavigate()
+  const { openLink } = usePlaidLinkContext()
   const [activePeriod, setActivePeriod] = useState('week')
   const [selectedAccountIds, setSelectedAccountIds] = useState(null)
   const [drillBucket, setDrillBucket] = useState(null)
@@ -445,9 +447,23 @@ export function SpendingCharts({ connections, embeddedHeight, standalone, exclud
         <div className="flex h-full items-center justify-center">
           <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading…</span>
         </div>
-      ) : !activeBuckets.length ? (
-        <div className="flex h-full items-center justify-center">
-          <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No spending data</span>
+      ) : !activeBuckets.length || total === 0 ? (
+        <div className="flex h-full flex-col items-center justify-center text-center">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] bg-[#f3f4f6] text-[#6a7282]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
+          </div>
+          <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No spending data yet</p>
+          <p className="mt-1 max-w-[300px] text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Connect a credit card or bank account to see your spending breakdown.
+          </p>
+          <button
+            type="button"
+            onClick={() => openLink()}
+            className="mt-4 flex items-center gap-1.5 rounded-[8px] bg-[#111113] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
+            style={{ fontFamily: 'JetBrains Mono,monospace' }}
+          >
+            Connect Account
+          </button>
         </div>
       ) : (
         <ResponsiveContainer width="100%" height="100%">
@@ -697,44 +713,42 @@ export function SpendingCharts({ connections, embeddedHeight, standalone, exclud
           </div>
         </div>
 
+        {/* Full-width page header */}
+        <div className="flex items-center justify-between border-b border-[#9ca3af] bg-white px-4 py-4 sm:px-6 lg:px-8">
+          <h1 className="text-[24px] font-semibold tracking-[-0.5px] text-[#18181b]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Spending
+          </h1>
+          <button
+            type="button"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('open-assistant', {
+                detail: { prompt: 'Summarize my spending habits for the last 30 days. Specifically, identify my highest-spend categories and provide a line-item list of significant one-time purchases (excluding rent) to help me identify outliers compared to my usual budget.' },
+              }))
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3d3d42] hover:opacity-80 transition-opacity cursor-pointer"
+            title="AI spending summary"
+          >
+            <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
+            <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask Abacus</span>
+          </button>
+        </div>
+
+        <div className="px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[960px]">
         <div className="relative">
           {infoOverlay}
 
           <div className="rounded-[14px] border border-[#9ca3af] bg-white overflow-hidden">
-            <div className="flex items-center justify-between pl-8 pr-5 py-4 border-b border-[#e5e7eb]">
-              <div className="flex items-center gap-3">
-                <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                  Spending Breakdown
-                </h2>
-                <span className="text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                  {activeConfig?.subtitle}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); setShowInfo(v => !v) }}
-                  className="flex items-center justify-center w-5 h-5 rounded-full border border-[#9ca3af] text-[#6a7282] hover:text-[#101828] hover:border-[#101828] transition-colors text-[11px] font-bold leading-none"
-                  title="What's included in this chart"
-                >i</button>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('open-assistant', {
-                    detail: { prompt: 'Summarize my spending habits for the last 30 days. Specifically, identify my highest-spend categories and provide a line-item list of significant one-time purchases (excluding rent) to help me identify outliers compared to my usual budget.' },
-                  }))
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3d3d42] hover:opacity-80 transition-opacity cursor-pointer"
-                title="AI spending summary"
-              >
-                <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-                <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask AI</span>
-              </button>
-            </div>
             <div className="px-8 pt-4 pb-5">
             <div className="flex items-center justify-between mb-4">
-              <span className="text-[24px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-                {activeLoading ? '—' : formatCurrency(total)}
-              </span>
+              <div>
+                <span className="text-[13px] font-semibold uppercase tracking-wide text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                  Total spend · {activeConfig?.subtitle}
+                </span>
+                <div className="text-[24px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                  {activeLoading ? '—' : formatCurrency(total)}
+                </div>
+              </div>
               <div className="flex items-center gap-4">
                 <button
                   type="button"
@@ -1033,6 +1047,8 @@ export function SpendingCharts({ connections, embeddedHeight, standalone, exclud
           </div>
         </div>
         </div>
+        </div>
+        </div>
       </>
     )
   }
@@ -1074,7 +1090,7 @@ export function SpendingCharts({ connections, embeddedHeight, standalone, exclud
           title="AI spending summary"
         >
           <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-          <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask AI</span>
+          <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask Abacus</span>
         </button>
       </div>
 
@@ -1096,19 +1112,13 @@ export function SpendingCharts({ connections, embeddedHeight, standalone, exclud
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-            {activeConfig?.subtitle}
+        <div className="flex flex-col items-end">
+          <span className="text-[10px] font-medium uppercase tracking-wide text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Total spend · {activeConfig?.subtitle}
           </span>
           <span className="text-[18px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
             {activeLoading ? '—' : formatCurrency(total)}
           </span>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setShowInfo(v => !v) }}
-            className="flex items-center justify-center w-4 h-4 rounded-full border border-[#9ca3af] text-[#6a7282] hover:text-[#101828] hover:border-[#101828] transition-colors text-[10px] font-bold leading-none"
-            title="What's included in this chart"
-          >i</button>
         </div>
       </div>
 

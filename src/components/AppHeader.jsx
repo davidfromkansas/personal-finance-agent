@@ -53,6 +53,17 @@ function SpendingIcon() {
   )
 }
 
+function RecurringIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  )
+}
+
 function AccountsIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -81,15 +92,50 @@ function LogoutIcon() {
   )
 }
 
-function SidebarToggleIcon({ collapsed }) {
+function AskAbacusIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+    </svg>
+  )
+}
+
+function GetStartedIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="10 8 16 12 10 16 10 8" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+function ConnectAgentIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+      <path d="M7 10h2" />
+      <path d="M15 10h2" />
+      <path d="M10 13h4" />
+    </svg>
+  )
+}
+
+function WhatsNewIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8l-6.2 4.5 2.4-7.4L2 9.4h7.6z" />
+    </svg>
+  )
+}
+
+function SidebarToggleIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <line x1="9" y1="3" x2="9" y2="21" />
-      {collapsed
-        ? <path d="M13 9l3 3-3 3" />
-        : <path d="M15 9l-3 3 3 3" />
-      }
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="18" x2="21" y2="18" />
     </svg>
   )
 }
@@ -98,9 +144,20 @@ const NAV_ITEMS = [
   { label: 'Dashboard', path: '/app', icon: DashboardIcon },
   { label: 'Transactions', path: '/app/transactions', icon: TransactionsIcon },
   { label: 'Spending', path: '/app/spending', icon: SpendingIcon },
+  { label: 'Recurring', path: '/app/recurring', icon: RecurringIcon },
   { label: 'Cash Flow', path: '/app/cash-flow', icon: CashFlowIcon },
   { label: 'Investments', path: '/app/investments', icon: InvestmentsIcon },
   { label: 'Accounts', path: '/app/accounts', icon: AccountsIcon },
+]
+
+const AI_ITEMS = [
+  { label: 'Ask Abacus', path: '/app/ask', icon: AskAbacusIcon },
+  { label: 'Connect Agent (MCP)', path: '/app/connect-agent', icon: ConnectAgentIcon },
+]
+
+const HELP_ITEMS = [
+  { label: 'Get Started', path: '/app/get-started', icon: GetStartedIcon },
+  { label: "What's New", path: '/app/whats-new', icon: WhatsNewIcon },
 ]
 
 const CHAT_MODES = ['Auto', 'Transactions', 'Investments', 'Accounts', 'Research']
@@ -559,29 +616,26 @@ export function AppHeader() {
 
   return (
     <>
-      <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
-
-      {/* Floating agent trigger */}
-      <button
-        type="button"
-        onClick={() => setChatOpen(true)}
-        id="open-assistant-btn"
-        className="fixed bottom-6 right-6 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-[#18181b] text-white shadow-lg transition-all hover:scale-105 hover:shadow-xl cursor-pointer"
-        title="Open assistant"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-        </svg>
-      </button>
+      {location.pathname !== '/app/ask' && (
+        <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} />
+      )}
 
       <aside
         className="fixed left-0 top-0 z-30 flex h-full flex-col bg-[#f8f8f8] border-r border-black/8 overflow-hidden"
         style={{ width: 'var(--sidebar-w)', willChange: 'width' }}
       >
-        {/* Brand row — pill is absolute so it never crowds the toggle button */}
-        <div className="relative flex items-center justify-center px-2 pt-5 pb-2" style={{ minHeight: 44 }}>
+        {/* Brand row — toggle left, pill right */}
+        <div className="flex items-center gap-3 px-2 pt-5 pb-2" style={{ minHeight: 44 }}>
+          <button
+            type="button"
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={handleToggle}
+            className="flex items-center justify-center rounded-xl px-3 py-3 text-black/25 hover:bg-black/6 hover:text-black/50 transition-colors cursor-pointer shrink-0"
+          >
+            <SidebarToggleIcon />
+          </button>
           <span
-            className="absolute left-3 rounded-full bg-black px-3.5 py-1.5 text-[13px] font-semibold text-white tracking-tight whitespace-nowrap"
+            className="rounded-full bg-black px-3.5 py-1.5 text-[13px] font-semibold text-white tracking-tight whitespace-nowrap"
             style={{
               fontFamily: 'JetBrains Mono,monospace',
               opacity: layout ? 0 : 1,
@@ -591,18 +645,46 @@ export function AppHeader() {
           >
             Abacus
           </span>
-          <button
-            type="button"
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onClick={handleToggle}
-            className="relative flex h-7 w-7 items-center justify-center rounded-lg text-black/25 hover:bg-black/6 hover:text-black/50 transition-colors cursor-pointer shrink-0"
-          >
-            <SidebarToggleIcon collapsed={collapsed} />
-          </button>
         </div>
 
         {/* Nav — icon always at fixed left position, label fades */}
         <nav className="flex-1 px-2 py-4 space-y-0.5">
+          {/* AI section */}
+
+          {AI_ITEMS.map(({ label, path, icon: Icon }) => {
+            const isActive = path && location.pathname === path
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => path && navigate(path)}
+                title={layout ? label : undefined}
+                className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium transition-colors cursor-pointer ${
+                  isActive
+                    ? 'bg-black/8 text-[#111113]'
+                    : 'text-[#111113] hover:bg-black/5'
+                }`}
+                style={{ fontFamily: 'JetBrains Mono,monospace' }}
+              >
+                <span className="shrink-0 text-[#111113] transition-colors">
+                  <Icon />
+                </span>
+                <span
+                  className="whitespace-nowrap overflow-hidden"
+                  style={{
+                    opacity: layout ? 0 : 1,
+                    transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {label}
+                </span>
+              </button>
+            )
+          })}
+
+          <hr className="my-3 border-black/30" />
+
           {NAV_ITEMS.map(({ label, path, icon: Icon }) => {
             const isActive = path && location.pathname === path
             return (
@@ -634,6 +716,41 @@ export function AppHeader() {
               </button>
             )
           })}
+
+          <hr className="my-3 border-black/30" />
+
+          {/* Help & info */}
+          {HELP_ITEMS.map(({ label, path, icon: Icon }) => {
+            const isActive = path && location.pathname === path
+            return (
+            <button
+              key={label}
+              type="button"
+              onClick={() => path && navigate(path)}
+              title={layout ? label : undefined}
+              className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium transition-colors cursor-pointer ${
+                isActive
+                  ? 'bg-black/8 text-[#111113]'
+                  : 'text-[#111113] hover:bg-black/5'
+              }`}
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            >
+              <span className="shrink-0 text-[#111113] transition-colors">
+                <Icon />
+              </span>
+              <span
+                className="whitespace-nowrap overflow-hidden"
+                style={{
+                  opacity: layout ? 0 : 1,
+                  transition: `opacity ${ANIM_MS * 0.4}ms ease`,
+                  pointerEvents: 'none',
+                }}
+              >
+                {label}
+              </span>
+            </button>
+            )
+          })}
         </nav>
 
         {/* Bottom */}
@@ -653,27 +770,6 @@ export function AppHeader() {
               </span>
             </div>
           )}
-          <button
-            type="button"
-            onClick={() => navigate('/privacy-faq')}
-            className="group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-[13px] font-medium text-[#111113] hover:bg-black/5 transition-colors cursor-pointer"
-            style={{ fontFamily: 'JetBrains Mono,monospace' }}
-            title={layout ? 'Privacy & Security' : undefined}
-          >
-            <span className="shrink-0 text-[#111113]">
-              <ShieldIcon />
-            </span>
-            <span
-              className="whitespace-nowrap overflow-hidden"
-              style={{
-                opacity: layout ? 0 : 1,
-                transition: `opacity ${ANIM_MS * 0.4}ms ease`,
-                pointerEvents: 'none',
-              }}
-            >
-              Privacy &amp; Security
-            </span>
-          </button>
           <button
             type="button"
             onClick={handleLogout}
