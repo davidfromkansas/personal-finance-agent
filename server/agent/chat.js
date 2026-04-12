@@ -10,6 +10,7 @@ import { streamAccountsAgent } from './agents/accountsAgent.js'
 import { streamMarketResearchAgent } from './agents/marketResearchAgent.js'
 import { runOrchestrator } from './agents/orchestrator.js'
 import Anthropic from '@anthropic-ai/sdk'
+import { todayET } from '../lib/dateUtils.js'
 
 let _client = null
 function getClient() {
@@ -52,7 +53,7 @@ export async function* runChat({ message, history, mode, userId, emit }) {
  * Returns an async generator for SSE streaming consistency with the real endpoint.
  */
 export async function* runDemoChat({ message, history, mode, demoContext }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `You are a helpful personal finance assistant embedded in a personal finance demo app. Today is ${today}.
 
 The user is exploring a demo with realistic fake data for a fictional user named Alex Rivera. Answer all questions based solely on the financial data provided below. Be specific, use real numbers from the data, and format dollars with $ and commas. Keep answers concise and friendly.

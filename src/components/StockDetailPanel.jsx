@@ -123,7 +123,7 @@ export function StockDetailPanel({ ticker, holdings, onClose }) {
             )}
           </div>
 
-          {/* Ask AI */}
+          {/* Ask Abacus */}
           <div className="px-5 py-3">
             <button
               type="button"
@@ -134,8 +134,8 @@ export function StockDetailPanel({ ticker, holdings, onClose }) {
               className="flex w-full items-center justify-center gap-2 rounded-[10px] bg-[#111113] px-4 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
               style={MONO}
             >
-              <img src="/ai-icon.svg" alt="Ask AI" className="h-9 w-9" />
-              Ask AI about {ticker}
+              <img src="/ai-icon.svg" alt="Ask Abacus" className="h-9 w-9" />
+              Ask Abacus about {ticker}
             </button>
           </div>
 

@@ -2,8 +2,8 @@
  * Root component: AuthProvider, Router, and route definitions.
  * Protected routes use Firebase auth; unauthenticated users redirect to /. See docs/ONBOARDING.md.
  */
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
-import { useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { PlaidLinkProvider } from './context/PlaidLinkContext'
@@ -17,16 +17,32 @@ import { InvestmentsPage } from './pages/InvestmentsPage'
 import { AccountsPage } from './pages/AccountsPage'
 import { CashFlowPage } from './pages/CashFlowPage'
 import { SpendingPage } from './pages/SpendingPage'
+import { RecurringPage } from './pages/RecurringPage'
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage'
 import { TermsOfServicePage } from './pages/TermsOfServicePage'
 import { ConnectAgentPage } from './pages/ConnectAgentPage'
+import { GetStartedPage } from './pages/GetStartedPage'
+import { AskAbacusPage } from './pages/AskAbacusPage'
 import { PrivacyFaqPage } from './pages/PrivacyFaqPage'
+import { WhatsNewPage } from './pages/WhatsNewPage'
 
 function OnboardingGate({ children }) {
   const { user, ready } = useAuth()
   const { data: connectionsData, isLoading } = useConnections({ enabled: !!user })
   const connections = connectionsData?.connections ?? []
   const hasAccounts = connections.length > 0
+  const wasOnboarding = useRef(false)
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (ready && !!user && !isLoading && !hasAccounts) {
+      wasOnboarding.current = true
+    }
+    if (wasOnboarding.current && hasAccounts) {
+      wasOnboarding.current = false
+      navigate('/app/get-started', { replace: true })
+    }
+  }, [ready, user, isLoading, hasAccounts, navigate])
 
   if (ready && !!user && !isLoading && !hasAccounts) return <OnboardingModal />
   return children
@@ -105,6 +121,14 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/app/recurring"
+        element={
+          <ProtectedRoute>
+            <RecurringPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/app/cash-flow"
         element={
           <ProtectedRoute>
@@ -129,10 +153,34 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/app/ask"
+        element={
+          <ProtectedRoute>
+            <AskAbacusPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/app/get-started"
+        element={
+          <ProtectedRoute>
+            <GetStartedPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/app/connect-agent"
         element={
           <ProtectedRoute>
             <ConnectAgentPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/app/whats-new"
+        element={
+          <ProtectedRoute>
+            <WhatsNewPage />
           </ProtectedRoute>
         }
       />

@@ -202,10 +202,10 @@ function TopMoversRow({ movers, isLoading, isOpen, onTickerClick }) {
               window.dispatchEvent(new CustomEvent('open-assistant', { detail: { prompt: 'Give me a summary on the performance and latest news of the holdings in my investment portfolio from last week' } }))
             }}
             className="flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[#3d3d42] px-3 py-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-            title="Ask AI about holdings performance"
+            title="Ask Abacus about holdings performance"
           >
             <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-            <span className="text-[12px] font-semibold text-white" style={MONO}>Ask AI</span>
+            <span className="text-[12px] font-semibold text-white" style={MONO}>Ask Abacus</span>
           </button>
         </div>
       </div>
@@ -914,10 +914,10 @@ export function InvestmentsPage() {
                   window.dispatchEvent(new CustomEvent('open-assistant', { detail: { prompt: 'Explain my portfolio performance in the past one month' } }))
                 }}
                 className="flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[#3d3d42] px-3 py-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-                title="Ask AI about portfolio performance"
+                title="Ask Abacus about portfolio performance"
               >
                 <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-                <span className="text-[12px] font-semibold text-white" style={MONO}>Ask AI</span>
+                <span className="text-[12px] font-semibold text-white" style={MONO}>Ask Abacus</span>
               </button>
             </div>
 
@@ -1520,10 +1520,10 @@ function PortfolioMoversChart({ tickers, range, onRangeChange, highlightedTicker
             window.dispatchEvent(new CustomEvent('open-assistant', { detail: { prompt: 'What are the biggest drivers for my investment portfolio over the past month?' } }))
           }}
           className="flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[#3d3d42] px-3 py-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-          title="Ask AI about portfolio movers"
+          title="Ask Abacus about portfolio movers"
         >
           <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-          <span className="text-[12px] font-semibold text-white" style={MONO}>Ask AI</span>
+          <span className="text-[12px] font-semibold text-white" style={MONO}>Ask Abacus</span>
         </button>
       </div>
 

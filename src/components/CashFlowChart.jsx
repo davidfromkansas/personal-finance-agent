@@ -4,6 +4,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, ReferenceLine,
 } from 'recharts'
 import { useCashFlow, useCashFlowTransactions } from '../hooks/usePlaidQueries'
+import { usePlaidLinkContext } from '../context/PlaidLinkContext'
 import { TransactionDetailPanel, bestLogoUrl } from './TransactionDetailPanel'
 
 /** Two bars per month: blue = inflows (up), red = outflows (down). */
@@ -281,6 +282,7 @@ function CashFlowDrillDownTray({ month, onClose }) {
 export function CashFlowChart({ embeddedHeight = 320, hideHeader = false }) {
   const navigate = useNavigate()
   const { data: rawData, isLoading: loading } = useCashFlow()
+  const { openLink } = usePlaidLinkContext()
   const [showInfo, setShowInfo] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(null)
 
@@ -304,6 +306,7 @@ export function CashFlowChart({ embeddedHeight = 320, hideHeader = false }) {
 
   const latestMonth = data?.length ? data[data.length - 1] : null
   const netLatest = latestMonth ? latestMonth.net : 0
+  const hasNoData = !loading && data.every(d => d.inflows === 0 && d.outflows === 0)
 
   const now = new Date()
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -392,10 +395,10 @@ export function CashFlowChart({ embeddedHeight = 320, hideHeader = false }) {
               }))
             }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3d3d42] hover:opacity-80 transition-opacity cursor-pointer"
-            title="Ask AI about cash flow"
+            title="Ask Abacus about cash flow"
           >
             <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-            <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask AI</span>
+            <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask Abacus</span>
           </button>
         </div>
       )}
@@ -424,14 +427,21 @@ export function CashFlowChart({ embeddedHeight = 320, hideHeader = false }) {
           <div className="flex h-full items-center justify-center">
             <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Loading…</span>
           </div>
-        ) : !data?.length ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
-            <span className="text-[13px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              No cash flow data yet.
-            </span>
-            <span className="text-[12px] text-[#9ca3af] max-w-[260px]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-              Link accounts above, or if you already have connections, refresh one to sync transaction history—cash flow uses the same data as Recent Transactions.
-            </span>
+        ) : hasNoData ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" /></svg>
+            <h3 className="mt-1 text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No cash flow data</h3>
+            <p className="max-w-[280px] text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              Connect a bank or credit card account to track your inflows and outflows.
+            </p>
+            <button
+              type="button"
+              onClick={() => openLink()}
+              className="mt-3 flex items-center gap-1.5 rounded-[8px] bg-[#111113] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            >
+              Connect Account
+            </button>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

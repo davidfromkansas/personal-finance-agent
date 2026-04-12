@@ -343,10 +343,10 @@ function NetWorthSection() {
             window.dispatchEvent(new CustomEvent('open-assistant', { detail: { prompt: 'Analyze my net worth trends and give me insights' } }))
           }}
           className="flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[#3d3d42] px-3 py-1.5 cursor-pointer hover:opacity-80 transition-opacity"
-          title="Ask AI about net worth"
+          title="Ask Abacus about net worth"
         >
           <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-          <span className="text-[12px] font-semibold text-white" style={MONO}>Ask AI</span>
+          <span className="text-[12px] font-semibold text-white" style={MONO}>Ask Abacus</span>
         </button>
       </div>
       <div className="flex items-start justify-between px-5 pt-3 pb-4">
@@ -933,7 +933,6 @@ export function AccountsPage() {
   const [refreshingItems, setRefreshingItems] = useState(new Set())
   const [selectedAccount, setSelectedAccount] = useState(null)
   const [selectedInvestmentAccount, setSelectedInvestmentAccount] = useState(null)
-  const [showConnectionTypeModal, setShowConnectionTypeModal] = useState(false)
   const { data: investmentsData } = useInvestments()
   const holdings = investmentsData?.holdings ?? []
   const investmentAccountsMeta = accounts.filter(a => a.type === 'investment')
@@ -990,7 +989,7 @@ export function AccountsPage() {
         </div>
         <button
           type="button"
-          onClick={() => setShowConnectionTypeModal(true)}
+          onClick={() => openLink()}
           disabled={linkLoading}
           className="flex items-center gap-1.5 rounded-[10px] bg-[#101828] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#1e293b] transition-colors cursor-pointer disabled:opacity-50"
           style={MONO}
@@ -1150,65 +1149,6 @@ export function AccountsPage() {
       <AccountTransactionsPanel account={selectedAccount} onClose={() => setSelectedAccount(null)} />
       <AccountDetailPanel account={selectedInvestmentAccount} holdings={holdings} accountsMeta={investmentAccountsMeta} onClose={() => setSelectedInvestmentAccount(null)} />
 
-      {showConnectionTypeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowConnectionTypeModal(false)}>
-          <div
-            className="w-full max-w-md rounded-[14px] border border-[#9ca3af] bg-white p-6 shadow-lg"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-[18px] font-semibold tracking-tight text-[#101828]" style={MONO}>
-              What do you want to connect?
-            </h3>
-            <p className="mt-1 text-[14px] text-[#6a7282]" style={MONO}>
-              Choose the type of accounts to link. Plaid will open next.
-            </p>
-            <div className="mt-6 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={() => { setShowConnectionTypeModal(false); openLink('add') }}
-                disabled={linkLoading}
-                className="flex items-center gap-4 rounded-[10px] border border-[#9ca3af] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
-                style={MONO}
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="M3 21h18" /><path d="M3 10h18" /><path d="M5 6l7-3 7 3" /><path d="M4 10v11" /><path d="M20 10v11" /><path d="M8 14v3" /><path d="M12 14v3" /><path d="M16 14v3" />
-                  </svg>
-                </span>
-                <div>
-                  <p className="font-medium text-[#101828]">Credit Cards, Checking and Savings</p>
-                  <p className="text-[12px] text-[#6a7282]">Link bank and credit card accounts</p>
-                </div>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowConnectionTypeModal(false); openLink('investments') }}
-                disabled={linkLoading}
-                className="flex items-center gap-4 rounded-[10px] border border-[#9ca3af] bg-white px-4 py-3 text-left transition-colors hover:bg-[#f9fafb] disabled:opacity-60"
-                style={MONO}
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-[#dbeafe] text-[#1e40af]">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                    <path d="m22 7-8.5 8.5-5-5L2 17" /><path d="M16 7h6v6" />
-                  </svg>
-                </span>
-                <div>
-                  <p className="font-medium text-[#101828]">Investments</p>
-                  <p className="text-[12px] text-[#6a7282]">Link brokerage, IRA, and investment accounts</p>
-                </div>
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowConnectionTypeModal(false)}
-              className="mt-4 w-full rounded-lg border border-[#d1d5dc] bg-white py-2 text-[14px] font-medium text-[#4a5565] hover:bg-[#f3f4f6]"
-              style={MONO}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

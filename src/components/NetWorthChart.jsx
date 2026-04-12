@@ -205,7 +205,7 @@ export function NetWorthChart({ embedded }) {
 
   return (
     <div className={`relative bg-white ${embedded ? 'rounded-t-[14px]' : 'rounded-[14px] border border-[#9ca3af]'}`}>
-      {/* Dark header — title + Ask AI */}
+      {/* Dark header — title + Ask Abacus */}
       <div className="flex items-center justify-between rounded-t-[14px] bg-[#2B2B2B] pl-5 pr-3 py-3">
         <h2 className="text-[18px] font-semibold leading-5 tracking-[-0.31px] text-white cursor-pointer hover:text-white/80 transition-colors" style={MONO} onClick={() => navigate('/app/accounts')}>
           Net Worth <span className="ml-0.5 text-[22px] font-bold text-white/60">›</span>
@@ -214,10 +214,10 @@ export function NetWorthChart({ embedded }) {
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('open-assistant', { detail: { prompt: 'Analyze my net worth trends and give me insights' } }))}
           className="flex items-center gap-1.5 rounded-[7px] bg-white/15 px-2.5 py-1.5 hover:bg-white/25 transition-colors cursor-pointer"
-          title="Ask AI about net worth"
+          title="Ask Abacus about net worth"
         >
           <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
-          <span className="text-[13px] font-medium text-white/90" style={MONO}>Ask AI</span>
+          <span className="text-[13px] font-medium text-white/90" style={MONO}>Ask Abacus</span>
         </button>
       </div>
 

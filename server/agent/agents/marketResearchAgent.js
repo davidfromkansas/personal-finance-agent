@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import YahooFinance from 'yahoo-finance2'
 import { registerAgent } from '../registry.js'
 import { extractAndEmitVisualizations, hasChartIntent } from '../renderChart.js'
+import { todayET } from '../../lib/dateUtils.js'
 import { getLatestHoldingsSnapshot } from '../../db.js'
 import { finnhubGet, toDateStr } from '../../lib/finnhub.js'
 
@@ -660,7 +661,7 @@ async function runAgentLoop(systemPrompt, messages, userId, emit, toolChoice = '
 
 // ── Streaming entry point (direct mode) ─────────────────────────────────────
 export async function* streamMarketResearchAgent({ message, history, userId, emit }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `Today is ${today}.\n\n${SYSTEM_PROMPT}`
   const messages = [...history, { role: 'user', content: message }]
   const toolChoice = hasChartIntent(message) ? 'any' : 'auto'
@@ -670,7 +671,7 @@ export async function* streamMarketResearchAgent({ message, history, userId, emi
 
 // ── Orchestrator entry point ────────────────────────────────────────────────
 export async function askMarketResearchAgent({ message, history, userId, emit }) {
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `Today is ${today}.\n\n${SYSTEM_PROMPT}`
   const messages = [...history, { role: 'user', content: message }]
   const toolChoice = hasChartIntent(message) ? 'any' : 'auto'

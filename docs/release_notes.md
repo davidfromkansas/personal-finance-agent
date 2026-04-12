@@ -4,6 +4,57 @@ User-facing changes, most recent first.
 
 ---
 
+# UI overhaul, dedicated pages, and timezone fix — Shipped: April 12, 2026
+
+## Dedicated Recurring Payments page
+
+Recurring Payments now has its own page accessible from the sidebar (between Spending and Cash Flow). The recurring calendar has been moved out of the Spending page into this dedicated page with its own header and Ask Abacus button.
+
+## Transactions page: grouped by day
+
+Each day's transactions now renders as its own bordered card with a dark header showing the date, making it easier to scan through transaction history.
+
+## Centralized Connect Account flow
+
+All "Connect Account" buttons across the app now use a single centralized account type chooser modal (Bank/Credit Card vs Investment Account). Previously, several pages had their own duplicate modals or bypassed the chooser entirely.
+
+## Empty states for Cash Flow and Upcoming Payments
+
+The Cash Flow chart and Upcoming Payments modules now show helpful empty states with a Connect Account button when no relevant accounts are linked. The empty state detection has been improved to handle cases where you have investment accounts but no bank/credit accounts.
+
+## Sidebar improvements
+
+- Hamburger menu icon replaces the old panel toggle, swapped to the left with the Abacus logo on the right
+- Section dividers are now dark horizontal lines for better visual separation
+- Privacy & Security entry removed
+- Recurring Payments entry added
+
+## Ask Abacus buttons on all page headers
+
+Cash Flow, Spending, Recurring Payments, and Transactions pages now have an "Ask Abacus" button in the page header that opens the AI assistant with a context-aware prompt. All "Ask AI" labels across the app have been renamed to "Ask Abacus".
+
+## Spending page header consolidation
+
+The Spending page no longer has two redundant headers. The period selector and total spend are now in the full-width page header alongside the Ask Abacus button.
+
+## Get Started page condensed
+
+The Get Started page layout has been tightened to fit within the initial viewport without removing any content.
+
+## Darker borders on info cards
+
+Ask Abacus info cards, conversation starters, and Get Started page cards now use darker borders consistent with other modules across the app.
+
+## Floating chat bubble removed
+
+The floating bottom-right AI chat bubble has been removed from all pages. The AI assistant is now accessible exclusively through the Ask Abacus buttons in page and module headers.
+
+## Timezone fix: no more phantom future-date data points
+
+All server-side date computations now use Eastern Time (`America/New_York`) instead of UTC. Previously, `toISOString().slice(0, 10)` was used in ~30 places across the server, which after ~7-8 PM ET would produce the next day's date — causing phantom data points for dates that hadn't happened yet. Fixed in: routes, snapshot jobs, backfill jobs, recurring payments, MCP server, and all AI agent system prompts.
+
+---
+
 # Dashboard polish, accounts reconnect, and investment value accuracy — Shipped: April 10, 2026
 
 ## Dashboard: cleaner Net Worth and Investment Portfolio modules

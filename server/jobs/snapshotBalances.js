@@ -13,6 +13,7 @@
  */
 import { getPlaidClient } from '../lib/plaidClient.js'
 import { getPlaidItemsByUserId, upsertAccountBalanceSnapshot } from '../db.js'
+import { todayET } from '../lib/dateUtils.js'
 
 const SKIP_CODES = [
   'ITEM_LOGIN_REQUIRED',
@@ -25,15 +26,11 @@ const SKIP_CODES = [
 
 const BALANCE_LIMIT_CODE = 'BALANCE_LIMIT'
 
-function todayStr() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
-}
-
 /** @param {string} userId */
 export async function snapshotBalances(userId) {
   const items = await getPlaidItemsByUserId(userId)
   const plaidClient = getPlaidClient()
-  const date = todayStr()
+  const date = todayET()
 
   for (const item of items) {
     // Skip investment-only items — their account values come from snapshotInvestments

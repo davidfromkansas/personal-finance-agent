@@ -84,7 +84,7 @@ export function OnboardingModal() {
           {/* CTA */}
           <button
             type="button"
-            onClick={() => openLink('add')}
+            onClick={() => openLink()}
             disabled={linkLoading}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-[10px] bg-[#111113] px-4 py-3 text-[13px] font-semibold text-white transition-opacity hover:opacity-80 disabled:opacity-50"
           >

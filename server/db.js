@@ -1,5 +1,6 @@
 import pg from 'pg'
 import { hashFirebaseUid, encrypt, decrypt, encryptNum, decryptNum, encryptJSON, decryptJSON, encryptBool, decryptBool, decryptRow, decryptRows } from './lib/crypto.js'
+import { toDateStrET } from './lib/dateUtils.js'
 
 const { Pool } = pg
 
@@ -432,26 +433,24 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds, ex
     ? [...NON_SPENDING_CATEGORIES, ...excludeCategories]
     : NON_SPENDING_CATEGORIES
 
-  const pad2 = (n) => String(n).padStart(2, '0')
-  const fmtDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
   let startDate, bucketFn
   if (period === 'week') {
     const start = new Date(); start.setDate(start.getDate() - 6)
-    startDate = fmtDate(start)
+    startDate = toDateStrET(start)
     bucketFn = (d) => d // daily bucket = date string
   } else if (period === 'month') {
     const start = new Date(); start.setDate(start.getDate() - 28)
-    startDate = fmtDate(start)
+    startDate = toDateStrET(start)
     // weekly bucket: truncate to Monday
     bucketFn = (d) => {
       const dt = new Date(d + 'T00:00:00'); const day = dt.getDay()
       dt.setDate(dt.getDate() - ((day + 6) % 7)) // Monday
-      return fmtDate(dt)
+      return toDateStrET(dt)
     }
   } else {
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth() - 11, 1)
-    startDate = `${startOfMonth.getFullYear()}-${pad2(startOfMonth.getMonth() + 1)}-01`
+    startDate = toDateStrET(startOfMonth).slice(0, 8) + '01'
     bucketFn = (d) => d.slice(0, 7) // YYYY-MM
   }
 
@@ -495,10 +494,9 @@ export async function getSpendingSummaryByAccount(userId, period, accountIds, ex
 /** Monthly spending totals for a single account. Same exclusions as other spending queries. */
 export async function getMonthlySpendingByAccount(userId, accountId, monthsBack = 12) {
   const n = Math.min(Math.max(monthsBack, 1), 36)
-  const pad2 = (v) => String(v).padStart(2, '0')
   const now = new Date()
   const startMonth = new Date(now.getFullYear(), now.getMonth() - (n - 1), 1)
-  const startDate = `${startMonth.getFullYear()}-${pad2(startMonth.getMonth() + 1)}-01`
+  const startDate = toDateStrET(startMonth).slice(0, 8) + '01'
 
   const { rows } = await query(
     `SELECT amount, personal_finance_category, personal_finance_category_detailed,
@@ -569,9 +567,6 @@ export async function getMonthlyCashFlow(userId, months = 24, accountIds = null)
  * granularity: 'day' | 'week' | 'month'
  */
 export async function getCashFlowTimeSeries(userId, startDate, endDate, granularity = 'month', accountIds = null) {
-  const pad2 = (v) => String(v).padStart(2, '0')
-  const fmtDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-
   let bucketFn
   if (granularity === 'day') {
     bucketFn = (d) => d // YYYY-MM-DD
@@ -579,7 +574,7 @@ export async function getCashFlowTimeSeries(userId, startDate, endDate, granular
     bucketFn = (d) => {
       const dt = new Date(d + 'T00:00:00'); const day = dt.getDay()
       dt.setDate(dt.getDate() - ((day + 6) % 7))
-      return fmtDate(dt)
+      return toDateStrET(dt)
     }
   } else {
     bucketFn = (d) => d.slice(0, 7) // YYYY-MM
@@ -671,25 +666,24 @@ const CATEGORY_GROUP_MAP = {
 
 /** Compute trailing date window for cash flow periods. */
 function cashFlowDateRange(period) {
-  const pad2 = (n) => String(n).padStart(2, '0')
   const now = new Date()
   let startDate
   if (period === 'week') {
     const d = new Date(now); d.setDate(d.getDate() - 6)
-    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    startDate = toDateStrET(d)
   } else if (period === 'month') {
     const d = new Date(now); d.setDate(d.getDate() - 29)
-    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    startDate = toDateStrET(d)
   } else if (period === 'quarter') {
     const d = new Date(now); d.setMonth(d.getMonth() - 2); d.setDate(1)
-    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    startDate = toDateStrET(d)
   } else if (period === 'ytd') {
-    startDate = `${now.getFullYear()}-01-01`
+    startDate = `${toDateStrET(now).slice(0, 4)}-01-01`
   } else {
     const d = new Date(now); d.setFullYear(d.getFullYear() - 1)
-    startDate = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    startDate = toDateStrET(d)
   }
-  const endDate = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+  const endDate = toDateStrET(now)
   return { startDate, endDate }
 }
 

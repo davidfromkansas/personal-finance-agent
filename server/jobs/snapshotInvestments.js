@@ -23,6 +23,8 @@ import {
   upsertInvestmentTransactions,
 } from '../db.js'
 
+import { todayET, toDateStrET } from '../lib/dateUtils.js'
+
 // Items that never had investment data — skip silently
 const SILENT_SKIP_CODES = [
   'PRODUCTS_NOT_SUPPORTED',
@@ -39,16 +41,12 @@ const UNAVAILABLE_CODES = [
 
 const RATE_LIMIT_CODES = ['RATE_LIMIT_EXCEEDED']
 
-function todayStr() {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
-}
-
 /** @param {string} userId
  *  @param {{ daysBack?: number }} options - daysBack defaults to 90; pass 730 on initial connection */
 export async function snapshotInvestments(userId, { daysBack = 90 } = {}) {
   const items = await getPlaidItemsByUserId(userId)
   const plaidClient = getPlaidClient()
-  const date = todayStr()
+  const date = todayET()
   let grandTotal = 0
   const unavailableItems = []
 
@@ -190,5 +188,5 @@ export async function snapshotInvestments(userId, { daysBack = 90 } = {}) {
 function daysAgo(n) {
   const d = new Date()
   d.setDate(d.getDate() - n)
-  return d.toISOString().slice(0, 10)
+  return toDateStrET(d)
 }

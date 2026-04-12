@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useRecurring } from '../hooks/usePlaidQueries'
+import { usePlaidLinkContext } from '../context/PlaidLinkContext'
 
 const FREQUENCY_LABELS = {
   WEEKLY: 'Every week',
@@ -83,6 +84,7 @@ function PaymentRow({ payment }) {
 
 export function UpcomingPayments() {
   const { data, isLoading: loading } = useRecurring()
+  const { openLink } = usePlaidLinkContext()
   const payments = data?.payments ?? []
   const [page, setPage] = useState(0)
 
@@ -116,9 +118,21 @@ export function UpcomingPayments() {
 
   if (payments.length === 0) {
     return (
-      <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-        No upcoming payments. Link accounts to see recurring charges and credit card bills.
-      </p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-1 px-4 text-center">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /></svg>
+        <h3 className="mt-1 text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No upcoming payments</h3>
+        <p className="max-w-[240px] text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+          Connect an account to see recurring charges and credit card bills.
+        </p>
+        <button
+          type="button"
+          onClick={() => openLink()}
+          className="mt-3 flex items-center gap-1.5 rounded-[8px] bg-[#111113] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
+          style={{ fontFamily: 'JetBrains Mono,monospace' }}
+        >
+          Connect Account
+        </button>
+      </div>
     )
   }
 

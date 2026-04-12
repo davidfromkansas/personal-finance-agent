@@ -156,7 +156,36 @@ export function ConnectAgentPage() {
             title="ChatGPT"
             icon={<img src="/chatgpt-logo.png" alt="ChatGPT" width="20" height="20" />}
           >
-            <p className="text-[13px] text-[#6a7282]" style={MONO}>Coming soon</p>
+            <div className="space-y-4">
+              <ol className="space-y-3 text-[13px] text-[#374151]" style={MONO}>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">1</span>
+                  <span>Open ChatGPT. Go to <strong>"Settings"</strong>, then <strong>"Apps & Connectors"</strong>, then <strong>"Advanced settings"</strong>.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">2</span>
+                  <span>Enable <strong>"Developer Mode"</strong>.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">3</span>
+                  <span>Go to the <strong>"Connectors"</strong> tab, click <strong>"Create"</strong>, and enter a name, description, and the server URL below.</span>
+                </li>
+                <li className="flex gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">4</span>
+                  <span>Complete the OAuth login when prompted to connect your Abacus account.</span>
+                </li>
+              </ol>
+
+              <div className="rounded-lg border border-[#e5e7eb] bg-[#f9fafb] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6a7282] mb-2" style={MONO}>Abacus MCP Server URL</p>
+                <div className="flex items-center gap-3">
+                  <code className="flex-1 rounded-md bg-white border border-[#e5e7eb] px-3 py-2 text-[13px] text-[#18181b]" style={MONO}>
+                    {MCP_URL}
+                  </code>
+                  <CopyButton text={MCP_URL} />
+                </div>
+              </div>
+            </div>
           </AgentCard>
 
         </div>

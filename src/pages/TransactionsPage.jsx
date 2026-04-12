@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { AppHeader } from '../components/AppHeader'
 import { TransactionDetailPanel, bestLogoUrl, formatCategory, formatPaymentChannel } from '../components/TransactionDetailPanel'
 import { useTransactionAccounts, useTransactions } from '../hooks/usePlaidQueries'
+import { usePlaidLinkContext } from '../context/PlaidLinkContext'
 import { PLAID_CATEGORIES, PRIMARY_CATEGORIES } from '../lib/plaidCategories'
 
 function toDateKey(raw) {
@@ -643,6 +644,7 @@ function FilterSidebar({ sort, onSortChange, filters, accounts, accountsLoading,
 }
 
 export function TransactionsPage() {
+  const { openLink } = usePlaidLinkContext()
   const [selectedTransaction, setSelectedTransaction] = useState(null)
   const [sort, setSort] = useState('recent')
   const [filters, setFilters] = useState(EMPTY_FILTERS)
@@ -711,15 +713,30 @@ export function TransactionsPage() {
       <TransactionDetailPanel transaction={selectedTransaction} onClose={() => setSelectedTransaction(null)} />
 
       {/* Page header — full width white bar */}
-      <div className="border-b border-[#9ca3af] bg-white px-4 py-4 sm:px-6 lg:px-8">
-        <h1 className="text-[24px] font-semibold tracking-[-0.5px] text-[#18181b]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-          Transactions
-        </h1>
-        {!loading && total > 0 && (
-          <p className="mt-0.5 text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-            {transactions.length} of {total}
-          </p>
-        )}
+      <div className="flex items-center justify-between border-b border-[#9ca3af] bg-white px-4 py-4 sm:px-6 lg:px-8">
+        <div>
+          <h1 className="text-[24px] font-semibold tracking-[-0.5px] text-[#18181b]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+            Transactions
+          </h1>
+          {!loading && total > 0 && (
+            <p className="mt-0.5 text-[13px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              {transactions.length} of {total}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('open-assistant', {
+              detail: { prompt: 'Analyze my recent transactions. Identify my largest purchases, most frequent merchants, and any unusual or unexpected charges.' },
+            }))
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3d3d42] hover:opacity-80 transition-opacity cursor-pointer"
+          title="Ask Abacus about transactions"
+        >
+          <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
+          <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask Abacus</span>
+        </button>
       </div>
 
       <main className="px-4 py-8 sm:px-6 lg:px-8">
@@ -754,13 +771,13 @@ export function TransactionsPage() {
                 )}
               </div>
 
-              <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white">
+              <div>
                 {loading ? (
-                  <div className="py-16 text-center text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                  <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white py-16 text-center text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                     Loading…
                   </div>
                 ) : groups.length === 0 ? (
-                  <div className="py-16 text-center">
+                  <div className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white py-16 text-center">
                     {filters.account_ids.length > 0 || filters.categories.length > 0 || filters.after_date || filters.before_date ? (
                       <>
                         <p className="text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions match your filters.</p>
@@ -773,15 +790,31 @@ export function TransactionsPage() {
                         </button>
                       </>
                     ) : (
-                      <p className="text-[14px] text-[#9ca3af]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions yet.</p>
+                      <div className="flex flex-col items-center justify-center text-center">
+                        <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] bg-[#f3f4f6] text-[#6a7282]">
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
+                        </div>
+                        <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No transactions yet</p>
+                        <p className="mt-1 max-w-[300px] text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+                          Connect a credit card or bank account to see your transactions.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => openLink()}
+                          className="mt-4 flex items-center gap-1.5 rounded-[8px] bg-[#111113] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
+                          style={{ fontFamily: 'JetBrains Mono,monospace' }}
+                        >
+                          Connect Account
+                        </button>
+                      </div>
                     )}
                   </div>
                 ) : (
-                  <div>
+                  <div className="space-y-4">
                     {groups.map(group => (
-                      <div key={group.date}>
-                        <div className="flex items-center border-b border-[#9ca3af] bg-[#fafafa] px-5 py-2">
-                          <p className="text-[13px] font-semibold text-[#18181b]"
+                      <div key={group.date} className="overflow-hidden rounded-[14px] border border-[#9ca3af] bg-white">
+                        <div className="flex items-center bg-[#2B2B2B] px-5 py-2.5">
+                          <p className="text-[13px] font-semibold text-white"
                             style={{ fontFamily: 'JetBrains Mono,monospace' }}>
                             {group.label}
                           </p>

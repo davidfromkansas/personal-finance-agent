@@ -438,9 +438,23 @@ export function TransactionList({ transactions, loading, title, subtitle, header
             ))}
           </div>
         ) : transactions.length === 0 ? (
-          <p className="text-[14px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
-            No transactions yet. Link an account to see activity.
-          </p>
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] bg-[#f3f4f6] text-[#6a7282]">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2" /><line x1="2" y1="10" x2="22" y2="10" /></svg>
+            </div>
+            <p className="text-[14px] font-semibold text-[#101828]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>No spending data yet</p>
+            <p className="mt-1 max-w-[300px] text-[12px] text-[#6a7282]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
+              Connect a credit card or bank account to see your spending activity.
+            </p>
+            <button
+              type="button"
+              onClick={() => handleAddConnection()}
+              className="mt-4 flex items-center gap-1.5 rounded-[8px] bg-[#111113] px-4 py-2 text-[12px] font-semibold text-white transition-opacity hover:opacity-80 cursor-pointer"
+              style={{ fontFamily: 'JetBrains Mono,monospace' }}
+            >
+              Connect Account
+            </button>
+          </div>
         ) : (
           <div className="flex flex-col gap-0.5">
             {groups.map((group) => (

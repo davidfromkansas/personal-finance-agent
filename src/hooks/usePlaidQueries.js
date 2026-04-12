@@ -335,6 +335,14 @@ export function invalidateAfterConnect() {
     queryClient.invalidateQueries({ queryKey: ['accounts'] }),
     queryClient.invalidateQueries({ queryKey: ['investments'] }),
     queryClient.invalidateQueries({ queryKey: ['portfolio-history'] }),
+    queryClient.invalidateQueries({ queryKey: ['portfolio-snapshot'] }),
+    queryClient.invalidateQueries({ queryKey: ['transaction-accounts'] }),
+    queryClient.invalidateQueries({ queryKey: ['cash-flow-time-series'] }),
+    queryClient.invalidateQueries({ queryKey: ['cash-flow-node-transactions'] }),
+    queryClient.invalidateQueries({ queryKey: ['investment-transactions'] }),
+    queryClient.invalidateQueries({ queryKey: ['ticker-transactions'] }),
+    queryClient.invalidateQueries({ queryKey: ['ticker-history'] }),
+    queryClient.invalidateQueries({ queryKey: ['quotes'] }),
     invalidateTransactionData(),
   ])
 }

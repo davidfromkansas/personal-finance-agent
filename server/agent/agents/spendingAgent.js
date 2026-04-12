@@ -8,6 +8,7 @@ import { getPlaidItemsByUserId, getTransactionAccounts, getMonthlySpendingByAcco
 import { getAgentSpendingSummary, getAgentTransactions, getAgentCashFlow, getAgentCashFlowBreakdown, getAgentCashFlowTimeSeries, getAgentCashFlowNodeTransactions, getAgentCashFlowComparison } from '../queries.js'
 import { getRecurringTransactions } from '../../lib/recurring.js'
 import { extractAndEmitVisualizations, hasChartIntent } from '../renderChart.js'
+import { todayET } from '../../lib/dateUtils.js'
 
 let _client = null
 function getClient() {
@@ -408,7 +409,7 @@ export async function* streamSpendingAgent({ message, history, userId, emit }) {
     return
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `Today is ${today}.\n\n${SYSTEM_PROMPT}`
   const messages = [...history, { role: 'user', content: message }]
   const toolChoice = hasChartIntent(message) ? 'any' : 'auto'
@@ -429,7 +430,7 @@ export async function askSpendingAgent({ message, history, userId, emit }) {
     }
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayET()
   const systemPrompt = `Today is ${today}.\n\n${SYSTEM_PROMPT}`
   const messages = [...history, { role: 'user', content: message }]
   const toolChoice = hasChartIntent(message) ? 'any' : 'auto'

@@ -397,10 +397,10 @@ export const InvestmentPortfolio = forwardRef(function InvestmentPortfolio(_, re
           type="button"
           onClick={() => window.dispatchEvent(new CustomEvent('open-assistant', { detail: { prompt: 'Explain my portfolio performance in the past one month' } }))}
           className="flex items-center gap-1.5 rounded-[7px] bg-white/15 px-2.5 py-1.5 hover:bg-white/25 transition-colors cursor-pointer"
-          title="Ask AI about your portfolio"
+          title="Ask Abacus about your portfolio"
         >
-          <img src="/ai-icon.svg" alt="Ask AI" className="h-5 w-5" />
-          <span className="text-[13px] font-medium text-white/90" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask AI</span>
+          <img src="/ai-icon.svg" alt="Ask Abacus" className="h-5 w-5" />
+          <span className="text-[13px] font-medium text-white/90" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask Abacus</span>
         </button>
       </div>
 

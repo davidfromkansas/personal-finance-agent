@@ -769,10 +769,23 @@ export function CashFlowPage() {
       <AppHeader />
 
       {/* Page header */}
-      <div className="border-b border-[#9ca3af] bg-white px-4 py-4 sm:px-6 lg:px-8">
+      <div className="flex items-center justify-between border-b border-[#9ca3af] bg-white px-4 py-4 sm:px-6 lg:px-8">
         <h1 className="text-[24px] font-semibold tracking-[-0.5px] text-[#18181b]" style={{ fontFamily: 'JetBrains Mono,monospace' }}>
           Cash Flow
         </h1>
+        <button
+          type="button"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('open-assistant', {
+              detail: { prompt: 'Analyze my cash flow for the past 3 months. Break down my inflows vs outflows, highlight any months where I spent more than I earned, and identify trends in my net cash flow.' },
+            }))
+          }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[#3d3d42] hover:opacity-80 transition-opacity cursor-pointer"
+          title="Ask Abacus about cash flow"
+        >
+          <img src="/ai-icon.svg" alt="" className="h-5 w-5" />
+          <span className="text-[12px] font-semibold text-white" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Ask Abacus</span>
+        </button>
       </div>
 
       <main className="px-4 py-8">
