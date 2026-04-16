@@ -1,12 +1,14 @@
 import { useNavigate, Link } from 'react-router-dom'
 import { AppHeader } from '../components/AppHeader'
 import { usePlaidLinkContext } from '../context/PlaidLinkContext'
+import { isDemoMode } from '../lib/demoMode.js'
 
 const MONO = { fontFamily: 'JetBrains Mono,monospace' }
 
 export function GetStartedPage() {
   const navigate = useNavigate()
   const { openLink, linkLoading } = usePlaidLinkContext()
+  const demo = isDemoMode()
 
   return (
     <div className="min-h-screen bg-[#f8f8f8]" style={{ paddingLeft: 'var(--sidebar-w)' }}>
@@ -63,7 +65,14 @@ export function GetStartedPage() {
               </p>
 
               <div className="mt-2 flex items-center gap-2">
-                <button type="button" onClick={() => openLink()} disabled={linkLoading} className="rounded-lg bg-[#111113] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#1e293b] transition-colors cursor-pointer disabled:opacity-50" style={MONO}>
+                <button
+                  type="button"
+                  onClick={() => !demo && openLink()}
+                  disabled={linkLoading || demo}
+                  className={`rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors ${demo ? 'bg-[#d1d5db] text-[#9ca3af] line-through cursor-not-allowed' : 'bg-[#111113] text-white hover:bg-[#1e293b] cursor-pointer disabled:opacity-50'}`}
+                  style={MONO}
+                  title={demo ? 'Not available in demo mode' : undefined}
+                >
                   {linkLoading ? 'Connecting…' : 'Connect Account'}
                 </button>
                 <button type="button" onClick={() => navigate('/app/accounts')} className="rounded-lg bg-[#111113] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#1e293b] transition-colors cursor-pointer" style={MONO}>

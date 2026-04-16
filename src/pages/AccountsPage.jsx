@@ -10,6 +10,7 @@ import { usePlaidLinkContext } from '../context/PlaidLinkContext'
 import { TransactionDetailPanel, bestLogoUrl } from '../components/TransactionDetailPanel.jsx'
 import { AccountDetailPanel } from './InvestmentsPage'
 import queryClient from '../lib/queryClient'
+import { isDemoMode } from '../lib/demoMode.js'
 
 function formatCurrency(value) {
   if (value == null) return '—'
@@ -937,6 +938,7 @@ export function AccountsPage() {
   const holdings = investmentsData?.holdings ?? []
   const investmentAccountsMeta = accounts.filter(a => a.type === 'investment')
   const { openLink, reconnect, linkLoading, linkError } = usePlaidLinkContext()
+  const demo = isDemoMode()
   const { data: connectionsData } = useConnections()
   const errorConnections = useMemo(() =>
     (connectionsData?.connections ?? []).filter(c => c.status === 'error' && ['ITEM_LOGIN_REQUIRED', 'NO_ACCOUNTS'].includes(c.error_code)),
@@ -989,10 +991,11 @@ export function AccountsPage() {
         </div>
         <button
           type="button"
-          onClick={() => openLink()}
-          disabled={linkLoading}
-          className="flex items-center gap-1.5 rounded-[10px] bg-[#101828] px-4 py-2 text-[13px] font-medium text-white hover:bg-[#1e293b] transition-colors cursor-pointer disabled:opacity-50"
+          onClick={() => !demo && openLink()}
+          disabled={linkLoading || demo}
+          className={`flex items-center gap-1.5 rounded-[10px] px-4 py-2 text-[13px] font-medium transition-colors ${demo ? 'bg-[#d1d5db] text-[#9ca3af] line-through cursor-not-allowed' : 'bg-[#101828] text-white hover:bg-[#1e293b] cursor-pointer disabled:opacity-50'}`}
           style={MONO}
+          title={demo ? 'Not available in demo mode' : undefined}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
