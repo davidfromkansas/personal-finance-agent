@@ -315,54 +315,17 @@ function ChatPanel({ open, onClose }) {
 
     try {
       const isDemo = isDemoMode()
-      let fetchOptions
 
       if (isDemo) {
-        const { getDemoAgentContext } = await import('../lib/demoData.js')
-        const demoContext = getDemoAgentContext()
-        fetchOptions = {
-          url: `${API_BASE}/api/agent/chat-demo`,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, history, mode, demoContext }),
-        }
-      } else {
-        const token = await getIdToken()
-        fetchOptions = {
-          url: `${API_BASE}/api/agent/chat`,
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token && { Authorization: `Bearer ${token}` }),
-          },
-          body: JSON.stringify({ message: text, history, mode }),
-        }
-      }
+        // Fully client-side demo chat — no server needed
+        const { getDemoChatEvents } = await import('../lib/demoData.js')
+        const events = getDemoChatEvents(text)
+        let replyText = ''
+        let finalSteps = []
+        let artifacts = []
 
-      const res = await fetch(fetchOptions.url, {
-        method: 'POST',
-        headers: fetchOptions.headers,
-        body: fetchOptions.body,
-      })
-      if (!res.ok) throw new Error('Chat request failed')
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let replyText = ''
-      let finalSteps = []
-      let artifacts = []
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          let event
-          try { event = JSON.parse(line.slice(6)) } catch { continue }
-
+        for (const event of events) {
+          await new Promise(r => setTimeout(r, event.type === 'text' ? 30 : event.type === 'tool_call' ? 200 : event.type === 'tool_done' ? 300 : 0))
           if (event.type === 'tool_call') {
             const step = { callId: event.callId, tool: event.tool, label: TOOL_LABELS[event.tool] ?? event.tool, status: 'active' }
             finalSteps = [...finalSteps, step]
@@ -376,9 +339,62 @@ function ChatPanel({ open, onClose }) {
             replyText += event.text
           }
         }
-      }
 
-      setMessages((prev) => [...prev, { role: 'assistant', text: replyText, activity: finalSteps, artifacts }])
+        setMessages((prev) => [...prev, { role: 'assistant', text: replyText, activity: finalSteps, artifacts }])
+      } else {
+        const token = await getIdToken()
+        const fetchOptions = {
+          url: `${API_BASE}/api/agent/chat`,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: JSON.stringify({ message: text, history, mode }),
+        }
+
+        const res = await fetch(fetchOptions.url, {
+          method: 'POST',
+          headers: fetchOptions.headers,
+          body: fetchOptions.body,
+        })
+        if (!res.ok) throw new Error('Chat request failed')
+
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        let replyText = ''
+        let finalSteps = []
+        let artifacts = []
+
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            let event
+            try { event = JSON.parse(line.slice(6)) } catch { continue }
+
+            if (event.type === 'tool_call') {
+              const step = { callId: event.callId, tool: event.tool, label: TOOL_LABELS[event.tool] ?? event.tool, status: 'active' }
+              finalSteps = [...finalSteps, step]
+              setActivitySteps([...finalSteps])
+            } else if (event.type === 'tool_done') {
+              finalSteps = finalSteps.map(s => s.callId === event.callId ? { ...s, status: 'done', count: event.count } : s)
+              setActivitySteps([...finalSteps])
+            } else if (event.type === 'artifact') {
+              artifacts = [...artifacts, event]
+            } else if (event.type === 'text') {
+              replyText += event.text
+            }
+          }
+        }
+
+        setMessages((prev) => [...prev, { role: 'assistant', text: replyText, activity: finalSteps, artifacts }])
+      }
     } catch (err) {
       console.error('Chat error:', err)
       setMessages((prev) => [

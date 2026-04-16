@@ -13,10 +13,15 @@ import {
   computeSpendingSummary,
   computeCashFlow,
   computeCashFlowTransactions,
+  computeCashFlowTimeSeries,
+  computeCashFlowBreakdown,
+  computeCashFlowNodeTransactions,
   getDemoNetWorthHistory,
   getDemoPortfolioHistory,
   getDemoPortfolioSnapshot,
   getDemoTickerHistory,
+  getDemoInvestmentTransactions,
+  getDemoTickerTransactions,
 } from './demoData.js'
 
 function round2(n) { return Math.round(n * 100) / 100 }
@@ -64,13 +69,33 @@ export function getDemoResponse(pathname, search) {
   if (pathname === '/api/plaid/cash-flow') {
     return { months: computeCashFlow() }
   }
+  if (pathname === '/api/plaid/cash-flow-time-series') {
+    const startDate = p.get('start_date'), endDate = p.get('end_date'), granularity = p.get('granularity') || 'month'
+    return { buckets: computeCashFlowTimeSeries(startDate, endDate, granularity) }
+  }
+  if (pathname === '/api/plaid/cash-flow-breakdown') {
+    const period = p.get('period') || 'month'
+    const breakdown = p.get('breakdown') || 'category'
+    const accountIds = p.get('account_ids') ? p.get('account_ids').split(',').filter(Boolean) : null
+    const excludeCategories = p.get('exclude_categories') ? p.get('exclude_categories').split(',').filter(Boolean) : []
+    const customRange = period === 'custom' ? { startDate: p.get('start_date'), endDate: p.get('end_date') } : null
+    return computeCashFlowBreakdown(period, breakdown, accountIds, customRange, excludeCategories)
+  }
+  if (pathname === '/api/plaid/cash-flow-node-transactions') {
+    const period = p.get('period') || 'month'
+    const breakdown = p.get('breakdown') || 'category'
+    const flowType = p.get('flow_type') || 'expense'
+    const categoryKey = p.get('category_key') || ''
+    const accountIds = p.get('account_ids') ? p.get('account_ids').split(',').filter(Boolean) : null
+    const customRange = period === 'custom' ? { startDate: p.get('start_date'), endDate: p.get('end_date') } : null
+    return { transactions: computeCashFlowNodeTransactions(period, breakdown, flowType, categoryKey, accountIds, customRange) }
+  }
 
   // ── Net worth ─────────────────────────────────────────────────────────────
   if (pathname === '/api/plaid/net-worth-history') {
     const range = p.get('range') || 'ALL'
-    // Component expects { history: [{date, net_worth}] }
     const { points } = getDemoNetWorthHistory(range)
-    return { range, history: points }
+    return { range, history: points, accounts: DEMO_ACCOUNTS }
   }
 
   // ── Investments ───────────────────────────────────────────────────────────
@@ -116,6 +141,16 @@ export function getDemoResponse(pathname, search) {
         week52High: round2(DEMO_QUOTES[t].price * 1.28),
       }))
     return { quotes }
+  }
+
+  // ── Investment transactions ──────────────────────────────────────────────
+  if (pathname === '/api/plaid/investment-transactions') {
+    const accountId = p.get('account_id')
+    return { transactions: getDemoInvestmentTransactions(accountId) }
+  }
+  if (pathname === '/api/plaid/ticker-transactions') {
+    const ticker = p.get('ticker')
+    return { transactions: getDemoTickerTransactions(ticker) }
   }
 
   // ── Recurring ─────────────────────────────────────────────────────────────
