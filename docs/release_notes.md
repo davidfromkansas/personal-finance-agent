@@ -4,6 +4,30 @@ User-facing changes, most recent first.
 
 ---
 
+# Fully client-side demo mode — Shipped: April 15, 2026
+
+## Client-side demo mode (no server required)
+
+Demo mode now runs entirely in the browser with no server, database, or Plaid API calls. Clicking "Try Demo" on the landing page loads a complete fake financial profile for Alex Rivera, a 28-year-old software engineer in NYC, with 12 months of dynamically generated data that stays current relative to today's date.
+
+## Diverse demo data
+
+~1,400 transactions with weekly cadence across NYC merchants: coffee shops, casual dining, date nights, brunch spots, bars, bodegas, grocery stores, rideshares, and more. Includes special events like a girlfriend's birthday, a Japan trip, Valentine's Day, summer concerts, Black Friday, and NYE. 13 recurring subscriptions including rent, Equinox, Netflix, Spotify, Claude Pro, Cursor Pro, and others.
+
+## Investment portfolio
+
+5 brokerage holdings (AAPL, NVDA, MSFT, TSLA, VOO) plus a Vanguard 401(k) with a single index fund. Portfolio and net worth history charts now show realistic variation across all time filters (1W through ALL) using regime-based drift and multi-frequency sine waves.
+
+## Ask Abacus demo chat
+
+The AI assistant works fully client-side in demo mode with canned responses for all suggested prompts and page-level Ask Abacus buttons. Responses include data tables, spending breakdowns, portfolio analysis, savings rate trends, and coffee spending tracking — all computed from the live demo data. Simulates tool call activity with streaming delays for a realistic feel.
+
+## Simplified landing page
+
+The logged-out landing page now shows only a centered "Try Demo" button.
+
+---
+
 # UI overhaul, dedicated pages, and timezone fix — Shipped: April 12, 2026
 
 ## Dedicated Recurring Payments page
