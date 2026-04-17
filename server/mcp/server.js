@@ -767,15 +767,23 @@ Pass conversation_history to give the orchestrator context from the current conv
 export async function mcpHandler(req, res) {
   try {
     const sessionId = req.headers['mcp-session-id']
+    const method = req.body?.method || 'GET(sse)'
+    console.log(`[mcp] ${req.method} sessionId=${sessionId || 'none'} method=${method} sessions=[${[...sessions.keys()].map(k => k.slice(0,8)).join(',')}]`)
 
     // Reuse existing session
     if (sessionId && sessions.has(sessionId)) {
       const session = sessions.get(sessionId)
       if (session.userId !== req.uid) {
+        console.log(`[mcp] 403: session userId=${session.userId} != req.uid=${req.uid}`)
         return res.status(403).json({ error: 'Forbidden' })
       }
+      console.log(`[mcp] reusing session ${sessionId.slice(0,8)} for ${method}`)
       await session.transport.handleRequest(req, res, req.body)
       return
+    }
+
+    if (sessionId && !sessions.has(sessionId)) {
+      console.log(`[mcp] ⚠ session ${sessionId.slice(0,8)} NOT FOUND — client sent stale session ID for ${method}`)
     }
 
     // New session — create transport + server bound to this user
@@ -785,6 +793,7 @@ export async function mcpHandler(req, res) {
     const server = createServer(req.uid)
 
     transport.onclose = () => {
+      console.log(`[mcp] onclose fired for session ${transport.sessionId?.slice(0,8) || 'unknown'} — deleting session`)
       if (transport.sessionId) sessions.delete(transport.sessionId)
       server.close().catch(() => {})
     }
@@ -794,6 +803,7 @@ export async function mcpHandler(req, res) {
 
     if (transport.sessionId) {
       sessions.set(transport.sessionId, { transport, server, userId: req.uid })
+      console.log(`[mcp] new session ${transport.sessionId.slice(0,8)} created for user ${req.uid}`)
     }
   } catch (err) {
     console.error('[mcp] handler error:', err)
