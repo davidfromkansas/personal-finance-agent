@@ -782,8 +782,10 @@ export async function mcpHandler(req, res) {
       return
     }
 
+    // Stale session — tell client to re-initialize (MCP spec: 404)
     if (sessionId && !sessions.has(sessionId)) {
-      console.log(`[mcp] ⚠ session ${sessionId.slice(0,8)} NOT FOUND — client sent stale session ID for ${method}`)
+      console.log(`[mcp] ⚠ session ${sessionId.slice(0,8)} NOT FOUND — returning 404 so client re-initializes`)
+      return res.status(404).json({ error: 'Session not found — please re-initialize' })
     }
 
     // New session — create transport + server bound to this user
@@ -792,10 +794,19 @@ export async function mcpHandler(req, res) {
     })
     const server = createServer(req.uid)
 
+    // Delay session cleanup so clients can reconnect after SSE drops
     transport.onclose = () => {
-      console.log(`[mcp] onclose fired for session ${transport.sessionId?.slice(0,8) || 'unknown'} — deleting session`)
-      if (transport.sessionId) sessions.delete(transport.sessionId)
-      server.close().catch(() => {})
+      console.log(`[mcp] onclose fired for session ${transport.sessionId?.slice(0,8) || 'unknown'} — scheduling cleanup in 60s`)
+      if (transport.sessionId) {
+        const sid = transport.sessionId
+        setTimeout(() => {
+          if (sessions.has(sid)) {
+            console.log(`[mcp] cleaning up session ${sid.slice(0,8)} after 60s grace period`)
+            sessions.delete(sid)
+            server.close().catch(() => {})
+          }
+        }, 60_000)
+      }
     }
 
     await server.connect(transport)
