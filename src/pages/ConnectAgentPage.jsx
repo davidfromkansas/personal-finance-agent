@@ -75,7 +75,7 @@ export function ConnectAgentPage() {
       </div>
 
       <div className="px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 max-w-xl mx-auto">
 
           {/* Claude.ai */}
           <AgentCard
@@ -86,19 +86,15 @@ export function ConnectAgentPage() {
               <ol className="space-y-3 text-[13px] text-[#374151]" style={MONO}>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">1</span>
-                  <span>Open Desktop App for Claude. Go to <strong>"Customize"</strong>, then <strong>"Connectors"</strong>.</span>
+                  <span>Copy the Abacus MCP server URL below.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">2</span>
-                  <span>Click the <strong>"+"</strong> button and select <strong>"Add custom connector"</strong>.</span>
+                  <span>Visit <a href="https://claude.ai/settings/connectors?modal=add-custom-connector" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">Claude Connectors</a> and paste the URL.</span>
                 </li>
                 <li className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">3</span>
-                  <span>Paste in the exact Abacus MCP server URL (below) and give it a name (i.e. "Abacus MCP").</span>
-                </li>
-                <li className="flex gap-2">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">4</span>
-                  <span>After clicking <strong>"Add"</strong>, complete the OAuth login directions when asked.</span>
+                  <span>Follow the directions to login and connect your accounts.</span>
                 </li>
               </ol>
 

@@ -83,8 +83,118 @@ function WaitlistPopover({ open, onClose, anchorRef }) {
   )
 }
 
+const MCP_URL = 'https://getabacus.xyz/mcp'
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy() {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="flex items-center gap-1.5 rounded-lg bg-[#101828] px-3 py-1.5 text-[12px] font-medium text-white hover:bg-[#1e293b] transition-colors cursor-pointer"
+      style={MONO}
+    >
+      {copied ? (
+        <>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          Copied
+        </>
+      ) : (
+        <>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>
+          Copy
+        </>
+      )}
+    </button>
+  )
+}
+
+const HERO_IMAGES = ['/hero-demo.png', '/hero-chat.png', '/hero-heatmap.png']
+
+function HeroCarousel() {
+  const [current, setCurrent] = useState(0)
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrent(i => (i + 1) % HERO_IMAGES.length), 4000)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="hidden lg:block flex-shrink-0 w-[480px]">
+      <div className="relative overflow-hidden rounded-2xl border border-black/10 shadow-xl bg-white">
+        <div
+          className="flex transition-transform duration-700 ease-in-out"
+          style={{ transform: `translateX(-${current * 100}%)` }}
+        >
+          {HERO_IMAGES.map((src, i) => (
+            <img key={i} src={src} alt="" className="w-full flex-shrink-0" draggable={false} />
+          ))}
+        </div>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
+          {HERO_IMAGES.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setCurrent(i)}
+              className={`w-2 h-2 rounded-full transition-colors cursor-pointer ${i === current ? 'bg-black/70' : 'bg-black/20'}`}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ConnectClaudeModal({ open, onClose }) {
+  if (!open) return null
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="relative w-full max-w-lg mx-4 rounded-2xl border border-[#e5e7eb] bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
+        <button type="button" onClick={onClose} className="absolute top-4 right-4 text-[#6a7282] hover:text-[#18181b] cursor-pointer">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+        </button>
+        <div className="flex items-center gap-3 border-b border-[#e5e7eb] px-5 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f3f4f6]">
+            <img src="/claude-logo.png" alt="Claude" width="20" height="20" />
+          </span>
+          <h2 className="text-[16px] font-semibold text-[#18181b]" style={MONO}>Claude.ai (Web App + Mobile)</h2>
+        </div>
+        <div className="px-5 py-5 space-y-4">
+          <ol className="space-y-3 text-[13px] text-[#374151]" style={MONO}>
+            <li className="flex gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">1</span>
+              <span>Copy the Abacus MCP server URL below.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">2</span>
+              <span>Visit <a href="https://claude.ai/settings/connectors?modal=add-custom-connector" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline hover:text-blue-800">Claude Connectors</a> and paste the URL.</span>
+            </li>
+            <li className="flex gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f3f4f6] text-[11px] font-semibold text-[#6a7282]">3</span>
+              <span>Follow the directions to login and connect your accounts.</span>
+            </li>
+          </ol>
+          <div className="rounded-lg border border-[#e5e7eb] bg-[#f9fafb] p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#6a7282] mb-2" style={MONO}>Abacus MCP Server URL</p>
+            <div className="flex items-center gap-3">
+              <code className="flex-1 rounded-md bg-white border border-[#e5e7eb] px-3 py-2 text-[13px] text-[#18181b]" style={MONO}>{MCP_URL}</code>
+              <CopyButton text={MCP_URL} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function LoggedOutLandingPage() {
   const [waitlistOpen, setWaitlistOpen] = useState(false)
+  const [connectOpen, setConnectOpen] = useState(false)
   const waitlistBtnRef = useRef(null)
 
   return (
@@ -97,15 +207,15 @@ export function LoggedOutLandingPage() {
           </div>
         </div>
       </nav>
-      <div className="flex-1 flex flex-col justify-center max-w-[1200px] mx-auto px-6 w-full">
-        <div>
+      <div className="flex-1 flex items-center max-w-[1200px] mx-auto px-6 w-full gap-12">
+        <div className="flex-1 min-w-0">
           <h1 className="text-[56px] sm:text-[72px] font-semibold leading-[1.05] tracking-[-0.03em] text-[#18181b]" style={MONO}>
             Ask Claude about<br />your money.
           </h1>
           <p className="mt-5 text-[16px] text-[#6a7282]" style={MONO}>
             Abacus generates AI-powered insights about your personal spending, investments, and net-worth.
           </p>
-          <div className="mt-8 flex items-center gap-3 relative">
+          <div className="mt-8 flex flex-wrap items-center gap-3 relative">
             <button
               type="button"
               onClick={() => { enterDemoMode(); window.location.replace('/app/get-started') }}
@@ -121,13 +231,19 @@ export function LoggedOutLandingPage() {
             >
               Join Waitlist
             </button>
+            <button
+              type="button"
+              onClick={() => setConnectOpen(true)}
+              className="inline-flex items-center justify-center gap-2 px-8 py-4 bg-white border border-black/20 rounded-full text-[#18181b] font-medium text-lg hover:border-black/40 transition-colors font-[Roboto,sans-serif] cursor-pointer"
+            >
+              <img src="/claude-logo.png" alt="" className="h-5 w-5" />
+              Connect to Claude
+            </button>
             <WaitlistPopover open={waitlistOpen} onClose={() => setWaitlistOpen(false)} anchorRef={waitlistBtnRef} />
+            <ConnectClaudeModal open={connectOpen} onClose={() => setConnectOpen(false)} />
           </div>
         </div>
-        <div className="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-6">
-          <img src="/hero-demo.png" alt="Abacus spending visualization" className="w-full rounded-2xl shadow-2xl" />
-          <img src="/hero-chat.png" alt="Abacus AI chat analysis" className="w-full rounded-2xl shadow-2xl" />
-        </div>
+        <HeroCarousel />
       </div>
     </div>
   )
