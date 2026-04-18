@@ -126,15 +126,16 @@ function HeroCarousel() {
 
   return (
     <div className="hidden lg:block flex-shrink-0 w-[480px]">
-      <div className="relative overflow-hidden rounded-2xl border border-black/10 shadow-xl bg-white">
-        <div
-          className="flex transition-transform duration-700 ease-in-out"
-          style={{ transform: `translateX(-${current * 100}%)` }}
-        >
-          {HERO_IMAGES.map((src, i) => (
-            <img key={i} src={src} alt="" className="w-full flex-shrink-0" draggable={false} />
-          ))}
-        </div>
+      <div className="relative">
+        {HERO_IMAGES.map((src, i) => (
+          <img
+            key={i}
+            src={src}
+            alt=""
+            draggable={false}
+            className={`w-full rounded-2xl border border-black/10 shadow-xl transition-opacity duration-700 ease-in-out ${i === 0 ? 'relative' : 'absolute top-0 left-0'} ${i === current ? 'opacity-100' : 'opacity-0'}`}
+          />
+        ))}
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
           {HERO_IMAGES.map((_, i) => (
             <button
