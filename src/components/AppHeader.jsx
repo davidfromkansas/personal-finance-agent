@@ -640,27 +640,10 @@ export function AppHeader() {
         className="fixed left-0 top-0 z-30 flex h-full flex-col bg-[#f8f8f8] border-r border-black/8 overflow-hidden"
         style={{ width: 'var(--sidebar-w)', willChange: 'width' }}
       >
-        {/* Brand row — toggle left, pill right */}
-        <div className="flex items-center gap-3 px-2 pt-5 pb-2" style={{ minHeight: 44 }}>
-          <button
-            type="button"
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            onClick={handleToggle}
-            className="flex items-center justify-center rounded-xl px-3 py-3 text-black/25 hover:bg-black/6 hover:text-black/50 transition-colors cursor-pointer shrink-0"
-          >
-            <SidebarToggleIcon />
-          </button>
-          <span
-            className="rounded-full bg-black px-3.5 py-1.5 text-[13px] font-semibold text-white tracking-tight whitespace-nowrap"
-            style={{
-              fontFamily: 'JetBrains Mono,monospace',
-              opacity: layout ? 0 : 1,
-              transition: `opacity ${ANIM_MS * 0.4}ms ease`,
-              pointerEvents: layout ? 'none' : 'auto',
-            }}
-          >
-            Abacus
-          </span>
+        {/* Brand row — logo + name */}
+        <div className="flex items-center gap-2 px-5 pt-5 pb-2" style={{ minHeight: 44 }}>
+          <img src="/ai-icon.svg" alt="" className="h-6 w-6" />
+          <span className="text-[15px] font-semibold text-[#18181b] whitespace-nowrap" style={{ fontFamily: 'JetBrains Mono,monospace' }}>Abacus</span>
         </div>
 
         {/* Nav — icon always at fixed left position, label fades */}
