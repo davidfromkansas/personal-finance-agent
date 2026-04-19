@@ -1,0 +1,65 @@
+flowchart TD
+    UserQ(["User Question + mode"])
+
+    UserQ --> ModeCheck{"mode?"}
+
+    ModeCheck -->|"Auto"| Orchestrator["Orchestrator<br/>claude-sonnet-4-6<br/>Decides which agent(s) to call"]
+    ModeCheck -->|"Transactions"| SpendingAgent
+    ModeCheck -->|"Investments"| PortfolioAgent
+    ModeCheck -->|"Accounts"| AccountsAgent
+    ModeCheck -->|"Research"| MarketResearchAgent
+
+    Orchestrator -->|"ask_spending_agent"| SpendingAgent["Spending Agent<br/>claude-sonnet-4-6"]
+    Orchestrator -->|"ask_portfolio_agent"| PortfolioAgent["Portfolio Agent<br/>claude-sonnet-4-6"]
+    Orchestrator -->|"ask_accounts_agent"| AccountsAgent["Accounts Agent<br/>claude-sonnet-4-6"]
+    Orchestrator -->|"ask_market_research_agent"| MarketResearchAgent["Market Research Agent<br/>claude-sonnet-4-6"]
+
+    SpendingAgent --> SpendingTools["get_spending_summary<br/>get_transactions<br/>get_cash_flow<br/>get_cash_flow_time_series<br/>compare_cash_flow<br/>get_recurring_transactions<br/>get_accounts<br/>get_monthly_spending_by_account<br/>get_cash_flow_node_transactions<br/>get_cash_flow_breakdown"]
+
+    PortfolioAgent --> PortfolioTools["get_portfolio_summary<br/>get_holdings<br/>get_investment_accounts<br/>get_investment_history<br/>get_holdings_history<br/>get_ticker_transactions<br/>get_benchmark_history"]
+
+    AccountsAgent --> AccountsTools["get_current_balances<br/>get_net_worth<br/>get_balance_history<br/>get_connected_accounts"]
+
+    MarketResearchAgent --> MarketTools["get_market_overview<br/>get_stock_quote<br/>get_stock_fundamentals<br/>get_analyst_ratings<br/>get_earnings_data<br/>get_company_news<br/>get_market_news<br/>get_insider_activity<br/>get_company_profile<br/>get_social_sentiment<br/>get_market_movers<br/>get_sector_performance<br/>get_company_peers<br/>search_symbol<br/>get_user_holdings"]
+
+    SpendingTools --> SpendingAnswer["answer + dataAvailable"]
+    PortfolioTools --> PortfolioAnswer["answer + dataAvailable"]
+    AccountsTools --> AccountsAnswer["answer + dataAvailable"]
+    MarketTools --> MarketAnswer["answer + dataAvailable"]
+
+    SpendingAnswer -->|"direct mode"| SSE
+    PortfolioAnswer -->|"direct mode"| SSE
+    AccountsAnswer -->|"direct mode"| SSE
+    MarketAnswer -->|"direct mode"| SSE
+
+    SpendingAnswer -->|"via orchestrator"| OrchestratorSynth["Orchestrator synthesises<br/>final answer"]
+    PortfolioAnswer -->|"via orchestrator"| OrchestratorSynth
+    AccountsAnswer -->|"via orchestrator"| OrchestratorSynth
+    MarketAnswer -->|"via orchestrator"| OrchestratorSynth
+
+    OrchestratorSynth --> SSE
+
+    SSE["SSE Stream<br/>tool_call → tool_done →<br/>text × N → done"]
+
+    SSE --> Client(["Client"])
+
+    classDef default fill:#fff,stroke:#333,color:#000
+    classDef question fill:#e0f0ff,stroke:#4a90d9,color:#000
+    classDef orchestrator fill:#e8eaf6,stroke:#5c6bc0,color:#000
+    classDef agent fill:#e8f5e9,stroke:#4caf50,color:#000
+    classDef tools fill:#fff,stroke:#999,color:#333,stroke-dasharray:5 5
+    classDef answer fill:#e8f5e9,stroke:#4caf50,color:#000
+    classDef synth fill:#e8eaf6,stroke:#5c6bc0,color:#000
+    classDef stream fill:#fff3e0,stroke:#ef6c00,color:#000
+    classDef client fill:#fce4ec,stroke:#c62828,color:#000
+    classDef decision fill:#e0f7fa,stroke:#00838f,color:#000
+
+    class UserQ question
+    class ModeCheck decision
+    class Orchestrator orchestrator
+    class SpendingAgent,PortfolioAgent,AccountsAgent,MarketResearchAgent agent
+    class SpendingTools,PortfolioTools,AccountsTools,MarketTools tools
+    class SpendingAnswer,PortfolioAnswer,AccountsAnswer,MarketAnswer answer
+    class OrchestratorSynth synth
+    class SSE stream
+    class Client client

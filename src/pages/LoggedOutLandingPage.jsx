@@ -163,7 +163,7 @@ function ConnectClaudeModal({ open, onClose }) {
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f3f4f6]">
             <img src="/claude-logo.png" alt="Claude" width="20" height="20" />
           </span>
-          <h2 className="text-[16px] font-semibold text-[#18181b]" style={MONO}>Claude.ai (Web App + Mobile)</h2>
+          <h2 className="text-[16px] font-semibold text-[#18181b]" style={MONO}>How to connect to Claude</h2>
         </div>
         <div className="px-5 py-5 space-y-4">
           <ol className="space-y-3 text-[13px] text-[#374151]" style={MONO}>

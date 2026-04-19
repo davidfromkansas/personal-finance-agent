@@ -79,7 +79,7 @@ export function ConnectAgentPage() {
 
           {/* Claude.ai */}
           <AgentCard
-            title="Claude.ai (Web App + Mobile)"
+            title="How to connect to Claude"
             icon={<img src="/claude-logo.png" alt="Claude" width="20" height="20" />}
           >
             <div className="space-y-4">
@@ -112,7 +112,7 @@ export function ConnectAgentPage() {
 
           {/* Claude Code */}
           <AgentCard
-            title="Claude Code"
+            title="How to connect to Claude Code"
             icon={<img src="/claude-code-logo.png" alt="Claude Code" width="20" height="20" />}
           >
             <div className="space-y-4">
@@ -149,7 +149,7 @@ export function ConnectAgentPage() {
 
           {/* ChatGPT */}
           <AgentCard
-            title="ChatGPT"
+            title="How to connect to ChatGPT"
             icon={<img src="/chatgpt-logo.png" alt="ChatGPT" width="20" height="20" />}
           >
             <div className="space-y-4">
